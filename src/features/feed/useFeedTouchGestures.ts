@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type Dispatch, type MutableRefObject, type
 import type { PlaybackClock, VideoHandle } from "../playback";
 import type { Toast } from "../../shared/model/store";
 import { createHoldSpeed, getHoldPoint, getHoldZone, isInsideHoldTarget, shiftHoldSpeed, HOLD_DELAY_MS, type HoldRect, type HoldRotation, type HoldSpeed, type HoldZone } from "./mobileHold";
+import { resolveFullscreenEpisodeSwipe } from "./fullscreenEpisodeSwipe";
 import type { FeedPanel, PinchState } from "./useFeedViewport";
 
 type Args = {
@@ -253,9 +254,23 @@ export function useFeedTouchGestures({
       const dy = point.y - g.startY;
       const dx2 = point.x - g.x;
       if (Math.abs(dy) > 56 && Math.abs(dy) > Math.abs(dx2)) {
-        const dir = dy < 0 ? 1 : -1;
         const ep = epMap[curId] || 1;
         const total = episodesLength;
+        if (fs && kind === "video") {
+          const result = resolveFullscreenEpisodeSwipe(ep, total, dy);
+          if (result && "message" in result) {
+            toast(result.message, "info");
+            return;
+          }
+          if (result) {
+            const want = result.target;
+            setEpMap((m) => ({ ...m, [curId]: want }));
+            toast(`第 ${want}集${total ? ` / ${total}` : ""}`, "info", "episode");
+            try { navigator.vibrate?.(12); } catch { /* ignore */ }
+            return;
+          }
+        }
+        const dir = dy < 0 ? 1 : -1;
         const want = dir === 1 ? (total > 1 && ep < total ? ep + 1 : 0) : (ep > 1 ? ep - 1 : 0);
         if (swipeEp && kind === "video" && want) {
           setEpMap((m) => ({ ...m, [curId]: want }));

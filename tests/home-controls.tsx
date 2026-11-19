@@ -4,6 +4,7 @@ import FeedItemChrome from "../src/features/feed/FeedItemChrome";
 import { FeedMobileTopTools, FeedPlayerShellChrome } from "../src/features/feed/FeedPlayerShellChrome";
 import { PlaybackSettingsPanel } from "../src/features/feed/PlaybackSettingsPanel";
 import { PanelSwipeArea } from "../src/features/feed/PanelSwipeArea";
+import { resolveFullscreenEpisodeSwipe } from "../src/features/feed/fullscreenEpisodeSwipe";
 import { createPlaybackClock } from "../src/features/playback";
 import type { FeedPanel } from "../src/features/feed/useFeedViewport";
 import { Sheet } from "../src/shared/ui/ios/overlays";
@@ -61,6 +62,7 @@ function Probe() {
         setClean: (value: boolean) => setClean(value),
         setLocked: (value: boolean) => setLocked(value),
         tagSelection: () => tagSelection,
+        fullscreenEpisodeSwipe: (current: number, total: number, dy: number) => resolveFullscreenEpisodeSwipe(current, total, dy),
       },
     });
   });

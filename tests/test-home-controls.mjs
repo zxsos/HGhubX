@@ -120,10 +120,20 @@ try {
   await fullscreenTime.waitFor();
   assert.match(await fullscreenTime.innerText(), /^00:00 \/ 02:00$/);
   assert.equal(await page.locator(".mobile-fs-duration").count(), 0);
+  const fullscreenSwipes = await page.evaluate(() => {
+    const fn = window.homeControlsProbe.fullscreenEpisodeSwipe;
+    return { up: fn(50, 109, -90), down: fn(50, 109, 90), first: fn(1, 109, -90), last: fn(109, 109, 90) };
+  });
+  assert.deepEqual(fullscreenSwipes, {
+    up: { target: 49 },
+    down: { target: 51 },
+    first: { message: "当前已是第一集" },
+    last: { message: "当前已是最后一集" },
+  });
   await page.screenshot({ path: path.join(output, "home-fullscreen.png") });
   await exitFullscreen.click();
   await page.locator(".mobile-fs-controls").waitFor({ state: "detached" });
-  console.log("✓ fullscreen uses a bottom-right exit and combined current / total time");
+  console.log("✓ fullscreen uses a bottom-right exit, combined time, and bounded up/down episode swipes");
 
   await page.getByRole("button", { name: "查看标签 都市，长按可屏蔽" }).click();
   assert.equal(await probe("openedTag"), "都市");
