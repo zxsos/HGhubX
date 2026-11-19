@@ -116,6 +116,8 @@ try {
   await page.mouse.up();
   await page.waitForTimeout(150);
   assert.equal(await probe("panel"), "detail");
+  await touchSwipe(related, 20, 140);
+  assert.equal(await probe("panel"), "detail");
   console.log("✓ related-content carousel keeps its horizontal swipe without changing tabs");
 
   await page.getByRole("button", { name: "选集", exact: true }).click();
