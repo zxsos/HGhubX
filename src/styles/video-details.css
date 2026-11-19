@@ -63,8 +63,6 @@
   .mobile-playback-episodes.ios-button { padding:0 10px; gap:5px; font-size:13px; }
   .mobile-playback-fullscreen.ios-button { width:44px; }
   .mobile-playback-quick.ios-button { width:36px; }
-  .mobile-fs-controls { gap:8px !important; }
-  .mobile-fs-clock,.mobile-fs-duration { display:none; }
 }
 @media(max-height:560px),(orientation:landscape) and (max-height:680px) {
   .video-details-sheet,.feed-comments-sheet,.feed-article-sheet { height:calc(100dvh - 72px); }

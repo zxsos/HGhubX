@@ -116,13 +116,14 @@ try {
   assert.equal(await page.locator(".mobile-fs-controls [aria-label*='静音']").count(), 0);
   assert.equal(await page.locator(".mobile-fs-controls [aria-label*='切集']").count(), 0);
   assert.equal(await page.locator(".mobile-fs-controls [aria-label*='下集']").count(), 0);
-  const fullscreenDuration = page.locator(".mobile-fs-duration");
-  await fullscreenDuration.waitFor();
-  assert.equal(await fullscreenDuration.innerText(), "2:00");
+  const fullscreenTime = page.locator(".mobile-fs-time");
+  await fullscreenTime.waitFor();
+  assert.match(await fullscreenTime.innerText(), /^00:00 \/ 02:00$/);
+  assert.equal(await page.locator(".mobile-fs-duration").count(), 0);
   await page.screenshot({ path: path.join(output, "home-fullscreen.png") });
   await exitFullscreen.click();
   await page.locator(".mobile-fs-controls").waitFor({ state: "detached" });
-  console.log("✓ fullscreen enters and exits from the bottom-right control, with no top-right exit button");
+  console.log("✓ fullscreen uses a bottom-right exit and combined current / total time");
 
   await page.getByRole("button", { name: "查看标签 都市，长按可屏蔽" }).click();
   assert.equal(await probe("openedTag"), "都市");

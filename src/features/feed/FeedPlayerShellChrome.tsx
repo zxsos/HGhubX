@@ -229,7 +229,7 @@ export function FeedPlayerShellChrome({
               className="hg-chip shrink-0 w-9 h-9 rounded-full flex items-center justify-center pressable">
               {paused ? <IPlayF size={18} /> : <IPauseF size={17} />}
             </Button>
-            <PlaybackTime clock={playbackClock} className="mobile-fs-clock shrink-0 text-[12px] font-semibold hg-ink-2 tabular-nums" />
+            <PlaybackTime clock={playbackClock} duration={duration} padMinutes className="mobile-fs-time shrink-0 text-[12px] font-semibold hg-ink-2 tabular-nums" />
             <Button
               aria-label={speedLock ? "解除倍速锁定" : `切换倍速，当前 ${effRate} 倍`}
               onClick={() => {
@@ -241,7 +241,6 @@ export function FeedPlayerShellChrome({
               className={`ml-auto shrink-0 flex items-center gap-1 px-2.5 h-8 rounded-full text-[13px] font-bold pressable ${effRate !== 1 ? "bg-white text-[#191919]" : "hg-chip hg-ink-2"}`}>
               <IBoltF size={12} />{effRate}x
             </Button>
-            <span className="mobile-fs-duration shrink-0 text-[12px] hg-ink-4 tabular-nums">{fmtTime(duration)}</span>
             <Button onClick={exitFs} aria-label="退出全屏"
               className="mobile-fs-exit hg-chip shrink-0 w-8 h-8 rounded-full flex items-center justify-center pressable">
               <ICompress size={16} />
