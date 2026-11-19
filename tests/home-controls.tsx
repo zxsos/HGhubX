@@ -10,6 +10,7 @@ import type { FeedPanel } from "../src/features/feed/useFeedViewport";
 import { Sheet } from "../src/shared/ui/ios/overlays";
 import { Button, SegmentedControl } from "../src/shared/ui/ios/controls";
 import { TagBlockMenu } from "../src/shared/ui/TagBlockMenu";
+import { ContentTags } from "../src/shared/ui/ContentTags";
 import "../src/index.css";
 
 const meta = {
@@ -41,6 +42,7 @@ function Probe() {
   const [locked, setLocked] = useState(false);
   const [clean, setClean] = useState(false);
   const [fsPreview, setFsPreview] = useState(false);
+  const [fsIdle, setFsIdle] = useState(false);
   const openTagMenu = (selected: string[] = []) => {
     setTagSelection(selected);
     setPanel(null);
@@ -60,6 +62,7 @@ function Probe() {
         locked: () => locked,
         clean: () => clean,
         setClean: (value: boolean) => setClean(value),
+        setFsIdle: (value: boolean) => setFsIdle(value),
         setLocked: (value: boolean) => setLocked(value),
         tagSelection: () => tagSelection,
         fullscreenEpisodeSwipe: (current: number, total: number, dy: number) => resolveFullscreenEpisodeSwipe(current, total, dy),
@@ -86,12 +89,12 @@ function Probe() {
       onRetryStream={() => {}} toast={() => {}}
     />
     <FeedMobileTopTools
-      isDesktop={false} controlsLocked={false} active fs={fsPreview} idle={false} rotated={false} clean={clean}
+      isDesktop={false} controlsLocked={false} active fs={fsPreview} idle={fsIdle} rotated={false} clean={clean}
       currentQuality={preferHevc ? "HD" : "SD"}
     />
     {fsPreview && <FeedPlayerShellChrome
       videoRef={{ current: null }} speedLockTargetRef={{ current: null }} barRef={{ current: null }}
-      playbackClock={clock} isDesktop={false} active fs idle={false} rotated={false} vpLandscape={false}
+      playbackClock={clock} isDesktop={false} active fs idle={fsIdle} rotated={false} vpLandscape={false}
       theater={false} setTheater={() => {}} fullscreen={false} controlsLocked={false}
       paused={false} duration={120} rate={rate} setRate={setRate} effRate={rate}
       holdSpeed={0} holdSlow={false} speedLock={0} setSpeedLock={() => {}} lockArmed={false}
@@ -104,7 +107,7 @@ function Probe() {
       scrub={null} barPct={null} onBarDown={() => {}} onBarMove={() => {}} onBarUp={() => {}}
       pickEp={() => {}} go={() => {}} togglePip={async () => {}} lockControls={() => {}}
       toggleFull={() => {}} exitFs={() => setFsPreview(false)}
-      onFollow={async () => {}} openTag={() => {}} closePanels={() => {}} pushPage={() => {}} toast={() => {}}
+      onFollow={async () => {}} openTag={() => {}} openTagMenu={openTagMenu} closePanels={() => {}} pushPage={() => {}} toast={() => {}}
     />}
     <Sheet open={panel === "more"} label="播放设置" z="playback-settings-overlay" onClose={() => setPanel(null)}>
       <PlaybackSettingsPanel
@@ -135,8 +138,12 @@ function Probe() {
               </div>
             ) : (
               <div className="video-details-scroll scroll-y flex-1" data-testid="detail-content">
+                <div style={{ height: 360 }} className="text-[13px] text-mut">视频详情概览</div>
                 <div className="scroll-x flex gap-2.5" data-testid="related-scroll">
                   <div style={{ flex: "none", width: 640 }}>相关推荐横向列表</div>
+                </div>
+                <div className="mt-4" data-testid="detail-tags">
+                  <ContentTags tags={meta.tags} onOpen={setOpenedTag} onBlock={tag => openTagMenu([tag])} />
                 </div>
                 <p className="mt-6 text-[13px] text-mut">视频详情内容</p>
               </div>

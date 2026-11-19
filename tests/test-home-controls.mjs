@@ -31,6 +31,7 @@ try {
   await page.goto(new URL("/tests/home-controls.html", origin).href, { waitUntil: "networkidle" });
   await page.locator(".mobile-playback-dock").waitFor();
   const probe = name => page.evaluate(key => window.homeControlsProbe[key](), name);
+  const cdp = await context.newCDPSession(page);
 
   const swipe = async (locator, startX, dx, dy = 0) => {
     const box = await locator.boundingBox();
@@ -41,6 +42,22 @@ try {
     await page.mouse.move(box.x + startX + dx, y + dy, { steps: 8 });
     await page.mouse.up();
     await page.waitForTimeout(150);
+  };
+
+  const touchSwipe = async (locator, startX, dx, dy = 0) => {
+    const box = await locator.boundingBox();
+    assert.ok(box);
+    const x = box.x + startX;
+    const y = box.y + Math.min(40, box.height / 3);
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y, id: 1 }] });
+    for (let step = 1; step <= 6; step++) {
+      await cdp.send("Input.dispatchTouchEvent", {
+        type: "touchMove",
+        touchPoints: [{ x: x + dx * step / 6, y: y + dy * step / 6, id: 1 }],
+      });
+    }
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    await page.waitForTimeout(200);
   };
 
   const railOrder = await page.locator(".mobile-video-action-rail>button").evaluateAll(buttons => buttons.map(button => button.getAttribute("aria-label")));
@@ -81,9 +98,13 @@ try {
   assert.equal(await probe("panel"), "episodes");
   const panelBody = page.locator(".video-details-sheet-body");
   await panelBody.waitFor();
-  await swipe(panelBody, 24, 110);
+  await touchSwipe(panelBody, 24, 110);
   assert.equal(await probe("panel"), "detail");
   assert.equal(await page.getByTestId("detail-content").count(), 1);
+  await touchSwipe(panelBody, 130, -110);
+  assert.equal(await probe("panel"), "episodes");
+  await swipe(panelBody, 24, 110);
+  assert.equal(await probe("panel"), "detail");
 
   const related = page.getByTestId("related-scroll");
   await related.scrollIntoViewIfNeeded();
@@ -97,11 +118,11 @@ try {
   assert.equal(await probe("panel"), "detail");
   console.log("✓ related-content carousel keeps its horizontal swipe without changing tabs");
 
-  await swipe(panelBody, 130, -110);
+  await page.getByRole("button", { name: "选集", exact: true }).click();
   assert.equal(await probe("panel"), "episodes");
-  await swipe(panelBody, 24, 0, 160);
+  await touchSwipe(panelBody, 24, 0, 160);
   assert.equal(await probe("panel"), null);
-  console.log("✓ panel tabs switch with horizontal swipes and a top downward swipe closes the sheet");
+  console.log("✓ panel tabs switch with touch and mouse swipes, and a touch pull-down closes the sheet");
 
   await page.getByRole("button", { name: "全屏", exact: true }).click();
   assert.equal(await probe("fullscreen"), false);
@@ -120,6 +141,20 @@ try {
   await fullscreenTime.waitFor();
   assert.match(await fullscreenTime.innerText(), /^00:00 \/ 02:00$/);
   assert.equal(await page.locator(".mobile-fs-duration").count(), 0);
+  await page.evaluate(() => {
+    window.homeControlsProbe.setClean(true);
+    window.homeControlsProbe.setFsIdle(true);
+  });
+  await page.waitForTimeout(150);
+  assert.equal(await page.locator(".feed-current-quality").count(), 0);
+  assert.equal(await page.locator(".mobile-fs-controls").count(), 0);
+  const fullscreenCleanLock = await page.locator(".mobile-clean-lock").boundingBox();
+  assert.ok(fullscreenCleanLock && fullscreenCleanLock.x + fullscreenCleanLock.width >= 370 && Math.abs(fullscreenCleanLock.y + fullscreenCleanLock.height / 2 - 422) < 4);
+  await page.evaluate(() => {
+    window.homeControlsProbe.setClean(false);
+    window.homeControlsProbe.setFsIdle(false);
+  });
+  await page.waitForTimeout(150);
   const fullscreenSwipes = await page.evaluate(() => {
     const fn = window.homeControlsProbe.fullscreenEpisodeSwipe;
     return { up: fn(50, 109, -90), down: fn(50, 109, 90), first: fn(1, 109, -90), last: fn(109, 109, 90) };
@@ -133,7 +168,7 @@ try {
   await page.screenshot({ path: path.join(output, "home-fullscreen.png") });
   await exitFullscreen.click();
   await page.locator(".mobile-fs-controls").waitFor({ state: "detached" });
-  console.log("✓ fullscreen uses a bottom-right exit, combined time, and bounded up/down episode swipes");
+  console.log("✓ fullscreen uses a bottom-right exit, combined time, bounded episode swipes, and a clean-state right-center lock");
 
   await page.getByRole("button", { name: "查看标签 都市，长按可屏蔽" }).click();
   assert.equal(await probe("openedTag"), "都市");
@@ -145,7 +180,7 @@ try {
   assert.equal(await page.getByRole("button", { name: "甜宠", exact: true }).getAttribute("data-selected"), "true");
   assert.deepEqual(await probe("tagSelection"), ["甜宠"]);
   await page.locator(".content-tag-menu-header button").click();
-  console.log("✓ tap opens related content and long press preselects the held tag");
+  console.log("✓ tap opens the tag page and long press preselects the held tag");
 
   await page.getByRole("button", { name: "更多播放设置" }).click();
   await page.locator(".playback-settings-sheet").waitFor();
@@ -165,6 +200,16 @@ try {
   assert.equal(await page.locator(".playback-setting-action").count(), 0);
   await page.getByRole("button", { name: "关闭播放设置" }).click();
   console.log("✓ quality, rate, and fit remain in settings; primary playback actions stay in the dock");
+
+  await page.locator(".mobile-playback-episodes").click();
+  await page.getByRole("button", { name: "详情", exact: true }).click();
+  const detailTag = page.getByRole("button", { name: "查看标签 都市", exact: true });
+  await detailTag.scrollIntoViewIfNeeded();
+  await detailTag.dispatchEvent("contextmenu", { button: 2 });
+  await page.locator(".content-tag-menu").waitFor();
+  assert.deepEqual(await probe("tagSelection"), ["都市"]);
+  await page.locator(".content-tag-menu-header button").click();
+  console.log("✓ detail-panel tags block the right-clicked tag and close the sheet");
 
   await page.setViewportSize({ width: 844, height: 390 });
   await page.waitForTimeout(150);

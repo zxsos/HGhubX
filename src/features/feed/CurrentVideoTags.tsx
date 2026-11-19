@@ -9,11 +9,13 @@ export function CurrentVideoTags({ tags, onOpen, onBlock }: {
 }) {
   const timer = useRef<number | null>(null);
   const heldTag = useRef<string | null>(null);
+  const origin = useRef<{ x: number; y: number } | null>(null);
   const names = tags.map(tag => typeof tag === "string" ? tag.trim().replace(/\s+/g, " ") : "");
   const unique = names.filter((tag, index) => tag && names.findIndex(name => normalizeTag(name) === normalizeTag(tag)) === index);
   const clearTimer = () => {
     if (timer.current !== null) window.clearTimeout(timer.current);
     timer.current = null;
+    origin.current = null;
   };
   useEffect(() => () => clearTimer(), []);
   if (!unique.length) return null;
@@ -23,11 +25,18 @@ export function CurrentVideoTags({ tags, onOpen, onBlock }: {
         if (event.button !== 0) return;
         clearTimer();
         heldTag.current = null;
+        origin.current = { x: event.clientX, y: event.clientY };
         timer.current = window.setTimeout(() => {
           heldTag.current = tag;
           timer.current = null;
           onBlock(tag);
         }, 520);
+      }}
+      onPointerMove={event => {
+        const start = origin.current;
+        if (timer.current === null || !start) return;
+        /* A moving finger is scrolling, not holding the tag. */
+        if (Math.hypot(event.clientX - start.x, event.clientY - start.y) > 10) clearTimer();
       }}
       onPointerUp={clearTimer} onPointerCancel={clearTimer} onPointerLeave={clearTimer}
       onContextMenu={event => {

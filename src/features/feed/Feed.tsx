@@ -702,7 +702,7 @@ export default function Feed({
           post={post} articleHtml={articleHtml} panel={panel} setPanel={setPanel}
           scrub={scrub} barPct={barPct} onBarDown={onBarDown} onBarMove={onBarMove} onBarUp={onBarUp}
           pickEp={pickEp} go={go} togglePip={togglePip} lockControls={lockControls} toggleFull={toggleFull} exitFs={exitFs}
-          onFollow={onFollow} openTag={openTag} closePanels={closePanels} pushPage={store.push} toast={toast}
+          onFollow={onFollow} openTag={openTag} openTagMenu={openTagMenu} closePanels={closePanels} pushPage={store.push} toast={toast}
         />
       </div>
 

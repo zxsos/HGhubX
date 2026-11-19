@@ -89,6 +89,7 @@ type Props = {
   exitFs: () => void;
   onFollow: () => Promise<void>;
   openTag: (tag: string) => void;
+  openTagMenu: (selected?: string[]) => void;
   closePanels: () => void;
   pushPage: (page: PageInput) => void;
   toast: (msg: string, icon?: Toast["icon"]) => void;
@@ -103,7 +104,7 @@ export function FeedPlayerShellChrome({
   follows, followPending, post, articleHtml, panel, setPanel,
   scrub, barPct, onBarDown, onBarMove, onBarUp,
   pickEp, go, togglePip, lockControls, toggleFull, exitFs,
-  onFollow, openTag, closePanels, pushPage, toast,
+  onFollow, openTag, openTagMenu, closePanels, pushPage, toast,
 }: Omit<Props, "clean">) {
   const liveMeta = { ...meta, like: likeCount, collect: collectCount };
   const landscapeStage = rotated || vpLandscape;
@@ -115,7 +116,7 @@ export function FeedPlayerShellChrome({
   const detailBody = (onClose?: () => void) => (
     <VideoDetailsPanel meta={liveMeta} videoId={curId} episodeCount={episodes.length}
       related={related} following={follows.includes(meta.authorId)} followPending={followPending}
-      onFollow={() => void onFollow()} onTag={openTag} onClose={onClose}
+      onFollow={() => void onFollow()} onTag={openTag} onBlockTag={tag => openTagMenu([tag])} onClose={onClose}
       onAuthor={() => { if (meta.authorId > 0) { closePanels(); pushPage({ kind: "user", id: meta.authorId, name: meta.author }); } }}
       onRelated={(video, visible) => { closePanels(); pushPage({ kind: "feed", videoIds: visible.map(item => item.id), index: visible.findIndex(item => item.id === video.id), title: "相关推荐" }); }} />
   );
