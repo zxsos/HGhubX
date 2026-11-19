@@ -111,6 +111,14 @@ try {
   assert.ok(exitBox && exitBox.x >= 329 && exitBox.x + exitBox.width <= 390 - 10);
   assert.ok(exitBox.y > 844 - 60);
   assert.equal(await page.getByRole("button", { name: "退出全屏" }).count(), 1);
+  const fullscreenQuality = await page.locator(".feed-current-quality").boundingBox();
+  assert.ok(fullscreenQuality && fullscreenQuality.x + fullscreenQuality.width >= 370);
+  assert.equal(await page.locator(".mobile-fs-controls [aria-label*='静音']").count(), 0);
+  assert.equal(await page.locator(".mobile-fs-controls [aria-label*='切集']").count(), 0);
+  assert.equal(await page.locator(".mobile-fs-controls [aria-label*='下集']").count(), 0);
+  const fullscreenDuration = page.locator(".mobile-fs-duration");
+  await fullscreenDuration.waitFor();
+  assert.equal(await fullscreenDuration.innerText(), "2:00");
   await page.screenshot({ path: path.join(output, "home-fullscreen.png") });
   await exitFullscreen.click();
   await page.locator(".mobile-fs-controls").waitFor({ state: "detached" });
