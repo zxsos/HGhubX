@@ -295,7 +295,8 @@ export function useFeedTouchGestures({
         lastTapRef.current.idle = idle;
         setClean(!clean);
         if (!isDesktop && fs) setIdle(!idle);
-        if (!isDesktop && fs && idle) arm();
+        /* Re-arm the auto-hide timer whenever fullscreen controls become visible. */
+        if (!isDesktop && fs) arm();
         lastTapRef.current.timer = window.setTimeout(() => {
           lastTapRef.current.timer = null;
         }, 230) as unknown as number;
