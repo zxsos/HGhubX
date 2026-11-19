@@ -219,14 +219,6 @@ export function FeedPlayerShellChrome({
       {/* 移动端：沉浸全屏（安卓 WebView 不支持 Fullscreen API，改用应用内沉浸层） */}
       {!isDesktop && fs && !idle && (
         <>
-          <Button onClick={exitFs} aria-label="退出全屏"
-            className="hg-chip-strong absolute z-40 w-11 h-11 rounded-full backdrop-blur-md flex items-center justify-center pressable elev-1"
-            style={{
-              top: rotated ? 12 : "calc(var(--sat, 0px) + 6px)",
-              right: rotated ? "calc(var(--sab, 0px) + 12px)" : "calc(var(--sar, 0px) + 12px)",
-            }}>
-            <ICompress size={18} />
-          </Button>
           <div className="mobile-fs-controls absolute inset-x-0 z-40 flex items-center px-4"
             style={{
               bottom: rotated ? 10 : "calc(var(--sab, 0px) + 10px)",
@@ -266,6 +258,10 @@ export function FeedPlayerShellChrome({
               <IVertSwap size={16} />
             </Button>}
             <span className="mobile-fs-duration shrink-0 text-[12px] hg-ink-4 tabular-nums">{fmtTime(duration)}</span>
+            <Button onClick={exitFs} aria-label="退出全屏"
+              className="mobile-fs-exit hg-chip shrink-0 w-8 h-8 rounded-full flex items-center justify-center pressable">
+              <ICompress size={16} />
+            </Button>
           </div>
         </>
       )}

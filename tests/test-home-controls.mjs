@@ -105,7 +105,16 @@ try {
 
   await page.getByRole("button", { name: "全屏", exact: true }).click();
   assert.equal(await probe("fullscreen"), false);
-  console.log("✓ episode dock and fullscreen actions use the existing callbacks");
+  const exitFullscreen = page.locator(".mobile-fs-controls .mobile-fs-exit");
+  await exitFullscreen.waitFor();
+  const exitBox = await exitFullscreen.boundingBox();
+  assert.ok(exitBox && exitBox.x >= 329 && exitBox.x + exitBox.width <= 390 - 10);
+  assert.ok(exitBox.y > 844 - 60);
+  assert.equal(await page.getByRole("button", { name: "退出全屏" }).count(), 1);
+  await page.screenshot({ path: path.join(output, "home-fullscreen.png") });
+  await exitFullscreen.click();
+  await page.locator(".mobile-fs-controls").waitFor({ state: "detached" });
+  console.log("✓ fullscreen enters and exits from the bottom-right control, with no top-right exit button");
 
   await page.getByRole("button", { name: "查看标签 都市，长按可屏蔽" }).click();
   assert.equal(await probe("openedTag"), "都市");
