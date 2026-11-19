@@ -11,7 +11,7 @@ import type { FeedPanel } from "./useFeedViewport";
 import { PlaybackSettingsPanel } from "./PlaybackSettingsPanel";
 import { PanelSwipeArea } from "./PanelSwipeArea";
 import {
-  IBoltF, IClose, ICompress, IPauseF, IPlayF,
+  IBoltF, IClose, ICompress, IPauseF, IPlayF, ISearch,
 } from "../../shared/ui/icons";
 
 const VideoDetailsPanel = lazy(() => import("./VideoDetailsPanel"));
@@ -328,7 +328,7 @@ export function FeedPlayerShellChrome({
 }
 
 export function FeedMobileTopTools({
-  isDesktop, controlsLocked, active, fs, idle, rotated, clean, currentQuality,
+  isDesktop, controlsLocked, active, fs, idle, rotated, clean, currentQuality, searchLabel, onSearch,
 }: {
   isDesktop: boolean;
   controlsLocked: boolean;
@@ -338,6 +338,8 @@ export function FeedMobileTopTools({
   rotated: boolean;
   clean: boolean;
   currentQuality: "HD" | "SD" | null;
+  searchLabel?: string;
+  onSearch?: () => void;
 }) {
   if (isDesktop || controlsLocked || !active || (fs && idle) || (!fs && clean)) return null;
   return (
@@ -346,6 +348,9 @@ export function FeedMobileTopTools({
         top: rotated ? 12 : "calc(var(--sat, 0px) + 6px)",
         right: rotated ? "calc(var(--sab, 0px) + 12px)" : "calc(var(--sar, 0px) + 12px)",
       }}>
+      {onSearch && !fs && <Button type="button" aria-label={searchLabel ?? "搜索"} onClick={onSearch} className="feed-context-search pressable">
+        <ISearch size={14} /><span>{searchLabel ?? "搜索"}</span>
+      </Button>}
       {currentQuality && <span className="feed-current-quality" aria-label={`当前清晰度：${currentQuality === "HD" ? "高清" : "标清"}`}>{currentQuality}</span>}
     </div>
   );

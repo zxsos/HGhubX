@@ -70,6 +70,11 @@ try {
   assert.deepEqual(await page.locator(".mobile-playback-quick").evaluateAll(buttons => buttons.map(button => button.getAttribute("aria-label"))), ["取消静音", "关闭上下划切集"]);
   assert.equal(await page.getByRole("button", { name: "搜索", exact: true }).count(), 0);
   assert.equal(await page.getByRole("button", { name: "视频详情", exact: true }).count(), 0);
+  await page.evaluate(() => window.homeControlsProbe.setContextSearch(true));
+  assert.equal(await page.locator(".feed-context-search").innerText(), "搜短剧");
+  await page.getByRole("button", { name: "搜短剧" }).click();
+  assert.equal(await probe("openedTag"), "search");
+  await page.evaluate(() => window.homeControlsProbe.setContextSearch(false));
   const portraitMore = await page.getByRole("button", { name: "更多播放设置" }).boundingBox();
   const portraitDock = await page.locator(".mobile-playback-dock").boundingBox();
   assert.ok(portraitMore && portraitDock && portraitMore.y + portraitMore.height < portraitDock.y);

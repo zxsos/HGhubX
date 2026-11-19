@@ -43,6 +43,7 @@ function Probe() {
   const [clean, setClean] = useState(false);
   const [fsPreview, setFsPreview] = useState(false);
   const [fsIdle, setFsIdle] = useState(false);
+  const [contextSearch, setContextSearch] = useState(false);
   const openTagMenu = (selected: string[] = []) => {
     setTagSelection(selected);
     setPanel(null);
@@ -66,6 +67,7 @@ function Probe() {
         clean: () => clean,
         setClean: (value: boolean) => setClean(value),
         setFsIdle: (value: boolean) => setFsIdle(value),
+        setContextSearch: (value: boolean) => setContextSearch(value),
         setLocked: (value: boolean) => setLocked(value),
         tagSelection: () => tagSelection,
         fullscreenEpisodeSwipe: (current: number, total: number, dy: number) => resolveFullscreenEpisodeSwipe(current, total, dy),
@@ -94,6 +96,8 @@ function Probe() {
     <FeedMobileTopTools
       isDesktop={false} controlsLocked={false} active fs={fsPreview} idle={fsIdle} rotated={false} clean={clean}
       currentQuality={preferHevc ? "HD" : "SD"}
+      searchLabel={contextSearch ? "搜短剧" : undefined}
+      onSearch={contextSearch ? () => setOpenedTag("search") : undefined}
     />
     {fsPreview && <FeedPlayerShellChrome
       videoRef={{ current: null }} speedLockTargetRef={{ current: null }} barRef={{ current: null }}
