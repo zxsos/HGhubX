@@ -53,8 +53,11 @@ function Probe() {
       homeControlsProbe: {
         panel: () => panel,
         rate: () => rate,
+        setRate: (value: number) => setRate(value),
         preferHevc: () => preferHevc,
+        setPreferHevc: (value: boolean) => setPreferHevc(value),
         portraitFit: () => portraitFit,
+        setPortraitFit: (value: "contain" | "cover") => setPortraitFit(value),
         swipeEp: () => swipeEp,
         muted: () => muted,
         openedTag: () => openedTag,

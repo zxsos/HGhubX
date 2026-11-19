@@ -213,6 +213,11 @@ try {
   await page.locator(".content-tag-menu-header button").click();
   console.log("✓ detail-panel tags block the right-clicked tag and close the sheet");
 
+  await page.evaluate(() => {
+    window.homeControlsProbe.setRate(1);
+    window.homeControlsProbe.setPreferHevc(true);
+    window.homeControlsProbe.setPortraitFit("contain");
+  });
   await page.setViewportSize({ width: 844, height: 390 });
   await page.waitForTimeout(150);
   const positions = await page.locator(".mobile-video-action-rail>button").evaluateAll(buttons => buttons.map(button => {
@@ -231,8 +236,28 @@ try {
   assert.ok(drawer && drawer.x > 400 && drawer.width <= 381 && Math.abs(drawer.height - 390) < 2);
   await page.waitForTimeout(350);
   await page.screenshot({ path: path.join(output, "home-settings-landscape.png") });
+  const landscapeRates = await page.locator(".playback-setting-rates .ios-segmented-items>.ios-button").evaluateAll(buttons => buttons.map(button => {
+    const rect = button.getBoundingClientRect();
+    return { label: button.getAttribute("aria-label"), bottom: rect.bottom };
+  }));
+  assert.equal(landscapeRates.length, 6);
+  assert.ok(landscapeRates.every(rate => rate.bottom <= 390));
   await page.getByRole("button", { name: "关闭播放设置" }).click();
   console.log("✓ landscape keeps social actions in one column and opens playback settings as a right drawer");
+
+  await page.locator(".mobile-playback-fullscreen").click();
+  await page.locator(".mobile-fs-controls").waitFor();
+  await page.waitForTimeout(250);
+  await page.screenshot({ path: path.join(output, "home-fullscreen-landscape.png") });
+  await page.locator(".mobile-fs-controls .mobile-fs-exit").click();
+  await page.locator(".mobile-fs-controls").waitFor({ state: "detached" });
+  await page.evaluate(() => window.homeControlsProbe.setClean(true));
+  await page.locator(".mobile-clean-lock").waitFor();
+  await page.waitForTimeout(150);
+  await page.screenshot({ path: path.join(output, "home-clean-landscape.png") });
+  await page.evaluate(() => window.homeControlsProbe.setClean(false));
+  await page.locator(".mobile-video-action-rail").waitFor();
+  await page.waitForTimeout(150);
 
   await page.getByRole("button", { name: "查看标签 都市，长按可屏蔽" }).dispatchEvent("contextmenu", { button: 2 });
   await page.locator(".content-preference-overlay .ios-dialog").waitFor();

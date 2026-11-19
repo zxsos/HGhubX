@@ -76,7 +76,7 @@
   .playback-settings-overlay .ios-dialog { width:min(380px,58vw); max-width:none; height:100%; max-height:none; margin:0 0 0 auto; padding-bottom:0; border-radius:28px 0 0 28px; }
   .playback-settings-overlay .ios-sheet-grip { display:none; }
   .playback-settings-overlay.ios-overlay-sheet.is-open .ios-dialog { animation:playback-settings-drawer-in .24s cubic-bezier(.2,.8,.2,1) both; }
-  .playback-settings-sheet { height:100%; }
+  .playback-settings-sheet { height:100%; max-height:none; }
   .playback-settings-header { padding-top:max(14px,var(--native-sat,0px)); }
   .playback-settings-group>.playback-setting-row { min-height:56px; padding:10px 16px; }
 }
