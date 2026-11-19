@@ -66,13 +66,9 @@
 @media(max-height:560px),(orientation:landscape) and (max-height:680px) {
   .video-details-sheet,.feed-comments-sheet,.feed-article-sheet { height:calc(100dvh - 72px); }
   .mobile-video-meta-copy { padding-right:120px; }
-  .mobile-video-action-rail { --mobile-action-rail-clearance:100px; display:grid; grid-template-columns:repeat(2,44px); gap:6px; }
+  .mobile-video-action-rail { --mobile-action-rail-clearance:100px; display:flex; flex-direction:column; align-items:center; gap:6px; }
   .mobile-video-action-rail>.ios-button { width:44px; height:44px; min-height:44px; justify-content:center; gap:0; border-radius:16px; background:rgba(12,15,22,.28); }
   .mobile-video-action-rail>.ios-button>span:last-child { display:none; }
-  .mobile-video-action-rail>.mobile-action-like { grid-column:1; grid-row:1; }
-  .mobile-video-action-rail>.mobile-action-favorite { grid-column:1; grid-row:2; }
-  .mobile-video-action-rail>.mobile-action-comments { grid-column:1; grid-row:3; }
-  .mobile-video-action-rail>.mobile-action-more { grid-column:2; grid-row:3; }
   .mobile-playback-dock { margin-top:5px; }
   .mobile-playback-episodes.ios-button,.mobile-playback-fullscreen.ios-button,.mobile-playback-quick.ios-button { min-height:40px; border-radius:14px; }
   .ios-overlay-sheet.playback-settings-overlay { align-items:stretch; padding:0; }

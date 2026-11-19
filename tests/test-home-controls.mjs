@@ -144,9 +144,9 @@ try {
     const rect = button.getBoundingClientRect();
     return { label: button.getAttribute("aria-label"), x: rect.x, y: rect.y };
   }));
-  assert.ok(positions[0].x < positions[3].x);
-  assert.ok(positions[0].y < positions[1].y && positions[1].y < positions[2].y);
-  assert.ok(Math.abs(positions[2].y - positions[3].y) < 2);
+  assert.ok(positions.every(position => Math.abs(position.x - positions[0].x) < 1));
+  assert.ok(positions[0].y < positions[1].y && positions[1].y < positions[2].y && positions[2].y < positions[3].y);
+  assert.ok(Math.abs(positions[3].y - positions[2].y) > 30);
   const landscapeMore = await page.getByRole("button", { name: "更多播放设置" }).boundingBox();
   const landscapeDock = await page.locator(".mobile-playback-dock").boundingBox();
   assert.ok(landscapeMore && landscapeDock && landscapeMore.y + landscapeMore.height < landscapeDock.y);
@@ -157,7 +157,7 @@ try {
   await page.waitForTimeout(350);
   await page.screenshot({ path: path.join(output, "home-settings-landscape.png") });
   await page.getByRole("button", { name: "关闭播放设置" }).click();
-  console.log("✓ landscape keeps social actions left and opens playback settings as a right drawer");
+  console.log("✓ landscape keeps social actions in one column and opens playback settings as a right drawer");
 
   await page.getByRole("button", { name: "查看标签 都市，长按可屏蔽" }).dispatchEvent("contextmenu", { button: 2 });
   await page.locator(".content-preference-overlay .ios-dialog").waitFor();
