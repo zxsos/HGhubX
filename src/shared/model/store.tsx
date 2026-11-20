@@ -5,6 +5,7 @@ import { isStrictSecurity, setStrictSecurity as setHtmlStrictSecurity } from "..
 import type { User } from "../api/types";
 import { readStorage, STORAGE_KEYS } from "../storage/storage";
 import { pickGuestData, useAccountData, type GuestData } from "./accountData";
+import { tr } from "../i18n";
 
 export type Platform = "android" | "ios" | "windows" | "macos" | "linux";
 export type Theme = "dark" | "light";
@@ -351,7 +352,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const setStrictSecurity = useCallback(async (on: boolean) => {
-    if (!strictSecurityReady) throw new Error("安全设置尚未读取，请重新启动应用");
+    if (!strictSecurityReady) throw new Error(tr("安全设置尚未读取，请重新启动应用"));
     setSecurityPending(true);
     try {
       const saved = await api.securitySet(on);
@@ -387,7 +388,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const now = Date.now();
       if (now - last < 60_000) return;
       last = now;
-      pushToastItem({ msg: "线路全部不可用，请检查网络或代理", icon: "info" }, 3600);
+      pushToastItem({ msg: tr("线路全部不可用，请检查网络或代理"), icon: "info" }, 3600);
     };
     window.addEventListener("hg:line-down", onDown);
     return () => window.removeEventListener("hg:line-down", onDown);
@@ -465,7 +466,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const logout = useCallback(async () => {
     await accountRef.current.logout();
-    toast("已退出登录", "info");
+    toast(tr("已退出登录"), "info");
   }, [toast]);
 
   const setTheater = useCallback((v: boolean | ((prev: boolean) => boolean)) => {

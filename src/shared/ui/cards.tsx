@@ -5,9 +5,10 @@ import { ICheck, IHeartF, IPlayF, IStarF } from "./icons";
 import { Img } from "./ui";
 import { Button } from "./ios/controls";
 import { FilteredContent } from "./FilteredContent";
+import { tr } from "../i18n";
 
 function ScoreBadge({ score }: { score: number }) {
-  return Number.isFinite(score) && score > 0 ? <span className="ios-score-badge" aria-label={`评分 ${score.toFixed(1)}`}>
+  return Number.isFinite(score) && score > 0 ? <span className="ios-score-badge" aria-label={tr("评分 {0}", score.toFixed(1))}>
     <IStarF size={12} />{score.toFixed(1)}
   </span> : null;
 }
@@ -57,16 +58,16 @@ export function MediaCard({ title, cover, subtitle, badge, badgeTone = "default"
   } : {};
   const selection = selectionMode ? <span className="ios-poster-select" aria-hidden="true">{selected && <ICheck size={16} strokeWidth={2.4} />}</span> : null;
   const className = `ios-poster${onLongPress ? " has-long-press" : ""}${selected ? " is-selected" : ""}`;
-  const ariaLabel = selectionMode ? `${selected ? "取消选择" : "选择"}${title}` : title;
-  if (blockedReason) return <Button onClick={open} className={className} aria-label={selectionMode ? ariaLabel : "该内容命中屏蔽标签，查看提示"}
+  const ariaLabel = selectionMode ? `${selected ? tr("取消选择") : tr("选择")}${title}` : title;
+  if (blockedReason) return <Button onClick={open} className={className} aria-label={selectionMode ? ariaLabel : tr("该内容命中屏蔽标签，查看提示")}
     aria-pressed={selectionMode ? selected : undefined} {...pressProps}>
     <span className="ios-poster-art flex flex-col items-center justify-center gap-3 px-3 text-center text-mut">
-      <span className="text-[14px] font-semibold">该内容命中屏蔽标签</span>
+      <span className="text-[14px] font-semibold">{tr("该内容命中屏蔽标签")}</span>
       <span className="text-[12px] break-words">{blockedReason}</span>
-      <span className="text-[13px] text-primary">查看提示</span>
+      <span className="text-[13px] text-primary">{tr("查看提示")}</span>
       {selection}
     </span>
-    <span className="ios-poster-title">已屏蔽内容</span>
+    <span className="ios-poster-title">{tr("已屏蔽内容")}</span>
     {progress && <span className="ios-poster-subtitle">{progress}</span>}
   </Button>;
   const hasScore = typeof score === "number" && Number.isFinite(score) && score > 0;
@@ -86,9 +87,9 @@ export function MediaCard({ title, cover, subtitle, badge, badgeTone = "default"
 
 export function WaterfallCard({ v, onOpen, priority = false }: { v: VideoCard; onOpen: () => void; priority?: boolean }) {
   return <MediaCard title={v.title} cover={v.cover} onOpen={onOpen} priority={priority} score={v.score}
-    badge={v.is_finished ? "已完结" : `更新至 ${v.episode_count} 集`}
+    badge={v.is_finished ? tr("已完结") : tr("更新至 {0} 集", v.episode_count)}
     subtitle={v.tags?.slice(0, 2).join(" · ") || v.author?.name || "HGhubX"}
-    progress={`${fmt(v.hot)} 次播放`} />;
+    progress={tr("{0} 次播放", fmt(v.hot))} />;
 }
 
 export function Masonry({ videos, onOpen, wide = false, scopeKey }: {
@@ -101,8 +102,8 @@ export function Masonry({ videos, onOpen, wide = false, scopeKey }: {
 
 export function RowCard({ v, onOpen }: { v: VideoCard; onOpen: () => void }) {
   return <div className="ios-row-card"><MediaCard title={v.title} cover={v.cover} score={v.score} onOpen={onOpen}
-    badge={v.is_finished ? "完结" : `${v.episode_count} 集`}
-    subtitle={v.score ? `${v.score.toFixed(1)} 分 · ${v.tags?.[0] || "短剧"}` : v.tags?.slice(0, 2).join(" · ")} />
+    badge={v.is_finished ? tr("完结") : tr("{0} 集", v.episode_count)}
+    subtitle={v.score ? tr("{0} 分 · {1}", v.score.toFixed(1), v.tags?.[0] || tr("短剧")) : v.tags?.slice(0, 2).join(" · ")} />
   </div>;
 }
 

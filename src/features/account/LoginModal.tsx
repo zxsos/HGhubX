@@ -7,6 +7,7 @@ import { Modal, Sheet } from "../../shared/ui/ui";
 import { Button, Form, Input, SegmentedControl } from "../../shared/ui/ios/controls";
 import { Loader } from "../../shared/ui/ios/effects";
 import { IClose, IEye, IEyeOff, ILogin } from "../../shared/ui/icons";
+import { tr } from "../../shared/i18n";
 
 export default function LoginModal() {
   const { loginOpen, setLoginOpen, setUser, toast, accountScope, lineEpoch } = useStore();
@@ -38,7 +39,7 @@ export default function LoginModal() {
   useEffect(() => {
     if (!loginOpen) { setPassword(""); setShowPassword(false); setErr(""); }
   }, [loginOpen]);
-  const title = mode === "login" ? "登录 HGhubX" : "注册 HGhubX";
+  const title = mode === "login" ? tr("登录 HGhubX") : tr("注册 HGhubX");
   const close = () => {
     if (pending.current) return;
     setLoginOpen(false);
@@ -46,7 +47,7 @@ export default function LoginModal() {
   const submit = async () => {
     // A ref locks synchronously: two submit events can arrive before React paints disabled.
     if (pending.current) return;
-    if (!username.trim() || !password) { setErr("请输入账号与密码"); return; }
+    if (!username.trim() || !password) { setErr(tr("请输入账号与密码")); return; }
     pending.current = true;
     setBusy(true); setErr("");
     const started = context.current;
@@ -55,41 +56,41 @@ export default function LoginModal() {
       const result = mode === "login" ? await api.login(username.trim(), password) : await api.register(username.trim(), password, email.trim());
       if (!mounted.current) return;
       if (epoch !== requestEpoch.current || started.accountScope !== context.current.accountScope || started.lineEpoch !== context.current.lineEpoch) {
-        setErr("账号或线路已变化，请重新登录");
+        setErr(tr("账号或线路已变化，请重新登录"));
         return;
       }
       saveCredential(username.trim(), password, result.user.id, result.origin);
       setUser(result.user as User, result.origin); setPassword(""); setLoginOpen(false);
-      toast(mode === "login" ? `欢迎回来，${result.user?.nickname || username}` : "注册成功", "ok");
-    } catch (error) { if (mounted.current) setErr(error instanceof Error ? error.message : "操作失败，请重试"); }
+      toast(mode === "login" ? tr("欢迎回来，{0}", result.user?.nickname || username) : tr("注册成功"), "ok");
+    } catch (error) { if (mounted.current) setErr(error instanceof Error ? error.message : tr("操作失败，请重试")); }
     finally { pending.current = false; if (mounted.current) setBusy(false); }
   };
   const content = <div className="ios-auth">
     <div className="ios-dialog-heading"><span className="ios-heading-icon"><ILogin size={21} /></span><h2>{title}</h2>
-      <Button className="ios-icon-button" aria-label="关闭登录" onClick={close} disabled={busy}><IClose size={19} /></Button>
+      <Button className="ios-icon-button" aria-label={tr("关闭登录")} onClick={close} disabled={busy}><IClose size={19} /></Button>
     </div>
-    <p className="ios-description">登录后同步账号收藏、关注和观看记录；游客的本机记录单独保留。</p>
-    <SegmentedControl className="ios-auth-tabs" aria-label="账号操作" activeIndex={mode === "login" ? 0 : 1}>
-      {([ ["login", "登录"], ["register", "注册"] ] as const).map(([key, label]) => <Button key={key}
+    <p className="ios-description">{tr("登录后同步账号收藏、关注和观看记录；游客的本机记录单独保留。")}</p>
+    <SegmentedControl className="ios-auth-tabs" aria-label={tr("账号操作")} activeIndex={mode === "login" ? 0 : 1}>
+      {([ ["login", tr("登录")], ["register", tr("注册")] ] as const).map(([key, label]) => <Button key={key}
         disabled={busy} aria-pressed={mode === key} onClick={() => { if (!pending.current) { setMode(key); setErr(""); setShowPassword(false); } }}>{label}</Button>)}
     </SegmentedControl>
     <Form className="ios-auth-form" aria-busy={busy} onSubmit={event => { event.preventDefault(); void submit(); }}>
-      <label className="ios-field"><span>账号</span><Input aria-label="账号" data-autofocus autoComplete="username" autoCapitalize="none" autoCorrect="off" spellCheck={false} readOnly={busy} name="username" placeholder="输入账号" value={username}
+      <label className="ios-field"><span>{tr("账号")}</span><Input aria-label={tr("账号")} data-autofocus autoComplete="username" autoCapitalize="none" autoCorrect="off" spellCheck={false} readOnly={busy} name="username" placeholder={tr("输入账号")} value={username}
         onChange={event => setUsername(event.target.value)} aria-invalid={!!err} aria-describedby={err ? errorId : undefined} /></label>
-      <div className="ios-field"><span id={passwordId}>密码</span><div className="relative">
-        <Input aria-label="密码" aria-labelledby={passwordId} autoComplete={mode === "login" ? "current-password" : "new-password"} name="password" type={showPassword ? "text" : "password"} readOnly={busy}
-          style={{ paddingRight: 56 }} placeholder="输入密码" value={password} onChange={event => setPassword(event.target.value)} aria-invalid={!!err} aria-describedby={err ? errorId : undefined} />
-        <Button className="ios-icon-button absolute right-1 top-1/2 -translate-y-1/2 text-mut" aria-label={showPassword ? "隐藏密码" : "显示密码"}
+      <div className="ios-field"><span id={passwordId}>{tr("密码")}</span><div className="relative">
+        <Input aria-label={tr("密码")} aria-labelledby={passwordId} autoComplete={mode === "login" ? "current-password" : "new-password"} name="password" type={showPassword ? "text" : "password"} readOnly={busy}
+          style={{ paddingRight: 56 }} placeholder={tr("输入密码")} value={password} onChange={event => setPassword(event.target.value)} aria-invalid={!!err} aria-describedby={err ? errorId : undefined} />
+        <Button className="ios-icon-button absolute right-1 top-1/2 -translate-y-1/2 text-mut" aria-label={showPassword ? tr("隐藏密码") : tr("显示密码")}
           aria-pressed={showPassword} disabled={busy} onClick={() => setShowPassword(value => !value)}>{showPassword ? <IEyeOff size={20} /> : <IEye size={20} />}</Button>
       </div></div>
-      {mode === "register" && <label className="ios-field"><span>邮箱 <small>可选</small></span><Input aria-label="邮箱" type="email" autoComplete="email" readOnly={busy} name="email"
-        placeholder="用于账号联系" value={email} onChange={event => setEmail(event.target.value)} /></label>}
+      {mode === "register" && <label className="ios-field"><span>{tr("邮箱")}{" "}<small>{tr("可选")}</small></span><Input aria-label={tr("邮箱")} type="email" autoComplete="email" readOnly={busy} name="email"
+        placeholder={tr("用于账号联系")} value={email} onChange={event => setEmail(event.target.value)} /></label>}
       {err && <p id={errorId} role="alert" className="ios-field-error">{err}</p>}
       <Button variant="primary" className="ios-auth-submit" type="submit" disabled={busy}>
-        {busy && <Loader className="size-5" />}{busy ? "处理中…" : mode === "login" ? "登录" : "创建账号"}
+        {busy && <Loader className="size-5" />}{busy ? tr("处理中…") : mode === "login" ? tr("登录") : tr("创建账号")}
       </Button>
     </Form>
-    <p className="ios-description ios-auth-note">登录状态与当前站点绑定；使用自定义镜像时，登录请求会发送到你填写的站点，跨站点切换需重新登录。</p>
+    <p className="ios-description ios-auth-note">{tr("登录状态与当前站点绑定；使用自定义镜像时，登录请求会发送到你填写的站点，跨站点切换需重新登录。")}</p>
   </div>;
   return isMobile ? <Sheet open={loginOpen} onClose={close} label={title} avoidNativeKeyboard={isAndroid}>{content}</Sheet>
     : <Modal open={loginOpen} onClose={close} label={title} width={440}>{content}</Modal>;

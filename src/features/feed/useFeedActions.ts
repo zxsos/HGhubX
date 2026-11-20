@@ -3,6 +3,7 @@ import type { Detail, Episode, Post, User } from "../../shared/api/types";
 import { detailEpisodeCount } from "../../shared/model/favoriteProgress";
 import type { Toast } from "../../shared/model/store";
 import type { VideoHandle } from "../playback";
+import { tr } from "../../shared/i18n";
 
 export type FeedMeta = {
   title: string;
@@ -78,9 +79,9 @@ export function useFeedActions({
       await setLiked(kind, curId, curEp, on);
       if (!actionIsCurrent()) return;
       if (on) setHeartBurst((n) => n + 1);
-      toast(on ? "已加入喜欢" : "已取消喜欢", on ? "heart" : "info");
+      toast(on ? tr("已加入喜欢") : tr("已取消喜欢"), on ? "heart" : "info");
     } catch (error) {
-      if (actionIsCurrent()) toast(error instanceof Error ? error.message : "点赞失败，请重试", "info");
+      if (actionIsCurrent()) toast(error instanceof Error ? error.message : tr("点赞失败，请重试"), "info");
     } finally { pendingActions.current.delete(pendingKey); }
   };
 
@@ -92,9 +93,9 @@ export function useFeedActions({
     const knownEpisodes = kind === "video" ? (detail ? detailEpisodeCount(detail) : meta.episodes.length) : undefined;
     try {
       await setCollected(kind, curId, on, knownEpisodes);
-      if (actionIsCurrent()) toast(on ? "已收藏" : "已取消收藏", on ? "star" : "info");
+      if (actionIsCurrent()) toast(on ? tr("已收藏") : tr("已取消收藏"), on ? "star" : "info");
     } catch (error) {
-      if (actionIsCurrent()) toast(error instanceof Error ? error.message : "收藏失败，请重试", "info");
+      if (actionIsCurrent()) toast(error instanceof Error ? error.message : tr("收藏失败，请重试"), "info");
     } finally { pendingActions.current.delete(pendingKey); }
   };
 
@@ -107,9 +108,9 @@ export function useFeedActions({
     const on = !follows.includes(uid);
     try {
       await setFollowing(uid, on);
-      if (actionIsCurrent()) toast(on ? `已关注 ${meta.author}` : "已取消关注", on ? "ok" : "info");
+      if (actionIsCurrent()) toast(on ? tr("已关注 {0}", meta.author) : tr("已取消关注"), on ? "ok" : "info");
     } catch (error) {
-      if (actionIsCurrent()) toast(error instanceof Error ? error.message : "关注失败，请重试", "info");
+      if (actionIsCurrent()) toast(error instanceof Error ? error.message : tr("关注失败，请重试"), "info");
     } finally { pendingActions.current.delete(pendingKey); }
   };
 
@@ -118,8 +119,8 @@ export function useFeedActions({
       const v = videoRef.current?.el();
       if (document.pictureInPictureElement) await document.exitPictureInPicture();
       else if (v && document.pictureInPictureEnabled) await v.requestPictureInPicture();
-      else toast("当前环境不支持画中画", "info");
-    } catch { toast("画中画开启失败", "info"); }
+      else toast(tr("当前环境不支持画中画"), "info");
+    } catch { toast(tr("画中画开启失败"), "info"); }
   };
 
   const likeCount = useMemo(() => {

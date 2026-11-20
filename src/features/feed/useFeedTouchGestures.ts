@@ -4,6 +4,7 @@ import type { Toast } from "../../shared/model/store";
 import { createHoldSpeed, getHoldPoint, getHoldZone, shiftHoldSpeed, HOLD_DELAY_MS, type HoldRect, type HoldRotation, type HoldSpeed, type HoldZone } from "./mobileHold";
 import { resolveFullscreenEpisodeSwipe } from "./fullscreenEpisodeSwipe";
 import type { FeedPanel, PinchState } from "./useFeedViewport";
+import { tr } from "../../shared/i18n";
 
 type Args = {
   boxRef: RefObject<HTMLDivElement | null>;
@@ -234,7 +235,7 @@ export function useFeedTouchGestures({
           if (result) {
             const want = result.target;
             setEpMap((m) => ({ ...m, [curId]: want }));
-            episodeToast(`第 ${want}集${total ? ` / ${total}` : ""}`);
+            episodeToast(tr("第 {0}集{1}", want, total ? ` / ${total}` : ""));
             try { navigator.vibrate?.(12); } catch { /* ignore */ }
             return;
           }
@@ -243,7 +244,7 @@ export function useFeedTouchGestures({
         const want = dir === 1 ? (total > 1 && ep < total ? ep + 1 : 0) : (ep > 1 ? ep - 1 : 0);
         if (swipeEp && kind === "video" && want) {
           setEpMap((m) => ({ ...m, [curId]: want }));
-          episodeToast(`第 ${want}集${total ? ` / ${total}` : ""}`);
+          episodeToast(tr("第 {0}集{1}", want, total ? ` / ${total}` : ""));
           try { navigator.vibrate?.(12); } catch { /* ignore */ }
           return;
         }

@@ -10,6 +10,7 @@ import { MediaCard } from "../../shared/ui/cards";
 import { useContentPreferences } from "../../shared/model/contentPreferences";
 import { CollectionLink, CollectionLinks } from "../../shared/ui/CollectionLink";
 import { IChevR, IClock, IHeart, ILogout, ISettings, IStar, IUser, IUserF } from "../../shared/ui/icons";
+import { tr } from "../../shared/i18n";
 
 /* Account changes discard cached details synchronously, before another account can paint. */
 export default function Profile({ wide, active = true }: { wide: boolean; active?: boolean }) {
@@ -181,7 +182,7 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
       await logout();
       if (mounted.current) setLogoutOpen(false);
     } catch (error) {
-      if (mounted.current) setLogoutError(error instanceof Error ? error.message : "退出失败，请重试");
+      if (mounted.current) setLogoutError(error instanceof Error ? error.message : tr("退出失败，请重试"));
     } finally {
       logoutPending.current = false;
       if (mounted.current) setLogoutBusy(false);
@@ -196,7 +197,7 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
       await clearHistory();
       if (mounted.current) setClearOpen(false);
     } catch (error) {
-      if (mounted.current) setClearError(error instanceof Error ? error.message : "清空失败，观看记录已保留，请重试");
+      if (mounted.current) setClearError(error instanceof Error ? error.message : tr("清空失败，观看记录已保留，请重试"));
     } finally {
       clearing.current = false;
       if (mounted.current) setClearBusy(false);
@@ -237,16 +238,16 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
         if (failed.length) {
           if (!current()) return;
           setSelectedIds(failed);
-          throw new Error(failed.length === targets.length ? "移除失败，请重试" : `已移除 ${targets.length - failed.length} 项，${failed.length} 项失败，请重试`);
+          throw new Error(failed.length === targets.length ? tr("移除失败，请重试") : tr("已移除 {0} 项，{1} 项失败，请重试", targets.length - failed.length, failed.length));
         }
       }
       if (current()) {
         setSelectedIds([]);
         setRemoveOpen(false);
-        toast(tab === "history" ? `已删除 ${targets.length} 条观看历史` : `已取消收藏 ${targets.length} 项`, "info");
+        toast(tab === "history" ? tr("已删除 {0} 条观看历史", targets.length) : tr("已取消收藏 {0} 项", targets.length), "info");
       }
     } catch (error) {
-      if (current()) setRemoveError(error instanceof Error ? error.message : "移除失败，请重试");
+      if (current()) setRemoveError(error instanceof Error ? error.message : tr("移除失败，请重试"));
     } finally {
       removalPending.current = false;
       if (current()) setRemoving(false);
@@ -256,9 +257,9 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
   return (
     <div className="ios-page absolute inset-0 bg-bg flex flex-col">
       <div className="ios-page-heading shrink-0 flex items-center">
-        <h1 className="ios-page-title text-on">我的</h1>
+        <h1 className="ios-page-title text-on">{tr("我的")}</h1>
         {isMobile && (
-          <Button onClick={() => push({ kind: "settings" })} aria-label="设置"
+          <Button onClick={() => push({ kind: "settings" })} aria-label={tr("设置")}
             className="ios-icon-button ml-auto">
             <ISettings size={17} strokeWidth={1.7} />
           </Button>
@@ -274,13 +275,13 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
               <div className="text-[16px] font-bold text-on truncate">{user.nickname}</div>
               <div className="text-[12px] text-mut mt-0.5">@{user.username} · ID {user.id}</div>
               <div className="flex gap-3 mt-2 text-[12px] text-mut">
-                <span>点赞 <b className="text-on">{fmt(user.counts?.like)}</b></span>
-                <span>收藏 <b className="text-on">{fmt(user.counts?.collect)}</b></span>
-                <span>关注 <b className="text-on">{fmt(user.counts?.following)}</b></span>
+                <span>{tr("点赞")}{" "}<b className="text-on">{fmt(user.counts?.like)}</b></span>
+                <span>{tr("收藏")}{" "}<b className="text-on">{fmt(user.counts?.collect)}</b></span>
+                <span>{tr("关注")}{" "}<b className="text-on">{fmt(user.counts?.following)}</b></span>
               </div>
             </div>
             <Button onClick={() => { setLogoutError(""); setLogoutOpen(true); }}
-              className="ios-icon-button" aria-label="退出登录">
+              className="ios-icon-button" aria-label={tr("退出登录")}>
               <ILogout size={17} />
             </Button>
           </Surface>
@@ -289,15 +290,14 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
             className="ios-account-card w-full text-left flex items-center gap-3.5 pressable a-rise">
             <Avatar size={56} icon={<IUser size={26} />} hue={220} ring />
             <div className="flex-1 min-w-0">
-              <div className="text-[16px] font-bold text-on">未登录</div>
-              <div className="text-[12px] text-mut mt-0.5">登录后查看账号收藏、关注和观看记录</div>
+              <div className="text-[16px] font-bold text-on">{tr("未登录")}</div>
+              <div className="text-[12px] text-mut mt-0.5">{tr("登录后查看账号收藏、关注和观看记录")}</div>
               <div className="flex gap-3 mt-2 text-[12px] text-mut">
-                <span>收藏 <b className="text-on">{favs.length + postFavs.length}</b></span>
-                <span>观看 <b className="text-on">{history.length}</b></span>
+                <span>{tr("收藏")}{" "}<b className="text-on">{favs.length + postFavs.length}</b></span>
+                <span>{tr("观看")}{" "}<b className="text-on">{history.length}</b></span>
               </div>
             </div>
-            <span className="inline-flex items-center gap-0.5 h-9 pl-3.5 pr-2.5 rounded-full bg-primary text-on-primary text-[13px] font-semibold shrink-0">
-              登录<IChevR size={14} />
+            <span className="inline-flex items-center gap-0.5 h-9 pl-3.5 pr-2.5 rounded-full bg-primary text-on-primary text-[13px] font-semibold shrink-0">{tr("登录")}<IChevR size={14} />
             </span>
           </Button>
         )}
@@ -305,52 +305,46 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
         {user && accountSync.error && <div role="alert" className="mt-3 rounded-(--r-sm) bg-s3 px-3.5 py-3 text-[13px] flex flex-wrap items-center justify-between gap-2">
           <p className="text-danger break-words flex-1 min-w-[200px]">{accountSync.error}</p>
           <Button disabled={accountSync.busy} onClick={() => { void syncAccount({ manual: true }).catch(() => {}); }}
-            className="inline-flex items-center min-h-9 -mx-2 px-2 text-primary font-semibold shrink-0">{accountSync.busy ? "正在重试…" : "重试同步"}</Button>
+            className="inline-flex items-center min-h-9 -mx-2 px-2 text-primary font-semibold shrink-0">{accountSync.busy ? tr("正在重试…") : tr("重试同步")}</Button>
         </div>}
 
         {/* 关注 / 我的主页 */}
         {user && (
           <CollectionLinks className="ios-profile-links mt-4">
-            <CollectionLink icon={<IHeart size={18} />} title="我的关注"
+            <CollectionLink icon={<IHeart size={18} />} title={tr("我的关注")}
               onClick={() => push({ kind: "following" })} />
-            <CollectionLink icon={<IUserF size={18} />} title="我的主页"
+            <CollectionLink icon={<IUserF size={18} />} title={tr("我的主页")}
               onClick={() => push({ kind: "user", id: user.id, name: user.nickname })} />
           </CollectionLinks>
         )}
 
         {/* 我的内容 */}
-        <SegmentedControl className="mt-4" aria-label="我的内容" activeIndex={tab === "fav" ? 0 : 1}>
-          {([["fav", "我的收藏"], ["history", "观看历史"]] as const).map(([k, l]) => (
+        <SegmentedControl className="mt-4" aria-label={tr("我的内容")} activeIndex={tab === "fav" ? 0 : 1}>
+          {([["fav", tr("我的收藏")], ["history", tr("观看历史")]] as const).map(([k, l]) => (
             <Button aria-pressed={tab === k} key={k} onClick={() => { setTab(k); setSelectedIds([]); }}>{l}</Button>
           ))}
         </SegmentedControl>
 
         {tab === "fav" && !favoriteStateUnknown && (favs.length > 0 || postFavs.length > 0 || favKind === "post") && (
-          <div className="mt-2.5 flex items-center gap-2" role="group" aria-label="收藏内容类型">
-            <Button aria-pressed={favKind === "video"} onClick={() => { setFavKind("video"); setSelectedIds([]); }} className="ios-filter-pill">
-              短剧{favs.length ? ` ${favs.length}` : ""}
-            </Button>
-            <Button aria-pressed={favKind === "post"} onClick={() => { setFavKind("post"); setSelectedIds([]); }} className="ios-filter-pill">
-              帖子{postFavs.length ? ` ${postFavs.length}` : ""}
-            </Button>
+          <div className="mt-2.5 flex items-center gap-2" role="group" aria-label={tr("收藏内容类型")}>
+            <Button aria-pressed={favKind === "video"} onClick={() => { setFavKind("video"); setSelectedIds([]); }} className="ios-filter-pill">{tr("短剧{0}", favs.length ? ` ${favs.length}` : "")}</Button>
+            <Button aria-pressed={favKind === "post"} onClick={() => { setFavKind("post"); setSelectedIds([]); }} className="ios-filter-pill">{tr("帖子{0}", postFavs.length ? ` ${postFavs.length}` : "")}</Button>
             {updatedFavCount > 0 && (
-              <span role="status" className="ml-auto text-[12px] font-semibold text-primary">
-                {updatedFavCount} 部有新集
-              </span>
+              <span role="status" className="ml-auto text-[12px] font-semibold text-primary">{tr("{0} 部有新集", updatedFavCount)}</span>
             )}
           </div>
         )}
 
-        {selectionMode && <div role="region" aria-label="批量管理" className="sticky top-0 z-20 -mx-1 mt-2 flex items-center gap-2 bg-bg/95 px-1 py-2 text-[13px] backdrop-blur">
-          <span className="font-semibold text-on">已选 {selectedIds.length} 项</span>
-          <Button className="ml-auto px-2 text-primary" onClick={() => { setSelectedIds([]); setRemoveError(""); }}>取消</Button>
-          <Button variant="danger" className="rounded-(--r-ctl) px-3" onClick={() => { setRemoveError(""); setRemoveOpen(true); }}>移除</Button>
+        {selectionMode && <div role="region" aria-label={tr("批量管理")} className="sticky top-0 z-20 -mx-1 mt-2 flex items-center gap-2 bg-bg/95 px-1 py-2 text-[13px] backdrop-blur">
+          <span className="font-semibold text-on">{tr("已选 {0} 项", selectedIds.length)}</span>
+          <Button className="ml-auto px-2 text-primary" onClick={() => { setSelectedIds([]); setRemoveError(""); }}>{tr("取消")}</Button>
+          <Button variant="danger" className="rounded-(--r-ctl) px-3" onClick={() => { setRemoveError(""); setRemoveOpen(true); }}>{tr("移除")}</Button>
         </div>}
 
         <div className="mt-3" aria-busy={loading || syncingFavorites}>
           {favoriteSyncFailed ? (
-            <Empty icon={<IStar size={24} />} title="收藏状态未知"
-              sub="账号同步未完成，暂时无法确认收藏内容。" action="重试"
+            <Empty icon={<IStar size={24} />} title={tr("收藏状态未知")}
+              sub={tr("账号同步未完成，暂时无法确认收藏内容。")} action={tr("重试")}
               onAction={() => { void syncAccount({ manual: true }).catch(() => {}); }} />
           ) : syncingFavorites ? (
             <FavoriteSyncState wide={wide} />
@@ -361,7 +355,7 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
               {postCards.map((p) => {
                 const reason = blockReason(p.tags);
                 return <MediaCard key={p.id} blockedReason={reason} title={p.title} cover={p.cover}
-                  subtitle={p.tags?.slice(0, 2).join(" · ") || `${fmt(p.hot)} 次浏览`}
+                  subtitle={p.tags?.slice(0, 2).join(" · ") || tr("{0} 次浏览", fmt(p.hot))}
                   selectionMode={selectionMode} selected={selectedIds.includes(p.id)} onLongPress={() => beginSelection(p.id)}
                   onOpen={() => {
                     if (selectionMode) { toggleSelection(p.id); return; }
@@ -379,10 +373,10 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
                 const unwatchedNew = tab === "fav" ? unwatchedNewEpisodes(c, progress, favEpCounts[c.id]) : 0;
                 const tagLine = c.tags?.slice(0, 2).join(" · ");
                 const subtitle = unwatchedNew > 0
-                  ? [c.is_finished ? `全 ${latestCount} 集` : `更新至 ${latestCount} 集`, tagLine].filter(Boolean).join(" · ")
+                  ? [c.is_finished ? tr("全 {0} 集", latestCount) : tr("更新至 {0} 集", latestCount), tagLine].filter(Boolean).join(" · ")
                   : tagLine;
                 return <MediaCard key={c.id} blockedReason={reason} title={c.title} cover={c.cover} score={c.score}
-                  badge={unwatchedNew > 0 ? `新更 ${unwatchedNew} 集` : (c.is_finished ? "已完结" : `${latestCount || c.episode_count} 集`)}
+                  badge={unwatchedNew > 0 ? tr("新更 {0} 集", unwatchedNew) : (c.is_finished ? tr("已完结") : tr("{0} 集", latestCount || c.episode_count))}
                   badgeTone={unwatchedNew > 0 ? "update" : "default"}
                   subtitle={subtitle}
                   progress={formatWatchProgress(progress, latestCount, c.is_finished)}
@@ -404,108 +398,106 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
                     const resume = resolveResumeTarget(c, progress);
                     push({
                       kind: "feed", videoIds: playableIds, index: targetIndex,
-                      title: tab === "fav" ? "我的收藏" : "观看历史", startEp: resume.startEp, startTime: resume.startTime,
+                      title: tab === "fav" ? tr("我的收藏") : tr("观看历史"), startEp: resume.startEp, startTime: resume.startTime,
                     });
                   }} />;
               })}
             </div>
           ) : failed.length ? (
             <Empty icon={tab === "fav" ? <IStar size={24} /> : <IClock size={24} />}
-              title={tab === "fav" ? "收藏加载失败" : "观看记录加载失败"}
-              sub="记录仍在，重试后继续浏览。" action="重试" onAction={() => setReload(n => n + 1)} />
+              title={tab === "fav" ? tr("收藏加载失败") : tr("观看记录加载失败")}
+              sub={tr("记录仍在，重试后继续浏览。")} action={tr("重试")} onAction={() => setReload(n => n + 1)} />
           ) : showingPosts ? (
-            <Empty icon={<IStar size={24} />} title="还没有收藏帖子"
-              sub="在吃瓜页面点收藏，之后就能在这里找到"
-              action="去看吃瓜" onAction={() => push({ kind: "posts" })} />
+            <Empty icon={<IStar size={24} />} title={tr("还没有收藏帖子")}
+              sub={tr("在吃瓜页面点收藏，之后就能在这里找到")}
+              action={tr("去看吃瓜")} onAction={() => push({ kind: "posts" })} />
           ) : (
             <Empty icon={tab === "fav" ? <IStar size={24} /> : <IClock size={24} />}
-              title={tab === "fav" ? "还没有收藏" : "还没有观看记录"}
-              sub={tab === "fav" ? "在剧集页点收藏，之后就能在这里找到" : "看过的剧集会出现在这里"}
-              action="去逛逛" onAction={() => push({ kind: "ranks" })} />
+              title={tab === "fav" ? tr("还没有收藏") : tr("还没有观看记录")}
+              sub={tab === "fav" ? tr("在剧集页点收藏，之后就能在这里找到") : tr("看过的剧集会出现在这里")}
+              action={tr("去逛逛")} onAction={() => push({ kind: "ranks" })} />
           )}
           {cardsCount > 0 && failed.length > 0 && <div role="status" className="mt-3 flex flex-wrap items-center gap-2 text-[13px] text-mut">
-            <span>{failed.length} 项内容加载失败，已加载内容仍可浏览。</span>
-            <Button disabled={loading} onClick={() => setReload(n => n + 1)} className="px-3 text-primary">重试失败内容</Button>
+            <span>{tr("{0} 项内容加载失败，已加载内容仍可浏览。", failed.length)}</span>
+            <Button disabled={loading} onClick={() => setReload(n => n + 1)} className="px-3 text-primary">{tr("重试失败内容")}</Button>
           </div>}
-          {cardsCount > 0 && loading && <div className="flex justify-center py-3"><Loader label="加载更多内容" /></div>}
-          {ids.length > 0 && <p role="status" className="mt-3 text-[12px] text-mut">已显示 {cardsCount} / {ids.length} 项{user ? "账号记录" : "本机记录"}</p>}
+          {cardsCount > 0 && loading && <div className="flex justify-center py-3"><Loader label={tr("加载更多内容")} /></div>}
+          {ids.length > 0 && <p role="status" className="mt-3 text-[12px] text-mut">{tr("已显示 {0} / {1} 项{2}", cardsCount, ids.length, user ? tr("账号记录") : tr("本机记录"))}</p>}
           {hasMore && <div ref={sentinelRef} className="h-4" aria-hidden="true" />}
           {tab === "history" && history.length > 0 && (
-            <Button disabled={clearBusy} aria-busy={clearBusy} onClick={() => { setClearError(""); setClearOpen(true); }} className="mt-3 w-full h-9 rounded-(--r-ctl) bg-s3 text-[13px] text-mut pressable">{clearBusy ? "正在清空…" : "清空观看历史"}</Button>
+            <Button disabled={clearBusy} aria-busy={clearBusy} onClick={() => { setClearError(""); setClearOpen(true); }} className="mt-3 w-full h-9 rounded-(--r-ctl) bg-s3 text-[13px] text-mut pressable">{clearBusy ? tr("正在清空…") : tr("清空观看历史")}</Button>
           )}
           {clearError && !clearOpen && <p role="alert" className="mt-2 text-[13px] text-danger">{clearError}</p>}
         </div>
 
-        <div className="text-center text-[12px] text-dim mt-5">HGhubX {APP_VERSION} · {platform === "android" ? "Android" : platform === "ios" ? "iOS" : platform === "macos" ? "macOS" : platform === "linux" ? "Linux" : "Windows"} 客户端</div>
+        <div className="text-center text-[12px] text-dim mt-5">{tr("HGhubX {0} · {1} 客户端", APP_VERSION, platform === "android" ? "Android" : platform === "ios" ? "iOS" : platform === "macos" ? "macOS" : platform === "linux" ? "Linux" : "Windows")}</div>
       </div>
-      <Modal open={removeOpen} onClose={() => { if (!removalPending.current) setRemoveOpen(false); }} label="批量移除">
+      <Modal open={removeOpen} onClose={() => { if (!removalPending.current) setRemoveOpen(false); }} label={tr("批量移除")}>
         <div className="p-5">
-          <h2 className="text-[18px] font-bold">{tab === "history" ? "删除所选观看历史" : "取消收藏所选内容"}</h2>
+          <h2 className="text-[18px] font-bold">{tab === "history" ? tr("删除所选观看历史") : tr("取消收藏所选内容")}</h2>
           <p className="mt-2 text-[14px] text-mut">
             {tab === "history"
-              ? `确认删除选中的 ${selectedIds.length} 条观看历史？收藏不会受影响。`
-              : `确认取消收藏选中的 ${selectedIds.length} 项内容？观看历史不会受影响。`}
-            {user ? "当前账号的云端数据与本机缓存都会更新。" : "此操作只会修改本机记录。"}
+              ? tr("确认删除选中的 {0} 条观看历史？收藏不会受影响。", selectedIds.length)
+              : tr("确认取消收藏选中的 {0} 项内容？观看历史不会受影响。", selectedIds.length)}
+            {user ? tr("当前账号的云端数据与本机缓存都会更新。") : tr("此操作只会修改本机记录。")}
           </p>
           {removeError && <p role="alert" className="mt-3 text-[13px] text-danger">{removeError}</p>}
           <div className="mt-4 flex gap-3">
-            <Button variant="secondary" disabled={removing} onClick={() => setRemoveOpen(false)} className="flex-1">取消</Button>
+            <Button variant="secondary" disabled={removing} onClick={() => setRemoveOpen(false)} className="flex-1">{tr("取消")}</Button>
             <Button variant="danger" disabled={removing || !selectedIds.length} aria-busy={removing} onClick={() => void confirmRemoveSelected()} className="flex-1 rounded-(--r-ctl) px-3">
-              {removing ? "正在移除…" : "确认移除"}
+              {removing ? tr("正在移除…") : tr("确认移除")}
             </Button>
           </div>
         </div>
       </Modal>
-      <Modal open={!!blockedPrompt} onClose={() => { if (!removingBlocked) setBlockedPrompt(null); }} label="内容已屏蔽">
+      <Modal open={!!blockedPrompt} onClose={() => { if (!removingBlocked) setBlockedPrompt(null); }} label={tr("内容已屏蔽")}>
         {blockedPrompt && (
           <div className="p-5">
-            <h2 className="text-[18px] font-bold">该内容命中屏蔽规则</h2>
-            <p className="mt-2 text-[14px] text-mut break-words">{blockedPrompt.reason}。你可以在内容偏好中调整屏蔽标签{blockedPrompt.removableFav ? "，或将此内容移出收藏" : ""}。</p>
+            <h2 className="text-[18px] font-bold">{tr("该内容命中屏蔽规则")}</h2>
+            <p className="mt-2 text-[14px] text-mut break-words">{tr("{0}。你可以在内容偏好中调整屏蔽标签{1}。", blockedPrompt.reason, blockedPrompt.removableFav ? tr("，或将此内容移出收藏") : "")}</p>
             <div className="mt-4 flex flex-wrap gap-2.5">
-              <Button variant="secondary" disabled={removingBlocked} onClick={() => setBlockedPrompt(null)} className="flex-1">关闭</Button>
+              <Button variant="secondary" disabled={removingBlocked} onClick={() => setBlockedPrompt(null)} className="flex-1">{tr("关闭")}</Button>
               {blockedPrompt.removableFav && (
                 <Button variant="danger" disabled={removingBlocked} onClick={() => {
                   setRemovingBlocked(true);
                   void setCollected(blockedPrompt.kind, blockedPrompt.id, false)
-                    .then(() => { if (mounted.current) { setBlockedPrompt(null); toast("已取消收藏", "info"); } })
-                    .catch(e => { if (mounted.current) toast(e instanceof Error ? e.message : "操作失败", "info"); })
+                    .then(() => { if (mounted.current) { setBlockedPrompt(null); toast(tr("已取消收藏"), "info"); } })
+                    .catch(e => { if (mounted.current) toast(e instanceof Error ? e.message : tr("操作失败"), "info"); })
                     .finally(() => { if (mounted.current) setRemovingBlocked(false); });
                 }} className="flex-1 rounded-(--r-ctl) px-3">
-                  {removingBlocked ? "处理中…" : "取消收藏"}
+                  {removingBlocked ? tr("处理中…") : tr("取消收藏")}
                 </Button>
               )}
               <Button variant="primary" disabled={removingBlocked} onClick={() => {
                 setBlockedPrompt(null);
                 push({ kind: "settings", section: "内容偏好" });
-              }} className="w-full rounded-(--r-ctl) min-h-11 px-4 font-semibold">
-                管理屏蔽标签
-              </Button>
+              }} className="w-full rounded-(--r-ctl) min-h-11 px-4 font-semibold">{tr("管理屏蔽标签")}</Button>
             </div>
           </div>
         )}
       </Modal>
-      <Modal open={logoutOpen} onClose={() => { if (!logoutPending.current) setLogoutOpen(false); }} label="退出登录">
+      <Modal open={logoutOpen} onClose={() => { if (!logoutPending.current) setLogoutOpen(false); }} label={tr("退出登录")}>
         <div className="p-5">
-          <h2 className="text-[18px] font-bold">退出登录</h2>
-          <p className="mt-2 text-[14px] text-mut">退出当前账户？账号数据和本机进度会保留，退出后显示游客的本机记录。</p>
+          <h2 className="text-[18px] font-bold">{tr("退出登录")}</h2>
+          <p className="mt-2 text-[14px] text-mut">{tr("退出当前账户？账号数据和本机进度会保留，退出后显示游客的本机记录。")}</p>
           {logoutError && <p role="alert" className="mt-3 text-[13px] text-danger">{logoutError}</p>}
           <div className="mt-4 flex gap-3">
-            <Button variant="secondary" disabled={logoutBusy} onClick={() => setLogoutOpen(false)} className="flex-1">取消</Button>
+            <Button variant="secondary" disabled={logoutBusy} onClick={() => setLogoutOpen(false)} className="flex-1">{tr("取消")}</Button>
             <Button variant="danger" disabled={logoutBusy} onClick={() => void confirmLogout()} className="flex-1 rounded-(--r-ctl) px-3">
-              {logoutBusy ? "正在退出…" : "确认退出"}
+              {logoutBusy ? tr("正在退出…") : tr("确认退出")}
             </Button>
           </div>
         </div>
       </Modal>
-      <Modal open={clearOpen} onClose={() => { if (!clearing.current) setClearOpen(false); }} label="清空观看历史">
+      <Modal open={clearOpen} onClose={() => { if (!clearing.current) setClearOpen(false); }} label={tr("清空观看历史")}>
         <div className="p-5">
-          <h2 className="text-[18px] font-bold">清空观看历史</h2>
-          <p className="mt-2 text-[14px] text-mut">确认清空全部观看历史？{user ? "当前账号的云端观看历史与本机缓存都会被清除。" : "本机游客观看历史会被清除。"}此操作无法撤销，收藏不会受影响。</p>
+          <h2 className="text-[18px] font-bold">{tr("清空观看历史")}</h2>
+          <p className="mt-2 text-[14px] text-mut">{tr("确认清空全部观看历史？{0}此操作无法撤销，收藏不会受影响。", user ? tr("当前账号的云端观看历史与本机缓存都会被清除。") : tr("本机游客观看历史会被清除。"))}</p>
           {clearError && <p role="alert" className="mt-3 text-[13px] text-danger">{clearError}</p>}
           <div className="mt-4 flex gap-3">
-            <Button variant="secondary" disabled={clearBusy} onClick={() => setClearOpen(false)} className="flex-1">取消</Button>
+            <Button variant="secondary" disabled={clearBusy} onClick={() => setClearOpen(false)} className="flex-1">{tr("取消")}</Button>
             <Button variant="danger" disabled={clearBusy} aria-busy={clearBusy} onClick={() => void clearWatchHistory()} className="flex-1 rounded-(--r-ctl) px-3">
-              {clearBusy ? "正在清空…" : "确认清空"}
+              {clearBusy ? tr("正在清空…") : tr("确认清空")}
             </Button>
           </div>
         </div>
@@ -516,10 +508,10 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
 
 function FavoriteSyncState({ wide }: { wide: boolean }) {
   return <>
-    <div role="status" aria-live="polite" aria-label="正在同步收藏"
+    <div role="status" aria-live="polite" aria-label={tr("正在同步收藏")}
       className="mb-4 flex items-center justify-center gap-2.5 text-[13px] text-mut">
       <span aria-hidden="true" className="ios-loader spinner w-5 h-5" />
-      <span>正在同步收藏…</span>
+      <span>{tr("正在同步收藏…")}</span>
     </div>
     <div aria-hidden="true" className={`ios-media-grid ${wide ? "is-wide" : ""}`}>
       {[0, 1, 2, 3].map(index => (

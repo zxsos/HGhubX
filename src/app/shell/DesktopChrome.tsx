@@ -8,6 +8,7 @@ import {
   IClose, IGrid, IGridF, IHome, IHomeF, IMinus, IMoon, IRestore, ISearch, ISettings, ISidebar,
   ISquare, ISun, ITrophy, IUser, IUserF, Logo,
 } from "../../shared/ui/icons";
+import { tr } from "../../shared/i18n";
 
 const appWindow = () => getCurrentWindow();
 
@@ -38,25 +39,25 @@ export function DesktopTitleBar({ collapsed, onToggle }: { collapsed: boolean; o
         <Logo size={24} />
         <span>HG<span className="win-wordmark-light">hub</span>X</span>
       </div>
-      <Button className="win-caption-tool" aria-label={collapsed || theater ? "展开侧栏" : "收起侧栏"}
+      <Button className="win-caption-tool" aria-label={collapsed || theater ? tr("展开侧栏") : tr("收起侧栏")}
         onClick={() => { if (theater) { setTheater(false); if (collapsed) onToggle(); } else onToggle(); }}>
         <ISidebar size={17} strokeWidth={1.7} />
       </Button>
       <div className="win-drag-region" data-tauri-drag-region />
-      <Button className="win-caption-tool" aria-label="切换外观" onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>
+      <Button className="win-caption-tool" aria-label={tr("切换外观")} onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>
         {theme === "dark" ? <ISun size={17} strokeWidth={1.7} /> : <IMoon size={17} strokeWidth={1.7} />}
       </Button>
-      <Button className="win-caption-tool" aria-label="搜索" onClick={() => setTab("search")}>
+      <Button className="win-caption-tool" aria-label={tr("搜索")} onClick={() => setTab("search")}>
         <ISearch size={17} strokeWidth={1.7} />
       </Button>
       {/* macOS 用系统自带的红绿灯（titleBarStyle: Overlay），不画自绘按钮 */}
       {platform !== "macos" && (
         <div className="win-caption-buttons">
-          <Button aria-label="最小化" onClick={() => appWindow().minimize().catch(() => {})}><IMinus size={15} strokeWidth={1.5} /></Button>
-          <Button aria-label={maxed ? "还原" : "最大化"} onClick={() => appWindow().toggleMaximize().catch(() => {})}>
+          <Button aria-label={tr("最小化")} onClick={() => appWindow().minimize().catch(() => {})}><IMinus size={15} strokeWidth={1.5} /></Button>
+          <Button aria-label={maxed ? tr("还原") : tr("最大化")} onClick={() => appWindow().toggleMaximize().catch(() => {})}>
             {maxed ? <IRestore size={14} strokeWidth={1.5} /> : <ISquare size={14} strokeWidth={1.5} />}
           </Button>
-          <Button className="win-close" aria-label="关闭" onClick={() => appWindow().close().catch(() => {})}><IClose size={16} strokeWidth={1.5} /></Button>
+          <Button className="win-close" aria-label={tr("关闭")} onClick={() => appWindow().close().catch(() => {})}><IClose size={16} strokeWidth={1.5} /></Button>
         </div>
       )}
     </header>
@@ -71,17 +72,17 @@ export function DesktopRail({ collapsed }: { collapsed: boolean }) {
     root?.kind === "settings" ? "settings" : root?.kind === "ranks" ? "ranks" : null;
   const onTab = (key: Tab | "search") => !stack.length && tab === key;
   const items: { key: Tab; label: string; Icon: typeof IHome; Filled: typeof IHomeF }[] = [
-    { key: "home", label: "首页", Icon: IHome, Filled: IHomeF },
-    { key: "category", label: "分类", Icon: IGrid, Filled: IGridF },
-    { key: "profile", label: "我的", Icon: IUser, Filled: IUserF },
+    { key: "home", label: tr("首页"), Icon: IHome, Filled: IHomeF },
+    { key: "category", label: tr("分类"), Icon: IGrid, Filled: IGridF },
+    { key: "profile", label: tr("我的"), Icon: IUser, Filled: IUserF },
   ];
   return (
-    <nav className={`win-sidebar ${collapsed ? "is-compact" : ""}`} aria-label="主导航">
+    <nav className={`win-sidebar ${collapsed ? "is-compact" : ""}`} aria-label={tr("主导航")}>
       <div className="win-sidebar-inner">
         <Button className={`win-search-launch ${onTab("search") ? "is-selected" : ""}`}
-          onClick={() => setTab("search")} aria-label="搜索">
+          onClick={() => setTab("search")} aria-label={tr("搜索")}>
           <span className="win-nav-symbol"><ISearch size={19} strokeWidth={1.7} /></span>
-          <span className="win-nav-copy">搜索</span>
+          <span className="win-nav-copy">{tr("搜索")}</span>
           <kbd className="win-nav-key">/</kbd>
         </Button>
         <div className="win-nav-items">
@@ -93,24 +94,24 @@ export function DesktopRail({ collapsed }: { collapsed: boolean }) {
               <span className="win-nav-copy">{label}</span>
             </Button>
           ))}
-          <Button aria-label="排行榜" className={`win-nav-item ${railPage === "ranks" ? "is-selected" : ""}`}
+          <Button aria-label={tr("排行榜")} className={`win-nav-item ${railPage === "ranks" ? "is-selected" : ""}`}
             aria-current={railPage === "ranks" ? "page" : undefined}
             onClick={() => { if (railPage !== "ranks" || stack.length > 1) openRootPage({ kind: "ranks" }); }}>
             <span className="win-nav-symbol"><ITrophy size={21} strokeWidth={1.7} /></span>
-            <span className="win-nav-copy">排行榜</span>
+            <span className="win-nav-copy">{tr("排行榜")}</span>
           </Button>
-          <Button aria-label="设置" className={`win-nav-item ${railPage === "settings" ? "is-selected" : ""}`}
+          <Button aria-label={tr("设置")} className={`win-nav-item ${railPage === "settings" ? "is-selected" : ""}`}
             aria-current={railPage === "settings" ? "page" : undefined}
             onClick={() => { if (railPage !== "settings" || stack.length > 1) openRootPage({ kind: "settings" }); }}>
             <span className="win-nav-symbol"><ISettings size={21} strokeWidth={1.7} /></span>
-            <span className="win-nav-copy">设置</span>
+            <span className="win-nav-copy">{tr("设置")}</span>
           </Button>
         </div>
         <div className="win-sidebar-bottom">
-          <Button aria-label="账号与个人中心" className="win-account" onClick={() => { setTab("profile"); if (!user) setLoginOpen(true); }}>
+          <Button aria-label={tr("账号与个人中心")} className="win-account" onClick={() => { setTab("profile"); if (!user) setLoginOpen(true); }}>
             <Avatar size={34} hue={220} name={user?.nickname} icon={user ? undefined : <IUser size={17} />} />
             <span className="win-account-copy">
-              <strong>{user?.nickname || "登录 HGhubX"}</strong>
+              <strong>{user?.nickname || tr("登录 HGhubX")}</strong>
             </span>
           </Button>
           <span className="win-sidebar-version">HGhubX for {platform === "macos" ? "macOS" : platform === "linux" ? "Linux" : "Windows"} {APP_VERSION}</span>

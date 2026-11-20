@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api/api";
 import type { AccountHistoryItem, AccountIdentity, AccountInteractions, User } from "../api/types";
 import type { WatchProgress } from "./store";
+import { tr } from "../i18n";
 
 type Kind = "video" | "post";
 export type GuestData = {
@@ -55,7 +56,7 @@ function sanitize(value: Partial<AccountData> | null | undefined): AccountData {
   };
 }
 const selected = (list: number[], id: number, on: boolean) => on ? [id, ...list.filter(x => x !== id)] : list.filter(x => x !== id);
-const message = (error: unknown) => error instanceof Error ? error.message : "账号同步失败，请重试";
+const message = (error: unknown) => error instanceof Error ? error.message : tr("账号同步失败，请重试");
 const CREDENTIAL_KEY = "hghubx_credential_v1";
 type SavedCredential = { username: string; password: string; userId: number; origin: string };
 /** 仅用于当前线路账号 401 后的静默重登；不进入日志、IPC 返回值或同步错误文案。 */
@@ -116,7 +117,7 @@ export function useAccountData(initialGuest: GuestData, saveGuest: (data: GuestD
   const isCurrent = (generation: number) => mounted.current && state.current!.generation === generation;
   const identity = (): AccountIdentity => {
     const s = state.current!;
-    if (!s.user || !s.origin) throw new Error("请先登录当前线路的账号");
+    if (!s.user || !s.origin) throw new Error(tr("请先登录当前线路的账号"));
     return { expectedUserId: s.user.id, expectedOrigin: s.origin };
   };
   const persist = (data: AccountData, silent = false) => {
@@ -131,7 +132,7 @@ export function useAccountData(initialGuest: GuestData, saveGuest: (data: GuestD
     accounts.current[s.key] = data;
     let storageFailed = false;
     try { localStorage.setItem(ACCOUNT_KEY, JSON.stringify({ version: 1, accounts: accounts.current })); storageError.current = ""; }
-    catch { storageError.current = "本机账号缓存保存失败，请检查存储空间"; s.sync = { ...s.sync, error: storageError.current }; storageFailed = true; }
+    catch { storageError.current = tr("本机账号缓存保存失败，请检查存储空间"); s.sync = { ...s.sync, error: storageError.current }; storageFailed = true; }
     if (mounted.current && (!silent || storageFailed)) render();
   };
   const flushHistory = async () => {
@@ -165,7 +166,7 @@ export function useAccountData(initialGuest: GuestData, saveGuest: (data: GuestD
     flushTimer.current = window.setTimeout(() => {
       flushTimer.current = undefined;
       if (isCurrent(generation)) void flushHistory().catch(error => {
-        if (isCurrent(generation)) { state.current!.sync = { ...state.current!.sync, error: `观看历史待同步：${message(error)}` }; render(); }
+        if (isCurrent(generation)) { state.current!.sync = { ...state.current!.sync, error: tr("观看历史待同步：{0}", message(error)) }; render(); }
       });
     }, 1500);
   }
@@ -174,13 +175,13 @@ export function useAccountData(initialGuest: GuestData, saveGuest: (data: GuestD
     const seen = new Set<number>();
     for (let page = 1; page <= 200; page++) {
       const result = await api.accountHistory(auth, page, 100);
-      if (!isCurrent(generation)) throw new Error("账号已切换");
+      if (!isCurrent(generation)) throw new Error(tr("账号已切换"));
       if (!result || !Array.isArray(result.items) || !result.pagination || result.pagination.page !== page
-        || !Number.isInteger(result.pagination.pages) || result.pagination.pages < 0 || result.pagination.pages > 200) throw new Error("账号历史返回格式异常");
+        || !Number.isInteger(result.pagination.pages) || result.pagination.pages < 0 || result.pagination.pages > 200) throw new Error(tr("账号历史返回格式异常"));
       for (const row of result.items) if (!seen.has(row.id)) { seen.add(row.id); rows.push(row); }
       if (page >= result.pagination.pages) return rows;
     }
-    throw new Error("账号历史分页过多，请稍后重试");
+    throw new Error(tr("账号历史分页过多，请稍后重试"));
   };
   const authRejected = useRef(false);
   const authRejectedMsg = useRef("");
@@ -217,7 +218,7 @@ export function useAccountData(initialGuest: GuestData, saveGuest: (data: GuestD
             if (!isCurrent(generation)) return;
             if (snapshot.origin !== s.origin || snapshot.user?.id !== state.current!.user?.id) {
               clearCredential();
-              authRejectedMsg.current = "当前线路返回的账号与本地登录不一致，请手动重新登录";
+              authRejectedMsg.current = tr("当前线路返回的账号与本地登录不一致，请手动重新登录");
               reloginError = authRejectedMsg.current;
             } else {
               saveCredential(credential.username, credential.password, auth.expectedUserId, auth.expectedOrigin);
@@ -230,7 +231,7 @@ export function useAccountData(initialGuest: GuestData, saveGuest: (data: GuestD
           } catch (error) {
             if (!isCurrent(generation)) return;
             if (/账号与本地登录不一致|密码/.test(message(error))) clearCredential();
-            authRejectedMsg.current = "自动重新登录失败，请在当前线路手动重新登录";
+            authRejectedMsg.current = tr("自动重新登录失败，请在当前线路手动重新登录");
             reloginError = authRejectedMsg.current;
           }
         }
@@ -240,14 +241,14 @@ export function useAccountData(initialGuest: GuestData, saveGuest: (data: GuestD
       const errors: string[] = [];
       if (profile.status === "fulfilled") {
         const snapshot = profile.value;
-        if (snapshot?.origin !== auth.expectedOrigin || snapshot.user?.id !== auth.expectedUserId) errors.push("账号资料身份不匹配，请重新登录");
+        if (snapshot?.origin !== auth.expectedOrigin || snapshot.user?.id !== auth.expectedUserId) errors.push(tr("账号资料身份不匹配，请重新登录"));
         else if (mutation.current === startMutation && pending.current.size === 0) {
           state.current!.user = snapshot.user;
           current = applyInteractions(current, snapshot.interactions);
           if (Array.isArray(snapshot.interactions?.favorite_video_ids)) favoritesKnown = true;
-          else if (!favoritesKnown) errors.push("账号未返回收藏数据，请重试");
+          else if (!favoritesKnown) errors.push(tr("账号未返回收藏数据，请重试"));
         } else if (pending.current.size === 0) needsResync.current = true;
-      } else errors.push(message(profile.reason) === "401" ? (reloginError || authRejectedMsg.current || "当前线路不认此登录态（401），请在本线路重新登录") : message(profile.reason));
+      } else errors.push(message(profile.reason) === "401" ? (reloginError || authRejectedMsg.current || tr("当前线路不认此登录态（401），请在本线路重新登录")) : message(profile.reason));
       if (remote.status === "fulfilled" && clearVersion.current === startClear) {
         const localRows = new Map(current.history.map(row => [row.id, row]));
         const changed = (row: WatchProgress) => startHistory.get(row.id) !== row;
@@ -264,7 +265,7 @@ export function useAccountData(initialGuest: GuestData, saveGuest: (data: GuestD
           if (!current.dirtyHistory[row.video_id] && (!local || !changed(local))) localOnly.delete(row.video_id);
         }
         current = { ...current, history: [...merged.values()].sort((a, b) => b.at - a.at), localHistory: [...localOnly] };
-      } else if (remote.status === "rejected") errors.push(message(remote.reason) === "401" ? (reloginError || authRejectedMsg.current || "当前线路不认此登录态（401），请在本线路重新登录") : message(remote.reason));
+      } else if (remote.status === "rejected") errors.push(message(remote.reason) === "401" ? (reloginError || authRejectedMsg.current || tr("当前线路不认此登录态（401），请在本线路重新登录")) : message(remote.reason));
       persist(current);
       if (storageError.current) errors.push(storageError.current);
       state.current!.sync = { busy: false, error: errors.join("；"), lastSynced: errors.length ? s.sync.lastSynced : Date.now(), favoritesKnown };
@@ -319,7 +320,7 @@ export function useAccountData(initialGuest: GuestData, saveGuest: (data: GuestD
   const logout = useCallback(async () => {
     const version = state.current!.generation;
     await api.logout(state.current!.user ? identity() : undefined);
-    if (!isCurrent(version)) throw new Error("账号已切换");
+    if (!isCurrent(version)) throw new Error(tr("账号已切换"));
     setUser(null); clearCredential();
   }, [setUser]);
   const mutate = (key: string, request: (auth: AccountIdentity) => Promise<unknown>, update: (data: AccountData) => AccountData) => {
@@ -329,7 +330,7 @@ export function useAccountData(initialGuest: GuestData, saveGuest: (data: GuestD
     mutation.current++;
     const run = (async () => {
       if (s.user) await request(identity());
-      if (!isCurrent(version)) throw new Error("账号已切换，原操作不会影响当前账号");
+      if (!isCurrent(version)) throw new Error(tr("账号已切换，原操作不会影响当前账号"));
       mutation.current++;
       persist(update(state.current!.data));
     })();
@@ -364,7 +365,7 @@ export function useAccountData(initialGuest: GuestData, saveGuest: (data: GuestD
       return { ...data, likeEpisodes, likes: selected(data.likes, id, likeEpisodes.some(row => row.video_id === id)) };
     }), []);
   const setFollowing = useCallback((id: number, on: boolean) => {
-    if (!state.current!.user) return Promise.reject(new Error("请先登录"));
+    if (!state.current!.user) return Promise.reject(new Error(tr("请先登录")));
     return mutate(`follow:${id}`, auth => api.follow(id, on, auth), data => ({ ...data, follows: selected(data.follows, id, on) }));
   }, []);
   const currentGeneration = state.current.generation;
@@ -400,15 +401,15 @@ export function useAccountData(initialGuest: GuestData, saveGuest: (data: GuestD
     try {
       if (state.current!.user) {
         if (upload.current?.generation === version) await upload.current.promise.catch(() => {});
-        if (!isCurrent(version)) throw new Error("账号已切换");
+        if (!isCurrent(version)) throw new Error(tr("账号已切换"));
         const auth = identity();
         const rows = await readHistory(auth, version);
-        if (!isCurrent(version)) throw new Error("账号已切换");
+        if (!isCurrent(version)) throw new Error(tr("账号已切换"));
         const rowIds = rows.filter(row => row.target_type === "video").map(row => row.id);
         // Empty IDs must never mean an implicit delete-all on the server.
         for (let offset = 0; offset < rowIds.length; offset += 100) {
           await api.accountHistoryDelete(auth, rowIds.slice(offset, offset + 100));
-          if (!isCurrent(version)) throw new Error("账号已切换");
+          if (!isCurrent(version)) throw new Error(tr("账号已切换"));
         }
       }
       if (isCurrent(version)) { historyMutation.current++; clearVersion.current++; sentHistory.current.clear(); persist({ ...state.current!.data, history: [], dirtyHistory: {}, localHistory: [] }); }
@@ -418,7 +419,7 @@ export function useAccountData(initialGuest: GuestData, saveGuest: (data: GuestD
     const targetIds = new Set(videoIds.filter(id => Number.isSafeInteger(id) && id > 0));
     if (!targetIds.size) return;
     const version = state.current!.generation;
-    if (clearing.current === version) throw new Error("另一项观看记录操作正在进行，请稍后重试");
+    if (clearing.current === version) throw new Error(tr("另一项观看记录操作正在进行，请稍后重试"));
     clearing.current = version;
     historyMutation.current++; clearVersion.current++;
     render();
@@ -426,15 +427,15 @@ export function useAccountData(initialGuest: GuestData, saveGuest: (data: GuestD
     try {
       if (state.current!.user) {
         if (synchronizing.current?.generation === version) await synchronizing.current.promise.catch(() => {});
-        if (!isCurrent(version)) throw new Error("账号已切换");
+        if (!isCurrent(version)) throw new Error(tr("账号已切换"));
         if (upload.current?.generation === version) await upload.current.promise.catch(() => {});
-        if (!isCurrent(version)) throw new Error("账号已切换");
+        if (!isCurrent(version)) throw new Error(tr("账号已切换"));
         const auth = identity();
         const rows = await readHistory(auth, version);
         const rowIds = rows.filter(row => row.target_type === "video" && targetIds.has(row.video_id)).map(row => row.id);
         for (let offset = 0; offset < rowIds.length; offset += 100) {
           await api.accountHistoryDelete(auth, rowIds.slice(offset, offset + 100));
-          if (!isCurrent(version)) throw new Error("账号已切换");
+          if (!isCurrent(version)) throw new Error(tr("账号已切换"));
         }
       }
       if (isCurrent(version)) {

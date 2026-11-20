@@ -194,10 +194,10 @@ const VideoSurface = forwardRef<VideoHandle, Props>(function VideoSurface(
           const detail = `${data.type}/${data.details}/${data.response?.code ?? ""}/${String(data.reason ?? "").slice(0, 80)}`;
           (window as unknown as { __hlsErr?: string }).__hlsErr = detail;
           const readable = data.type === Hls.ErrorTypes.NETWORK_ERROR
-            ? "视频网络加载失败，请检查线路或重试"
+            ? tr("视频网络加载失败，请检查线路或重试")
             : data.type === Hls.ErrorTypes.MEDIA_ERROR
-              ? "视频解码异常，请重试"
-              : "视频暂时无法播放，请重试";
+              ? tr("视频解码异常，请重试")
+              : tr("视频暂时无法播放，请重试");
           onError?.(readable);
           if (data.type !== Hls.ErrorTypes.NETWORK_ERROR && data.type !== Hls.ErrorTypes.MEDIA_ERROR) {
             hls.destroy(); hlsRef.current = null;

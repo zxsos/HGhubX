@@ -1,6 +1,7 @@
 import { fmtTime } from "../api/api";
 import type { Detail } from "../api/types";
 import type { WatchProgress } from "./store";
+import { tr } from "../i18n";
 
 export function detailEpisodeCount(detail: Pick<Detail, "episode_count" | "episodes"> | null | undefined): number {
   if (!detail) return 0;
@@ -45,11 +46,11 @@ export function formatWatchProgress(
   if (!progress) return undefined;
   if (isEpisodeFinished(progress)) {
     if (isFinished && latestCount > 0 && progress.ep >= latestCount) {
-      return `已看完 · 全 ${latestCount} 集`;
+      return tr("已看完 · 全 {0} 集", latestCount);
     }
-    return `已看完第 ${progress.ep} 集`;
+    return tr("已看完第 {0} 集", progress.ep);
   }
-  return progress.t >= 1 ? `第 ${progress.ep} 集 · ${fmtTime(progress.t)}` : `第 ${progress.ep} 集`;
+  return progress.t >= 1 ? tr("第 {0} 集 · {1}", progress.ep, fmtTime(progress.t)) : tr("第 {0} 集", progress.ep);
 }
 
 export function unwatchedNewEpisodes(

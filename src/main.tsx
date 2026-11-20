@@ -8,6 +8,9 @@ import { initPlaybackLog, installPlaybackPageEvents, tracePlayback } from "./sha
 import { APP_VERSION, LOCAL, logLine, platform, webviewVersion } from "./shared/api/api";
 import { installLayoutDiagnostics } from "./shared/diagnostics/layoutDiagnostics";
 import { hasAcceptedAgreement } from "./shared/storage/usageAgreement";
+import { initLocale, useLocale } from "./shared/i18n";
+
+void initLocale();
 
 const loadAcceptedApp = () => import("./app/AcceptedApp");
 const AcceptedApp = lazy(loadAcceptedApp);
@@ -63,6 +66,7 @@ function AcceptedAppHost({ onReady }: { onReady: () => void }) {
 
 /** index.html 的 ES5 启动看门狗在首个成功 commit 后解除；协议签署可以慢慢来。 */
 function StartupReady() {
+  useLocale();
   const [contentReady, setContentReady] = useState(false);
   const markContentReady = useCallback(() => setContentReady(true), []);
   React.useEffect(() => {

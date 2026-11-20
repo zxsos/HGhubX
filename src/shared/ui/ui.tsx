@@ -7,6 +7,7 @@ export { Sheet, Modal } from "./ios/overlays";
 import { useToasts } from "../model/store";
 import { Loader } from "./ios/effects";
 import { IBoltF, ICheck, IGlobe, IHeartF, IMinus, ISparkF, IStarF } from "./icons";
+import { tr } from "../i18n";
 
 /* ——— 头像 ——— */
 export function Avatar({ hue = 250, icon, name, size = 40, ring = false, className = "" }: {
@@ -86,7 +87,7 @@ export function ToastHost() {
             </span>
             <div className="min-w-0">
               <div className="text-[14px] font-semibold text-on leading-tight">
-                {t.line.region === "cn" ? "国内线路" : "国外线路"}
+                {t.line.region === "cn" ? tr("国内线路") : tr("国外线路")}
               </div>
               <div className="text-[12px] text-dim leading-tight mt-0.5 truncate">{t.line.host}</div>
             </div>
@@ -143,8 +144,8 @@ function ImageLoad({ url, alt, className, eager, raw, loadingIndicator }: {
   return (
     <div className={`ios-image absolute inset-0 overflow-hidden ${className}`} data-ui="image-frame">
       {!ok && !err && <div className="absolute inset-0 shimmer" />}
-      {loadingIndicator && !ok && <div className="absolute inset-0 grid place-items-center"><Loader label="封面加载中" /></div>}
-      {err && !loadingIndicator && <div className="ios-image-error" role="img" aria-label={alt || "封面暂不可用"}>HG</div>}
+      {loadingIndicator && !ok && <div className="absolute inset-0 grid place-items-center"><Loader label={tr("封面加载中")} /></div>}
+      {err && !loadingIndicator && <div className="ios-image-error" role="img" aria-label={alt || tr("封面暂不可用")}>HG</div>}
       {url && <Image src={retryUrl} alt={alt} loading={eager ? "eager" : "lazy"}
         onLoad={() => { setOk(true); setErr(false); }}
         onError={() => { if (!raw && attempt < 2) setAttempt(attempt + 1); else setErr(true); }}

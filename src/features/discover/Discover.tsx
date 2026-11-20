@@ -10,6 +10,7 @@ import { FilteredContent } from "../../shared/ui/FilteredContent";
 import { InplaceSearch } from "../search/InplaceSearch";
 import { Empty, Img } from "../../shared/ui/ui";
 import { IBack, IFireF, ILayers, IRefresh, ISearch, ITag } from "../../shared/ui/icons";
+import { tr } from "../../shared/i18n";
 
 const TopicIcon = ILayers;
 const TagIcon = ITag;
@@ -32,7 +33,7 @@ function useDiscoveryData<T>(baseKey: string, request: () => Promise<T>) {
       const data = await requestRef.current();
       if (token === sequence.current) setState({ key, data, loading: false, error: "" });
     } catch (error) {
-      if (token === sequence.current) setState(previous => ({ ...previous, loading: false, error: error instanceof Error ? error.message : "加载失败，请重试" }));
+      if (token === sequence.current) setState(previous => ({ ...previous, loading: false, error: error instanceof Error ? error.message : tr("加载失败，请重试") }));
     } finally {
       if (token === sequence.current) busy.current = false;
     }
@@ -48,8 +49,8 @@ function useDiscoveryData<T>(baseKey: string, request: () => Promise<T>) {
 function RefreshStatus({ loading, error, onRetry }: { loading: boolean; error: string; onRetry: () => void }) {
   if (!loading && !error) return null;
   return <div role="status" className="mb-3 flex flex-wrap items-center gap-2 text-[12px] text-mut">
-    {loading ? <><Loader className="w-4 h-4" />正在刷新，保留当前内容…</>
-      : <><span className="min-w-0 break-words">刷新失败，保留当前内容。{error}</span><Button onClick={onRetry} className="px-3 text-primary">重试</Button></>}
+    {loading ? <><Loader className="w-4 h-4" />{tr("正在刷新，保留当前内容…")}</>
+      : <><span className="min-w-0 break-words">{tr("刷新失败，保留当前内容。{0}", error)}</span><Button onClick={onRetry} className="px-3 text-primary">{tr("重试")}</Button></>}
   </div>;
 }
 
@@ -64,14 +65,14 @@ export function TopicsPage({ onBack, wide }: { onBack: () => void; wide: boolean
     <div className="ios-page absolute inset-0 bg-bg flex flex-col">
       <div className="ios-subpage-header shrink-0" style={{ paddingTop: "var(--sat, 0px)" }}>
         <div className="ios-subpage-bar">
-          <Button aria-label="返回" onClick={onBack} className="ios-nav-btn"><IBack size={20} /></Button>
+          <Button aria-label={tr("返回")} onClick={onBack} className="ios-nav-btn"><IBack size={20} /></Button>
           <span className="w-9 h-9 rounded-[12px] bg-pc text-on-pc flex items-center justify-center shrink-0"><TopicIcon size={18} /></span>
           <div className="flex-1 min-w-0">
-            <h1 className="text-[17px] font-bold text-on leading-tight">专题</h1>
-            <div className="text-[12px] text-mut leading-tight mt-0.5">{loading && !items.length ? "加载中…" : `${items.length} 个专辑`}</div>
+            <h1 className="text-[17px] font-bold text-on leading-tight">{tr("专题")}</h1>
+            <div className="text-[12px] text-mut leading-tight mt-0.5">{loading && !items.length ? tr("加载中…") : tr("{0} 个专辑", items.length)}</div>
           </div>
-          <Button onClick={() => setSearching(true)} aria-label="搜索短剧" className="ios-nav-btn"><ISearch size={18} /></Button>
-          <Button aria-label="刷新" disabled={loading} aria-busy={loading} onClick={() => void load()} className="ios-nav-btn">{loading ? <Loader className="w-4 h-4" /> : <IRefresh size={18} />}</Button>
+          <Button onClick={() => setSearching(true)} aria-label={tr("搜索短剧")} className="ios-nav-btn"><ISearch size={18} /></Button>
+          <Button aria-label={tr("刷新")} disabled={loading} aria-busy={loading} onClick={() => void load()} className="ios-nav-btn">{loading ? <Loader className="w-4 h-4" /> : <IRefresh size={18} />}</Button>
         </div>
       </div>
 
@@ -80,7 +81,7 @@ export function TopicsPage({ onBack, wide }: { onBack: () => void; wide: boolean
         {loading && !items.length ? (
           <div className="flex justify-center py-12"><Loader className="w-8 h-8 spinner" /></div>
         ) : err && !items.length ? (
-          <Empty icon={<TopicIcon size={26} />} title="专题加载失败" sub={err} action="重试" onAction={load} />
+          <Empty icon={<TopicIcon size={26} />} title={tr("专题加载失败")} sub={err} action={tr("重试")} onAction={load} />
         ) : items.length ? (
           <div className={`grid gap-3.5 ${wide ? "grid-cols-3 xl:grid-cols-4" : "grid-cols-2"}`}>
             {items.map((t) => (
@@ -89,9 +90,7 @@ export function TopicsPage({ onBack, wide }: { onBack: () => void; wide: boolean
                 <div className="relative w-full" style={{ paddingTop: "56.25%" }}>
                   <Img src={t.cover} />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
-                  <span className="absolute bottom-2 left-2.5 inline-flex items-center h-6 px-2.5 rounded-full bg-black/62 border border-white/15 backdrop-blur-sm text-[11.5px] font-semibold text-white/95 tabular-nums">
-                    {t.video_count ?? 0} 部
-                  </span>
+                  <span className="absolute bottom-2 left-2.5 inline-flex items-center h-6 px-2.5 rounded-full bg-black/62 border border-white/15 backdrop-blur-sm text-[11.5px] font-semibold text-white/95 tabular-nums">{tr("{0} 部", t.video_count ?? 0)}</span>
                 </div>
                 <div className="px-3 py-2.5">
                   <div className="text-[14px] font-semibold text-on clamp-1 leading-snug">{t.title}</div>
@@ -100,11 +99,11 @@ export function TopicsPage({ onBack, wide }: { onBack: () => void; wide: boolean
             ))}
           </div>
         ) : (
-          <Empty icon={<TopicIcon size={26} />} title="暂无专题" />
+          <Empty icon={<TopicIcon size={26} />} title={tr("暂无专题")} />
         )}
         {wide && <div className="h-2" />}
       </div>
-      {searching && <InplaceSearch kind="video" wide={wide} onClose={() => setSearching(false)} onOpenVideo={(v, list, kw) => push({ kind: "feed", videoIds: list.map((x) => x.id), index: list.findIndex((x) => x.id === v.id), title: kw ? `搜索 · ${kw}` : "搜索 · 专题" })} />}
+      {searching && <InplaceSearch kind="video" wide={wide} onClose={() => setSearching(false)} onOpenVideo={(v, list, kw) => push({ kind: "feed", videoIds: list.map((x) => x.id), index: list.findIndex((x) => x.id === v.id), title: kw ? tr("搜索 · {0}", kw) : tr("搜索 · 专题") })} />}
     </div>
   );
 }
@@ -167,7 +166,7 @@ export function TopicPage({ slug, name, onBack, wide }: { slug: string; name: st
           ...previous,
           loading: false,
           loadingMore: false,
-          error: error instanceof Error ? error.message : "加载失败，请重试",
+          error: error instanceof Error ? error.message : tr("加载失败，请重试"),
         }));
       }
     } finally {
@@ -207,23 +206,23 @@ export function TopicPage({ slug, name, onBack, wide }: { slug: string; name: st
     <div className="ios-page absolute inset-0 bg-bg flex flex-col">
       <div className="ios-subpage-header shrink-0" style={{ paddingTop: "var(--sat, 0px)" }}>
         <div className="ios-subpage-bar">
-          <Button aria-label="返回" onClick={onBack} className="ios-nav-btn"><IBack size={20} /></Button>
+          <Button aria-label={tr("返回")} onClick={onBack} className="ios-nav-btn"><IBack size={20} /></Button>
           <div className="flex-1 min-w-0">
             <h1 className="text-[17px] font-bold text-on leading-tight truncate" title={topic?.title || name}>{topic?.title || name}</h1>
-            <div className="text-[12px] text-mut leading-tight mt-0.5">{loading ? "加载中…" : `已加载 ${videos.length} / ${total} 部`}</div>
+            <div className="text-[12px] text-mut leading-tight mt-0.5">{loading ? tr("加载中…") : tr("已加载 {0} / {1} 部", videos.length, total)}</div>
           </div>
-          <Button onClick={() => setSearching(true)} aria-label="搜索短剧" className="ios-nav-btn"><ISearch size={18} /></Button>
+          <Button onClick={() => setSearching(true)} aria-label={tr("搜索短剧")} className="ios-nav-btn"><ISearch size={18} /></Button>
         </div>
       </div>
 
       <div ref={scrollRef} className="flex-1 scroll-y pt-3.5 pb-8" aria-busy={loading}>
-        {topic?.intro && <section className="mb-4" aria-label="专题简介">
+        {topic?.intro && <section className="mb-4" aria-label={tr("专题简介")}>
           <p id={introId} className={`text-[13px] text-mut leading-relaxed break-words ${introExpanded ? "" : "clamp-3"}`}>{topic.intro}</p>
-          <Button aria-expanded={introExpanded} aria-controls={introId} onClick={() => setIntroExpanded(value => !value)} className="mt-1 inline-flex items-center min-h-9 px-0 text-[12px] font-medium text-primary">{introExpanded ? "收起简介" : "展开简介"}</Button>
+          <Button aria-expanded={introExpanded} aria-controls={introId} onClick={() => setIntroExpanded(value => !value)} className="mt-1 inline-flex items-center min-h-9 px-0 text-[12px] font-medium text-primary">{introExpanded ? tr("收起简介") : tr("展开简介")}</Button>
         </section>}
         {related.length > 0 && (
           <div className="mb-5">
-            <h2 className="text-[13.5px] font-bold text-on/90 mb-2.5">相关专题</h2>
+            <h2 className="text-[13.5px] font-bold text-on/90 mb-2.5">{tr("相关专题")}</h2>
             <div className="scroll-x flex gap-3 snap-x">
               {related.map((r) => (
                 <Button key={r.id} onClick={() => push({ kind: "topic", slug: r.slug, name: r.title })}
@@ -231,7 +230,7 @@ export function TopicPage({ slug, name, onBack, wide }: { slug: string; name: st
                   <div className="relative w-full" style={{ paddingTop: "56.25%" }}>
                     <Img src={r.cover} />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/65 via-transparent to-transparent" />
-                    <span className="absolute bottom-1.5 left-2 inline-flex items-center h-5 px-2 rounded-full bg-black/62 border border-white/15 text-[11px] font-semibold text-white/95 tabular-nums">{r.video_count ?? 0} 部</span>
+                    <span className="absolute bottom-1.5 left-2 inline-flex items-center h-5 px-2 rounded-full bg-black/62 border border-white/15 text-[11px] font-semibold text-white/95 tabular-nums">{tr("{0} 部", r.video_count ?? 0)}</span>
                   </div>
                   <div className="px-2.5 py-2">
                     <div className="text-[12.5px] font-semibold text-on clamp-1 leading-snug">{r.title}</div>
@@ -245,25 +244,23 @@ export function TopicPage({ slug, name, onBack, wide }: { slug: string; name: st
         {loading && !videos.length ? (
           <div className="flex justify-center py-12"><Loader className="w-8 h-8 spinner" /></div>
         ) : error && !videos.length ? (
-          <Empty icon={<TopicIcon size={26} />} title="加载失败" sub={error} action="重试" onAction={() => void load(1, true)} />
+          <Empty icon={<TopicIcon size={26} />} title={tr("加载失败")} sub={error} action={tr("重试")} onAction={() => void load(1, true)} />
         ) : videos.length ? (
           <Masonry videos={videos} scopeKey={slug} wide={wide} onOpen={(v, visible) => push({ kind: "feed", videoIds: visible.map((x) => x.id), index: visible.findIndex((x) => x.id === v.id), title: topic?.title || name })} />
         ) : (
-          <Empty icon={<TopicIcon size={26} />} title="暂无内容" />
+          <Empty icon={<TopicIcon size={26} />} title={tr("暂无内容")} />
         )}
         {error && videos.length > 0 && <div role="alert" className="mt-3 flex flex-wrap items-center justify-center gap-2 text-[13px] text-danger">
-          <span className="min-w-0 break-words">加载更多失败：{error}</span>
-          <Button disabled={loadingMore} onClick={loadMore} className="px-3 text-primary">重试</Button>
+          <span className="min-w-0 break-words">{tr("加载更多失败：{0}", error)}</span>
+          <Button disabled={loadingMore} onClick={loadMore} className="px-3 text-primary">{tr("重试")}</Button>
         </div>}
-        {loadingMore && <div className="flex justify-center py-3"><Loader label="正在加载更多专题影片" className="w-6 h-6" /></div>}
-        {!loading && !loadingMore && hasMore && <Button onClick={loadMore} className="mt-3 w-full rounded-(--r-ctl) bg-s3 py-2.5 text-[13px] text-on pressable">
-          加载更多（{videos.length}/{total}）
-        </Button>}
-        {!loading && !loadingMore && !hasMore && videos.length > 0 && <div className="py-3 text-center text-[12px] text-dim">已加载全部 {total} 部</div>}
+        {loadingMore && <div className="flex justify-center py-3"><Loader label={tr("正在加载更多专题影片")} className="w-6 h-6" /></div>}
+        {!loading && !loadingMore && hasMore && <Button onClick={loadMore} className="mt-3 w-full rounded-(--r-ctl) bg-s3 py-2.5 text-[13px] text-on pressable">{tr("加载更多（{0}/{1}）", videos.length, total)}</Button>}
+        {!loading && !loadingMore && !hasMore && videos.length > 0 && <div className="py-3 text-center text-[12px] text-dim">{tr("已加载全部 {0} 部", total)}</div>}
         <div ref={sentinelRef} className="h-6" aria-hidden="true" />
         {wide && <div className="h-2" />}
       </div>
-      {searching && <InplaceSearch kind="video" wide={wide} onClose={() => setSearching(false)} onOpenVideo={(v, list, kw) => push({ kind: "feed", videoIds: list.map((x) => x.id), index: list.findIndex((x) => x.id === v.id), title: kw ? `搜索 · ${kw}` : "搜索" })} />}
+      {searching && <InplaceSearch kind="video" wide={wide} onClose={() => setSearching(false)} onOpenVideo={(v, list, kw) => push({ kind: "feed", videoIds: list.map((x) => x.id), index: list.findIndex((x) => x.id === v.id), title: kw ? tr("搜索 · {0}", kw) : tr("搜索") })} />}
     </div>
   );
 }
@@ -281,14 +278,14 @@ export function TagsPage({ onBack, wide }: { onBack: () => void; wide: boolean }
     <div className="ios-page absolute inset-0 bg-bg flex flex-col">
       <div className="ios-subpage-header shrink-0" style={{ paddingTop: "var(--sat, 0px)" }}>
         <div className="ios-subpage-bar">
-          <Button aria-label="返回" onClick={onBack} className="ios-nav-btn"><IBack size={20} /></Button>
+          <Button aria-label={tr("返回")} onClick={onBack} className="ios-nav-btn"><IBack size={20} /></Button>
           <span className="w-9 h-9 rounded-[12px] bg-pc text-on-pc flex items-center justify-center shrink-0"><TagIcon size={18} /></span>
           <div className="flex-1 min-w-0">
-            <h1 className="text-[17px] font-bold text-on leading-tight">标签</h1>
-            <div className="text-[12px] text-mut leading-tight mt-0.5">{loading && !groups.length ? "加载中…" : `${totalTags} 个标签 · ${groups.length} 组`}</div>
+            <h1 className="text-[17px] font-bold text-on leading-tight">{tr("标签")}</h1>
+            <div className="text-[12px] text-mut leading-tight mt-0.5">{loading && !groups.length ? tr("加载中…") : tr("{0} 个标签 · {1} 组", totalTags, groups.length)}</div>
           </div>
-          <Button onClick={() => setSearching(true)} aria-label="搜索短剧" className="ios-nav-btn"><ISearch size={18} /></Button>
-          <Button aria-label="刷新" disabled={loading} aria-busy={loading} onClick={() => void load()} className="ios-nav-btn">{loading ? <Loader className="w-4 h-4" /> : <IRefresh size={18} />}</Button>
+          <Button onClick={() => setSearching(true)} aria-label={tr("搜索短剧")} className="ios-nav-btn"><ISearch size={18} /></Button>
+          <Button aria-label={tr("刷新")} disabled={loading} aria-busy={loading} onClick={() => void load()} className="ios-nav-btn">{loading ? <Loader className="w-4 h-4" /> : <IRefresh size={18} />}</Button>
         </div>
       </div>
 
@@ -297,31 +294,31 @@ export function TagsPage({ onBack, wide }: { onBack: () => void; wide: boolean }
         {loading && !groups.length ? (
           <div className="flex justify-center py-12"><Loader className="w-8 h-8 spinner" /></div>
         ) : err && !groups.length ? (
-          <Empty icon={<TagIcon size={26} />} title="标签加载失败" sub={err} action="重试" onAction={load} />
+          <Empty icon={<TagIcon size={26} />} title={tr("标签加载失败")} sub={err} action={tr("重试")} onAction={load} />
         ) : groups.length ? (
           <div className={`grid gap-3.5 ${wide ? "grid-cols-2" : "grid-cols-1"}`}>{groups.map((g) => (
             <Surface key={g.name} className="rounded-[22px] bg-s1 p-4 a-rise">
               <div className="flex items-baseline justify-between gap-2 mb-3">
                 <h2 className="text-[14.5px] font-bold text-on">{g.name}</h2>
-                <span className="text-[12px] text-dim tabular-nums">{g.tags?.length || 0} 个</span>
+                <span className="text-[12px] text-dim tabular-nums">{tr("{0} 个", g.tags?.length || 0)}</span>
               </div>
               <div className="flex flex-wrap gap-2">
                 {g.tags.map((t) => (
                   <Button key={t.id} onClick={() => push({ kind: "tag", tag: t.name, name: t.name })}
                     className="ios-filter-pill max-w-full min-w-0 gap-1.5 text-left">
                     <span className="min-w-0 whitespace-normal break-words text-on/95">{t.name}</span>
-                    {!!t.hot_score && <span aria-label={`热度 ${fmt(t.hot_score)}`} className="shrink-0 inline-flex items-center gap-0.5 text-[11.5px] font-medium text-dim tabular-nums"><IFireF size={11} className="text-primary/85" />{fmt(t.hot_score)}</span>}
+                    {!!t.hot_score && <span aria-label={tr("热度 {0}", fmt(t.hot_score))} className="shrink-0 inline-flex items-center gap-0.5 text-[11.5px] font-medium text-dim tabular-nums"><IFireF size={11} className="text-primary/85" />{fmt(t.hot_score)}</span>}
                   </Button>
                 ))}
               </div>
             </Surface>
           ))}</div>
         ) : (
-          <Empty icon={<TagIcon size={26} />} title="暂无标签" />
+          <Empty icon={<TagIcon size={26} />} title={tr("暂无标签")} />
         )}
         {wide && <div className="h-2" />}
       </div>
-      {searching && <InplaceSearch kind="video" wide={wide} onClose={() => setSearching(false)} onOpenVideo={(v, list, kw) => push({ kind: "feed", videoIds: list.map((x) => x.id), index: list.findIndex((x) => x.id === v.id), title: kw ? `搜索 · ${kw}` : "搜索 · 标签" })} />}
+      {searching && <InplaceSearch kind="video" wide={wide} onClose={() => setSearching(false)} onOpenVideo={(v, list, kw) => push({ kind: "feed", videoIds: list.map((x) => x.id), index: list.findIndex((x) => x.id === v.id), title: kw ? tr("搜索 · {0}", kw) : tr("搜索 · 标签") })} />}
     </div>
   );
 }
@@ -386,7 +383,7 @@ export function TagPage({ tag, name, onBack, wide }: { tag: string; name: string
       }
     } catch (error) {
       if (sequence.current[kind] === token) {
-        const message = error instanceof Error ? error.message : "加载失败，请重试";
+        const message = error instanceof Error ? error.message : tr("加载失败，请重试");
         if (kind === "video") setVideoErr(message); else setPostErr(message);
       }
     } finally {
@@ -430,50 +427,50 @@ export function TagPage({ tag, name, onBack, wide }: { tag: string; name: string
     <div className="ios-page absolute inset-0 bg-bg flex flex-col">
       <div className="ios-subpage-header shrink-0" style={{ paddingTop: "var(--sat, 0px)" }}>
         <div className="ios-subpage-bar">
-          <Button aria-label="返回" onClick={onBack} className="ios-nav-btn"><IBack size={20} /></Button>
+          <Button aria-label={tr("返回")} onClick={onBack} className="ios-nav-btn"><IBack size={20} /></Button>
           <span className="w-9 h-9 rounded-[12px] bg-pc text-on-pc flex items-center justify-center shrink-0"><TagIcon size={18} /></span>
           <div className="flex-1 min-w-0">
             <h1 className="text-[17px] font-bold text-on leading-tight truncate" title={name}>{name}</h1>
-            <div role="status" className="text-[12px] text-mut leading-tight mt-0.5 tabular-nums">短剧 {currentVideos ? videoTotal : 0} · 吃瓜 {currentPosts ? postTotal : 0}</div>
+            <div role="status" className="text-[12px] text-mut leading-tight mt-0.5 tabular-nums">{tr("短剧 {0} · 吃瓜 {1}", currentVideos ? videoTotal : 0, currentPosts ? postTotal : 0)}</div>
           </div>
-          <Button onClick={() => setSearching(true)} aria-label="搜索短剧" className="ios-nav-btn"><ISearch size={18} /></Button>
+          <Button onClick={() => setSearching(true)} aria-label={tr("搜索短剧")} className="ios-nav-btn"><ISearch size={18} /></Button>
         </div>
       </div>
       <div ref={scrollContainer} className="flex-1 scroll-y pt-3.5 pb-8" aria-busy={videoLoading || postLoading || !currentVideos || !currentPosts}>
         <Surface className="mb-4 rounded-[20px] px-3.5 py-2.5">
           <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-            <p className="min-w-0 text-[13px] text-mut">{tagBlocked ? "此标签已加入屏蔽列表" : "标签筛选偏好"}</p>
+            <p className="min-w-0 text-[13px] text-mut">{tagBlocked ? tr("此标签已加入屏蔽列表") : tr("标签筛选偏好")}</p>
             <div className="flex items-center gap-1.5 ml-auto">
               <Button className="inline-flex items-center min-h-10 px-2.5 text-[12.5px] font-medium text-mut hover:text-on"
-                onClick={() => push({ kind: "settings", section: "内容偏好" })}>管理屏蔽标签</Button>
+                onClick={() => push({ kind: "settings", section: "内容偏好" })}>{tr("管理屏蔽标签")}</Button>
               <Button style={{ minBlockSize: 40 }} disabled={!tagBlocked && cannotAdd} aria-pressed={tagBlocked}
                 onClick={() => tagBlocked ? unblockTag(name) : blockTags([name])}
-                className={`inline-flex items-center justify-center min-h-10 rounded-(--r-ctl) px-3.5 text-[13px] font-semibold ${tagBlocked ? "bg-pc text-on-pc" : "bg-s3 text-primary"}`}>{tagBlocked ? "取消屏蔽此标签" : "屏蔽此标签"}</Button>
+                className={`inline-flex items-center justify-center min-h-10 rounded-(--r-ctl) px-3.5 text-[13px] font-semibold ${tagBlocked ? "bg-pc text-on-pc" : "bg-s3 text-primary"}`}>{tagBlocked ? tr("取消屏蔽此标签") : tr("屏蔽此标签")}</Button>
             </div>
           </div>
-          {preferences.paused && <p role="status" className="mt-2 text-[12px] text-mut">屏蔽已暂停，新增标签会保存，恢复后生效。</p>}
-          {!tagBlocked && cannotAdd && <p role="status" className="mt-2 text-[12px] text-mut">{name.trim().length > MAX_TAG_LENGTH ? "标签过长，请在内容偏好中管理。" : `已达到 ${MAX_BLOCKED_TAGS} 个标签上限。`}</p>}
+          {preferences.paused && <p role="status" className="mt-2 text-[12px] text-mut">{tr("屏蔽已暂停，新增标签会保存，恢复后生效。")}</p>}
+          {!tagBlocked && cannotAdd && <p role="status" className="mt-2 text-[12px] text-mut">{name.trim().length > MAX_TAG_LENGTH ? tr("标签过长，请在内容偏好中管理。") : tr("已达到 {0} 个标签上限。", MAX_BLOCKED_TAGS)}</p>}
           {storageError && <p role="alert" className="mt-2 text-[13px] text-danger">{storageError}</p>}
         </Surface>
         {videoLoading && !visibleVideos.length && <div className="flex justify-center py-8"><Loader className="w-7 h-7 spinner" /></div>}
-        {videoErr && !visibleVideos.length && <Empty icon={<TagIcon size={26} />} title="短剧加载失败" sub={videoErr} action="重试" onAction={() => void load("video", 1, true)} />}
+        {videoErr && !visibleVideos.length && <Empty icon={<TagIcon size={26} />} title={tr("短剧加载失败")} sub={videoErr} action={tr("重试")} onAction={() => void load("video", 1, true)} />}
         {visibleVideos.length > 0 && <section className="mb-6">
           <div className="mb-3 flex items-baseline gap-2">
-            <h2 className="text-[15px] font-bold text-on">短剧</h2>
+            <h2 className="text-[15px] font-bold text-on">{tr("短剧")}</h2>
             <span className="text-[12px] text-mut tabular-nums">{videoTotal}</span>
           </div>
           <Masonry videos={visibleVideos} scopeKey={`tag-video:${tag}`} wide={wide} onOpen={(v, visible) => push({ kind: "feed", videoIds: visible.map(x => x.id), index: visible.findIndex(x => x.id === v.id), title: name })} />
         </section>}
         <div ref={videoSentinel} className="h-2" />
-        {videoErr && visibleVideos.length > 0 && <div role="status" className="flex flex-wrap items-center justify-center gap-2 py-2 text-[12px] text-mut"><span>短剧加载失败：{videoErr}</span><Button onClick={() => void load("video", videoPage + 1)} className="px-3 text-primary">重试</Button></div>}
+        {videoErr && visibleVideos.length > 0 && <div role="status" className="flex flex-wrap items-center justify-center gap-2 py-2 text-[12px] text-mut"><span>{tr("短剧加载失败：{0}", videoErr)}</span><Button onClick={() => void load("video", videoPage + 1)} className="px-3 text-primary">{tr("重试")}</Button></div>}
         {videoLoading && visibleVideos.length > 0 && <div className="flex justify-center py-3"><Loader className="w-6 h-6 spinner" /></div>}
-        {!videoLoading && !videoErr && videoPage < videoPages && <Button onClick={() => void load("video", videoPage + 1)} className="my-2 px-4 text-primary">加载更多短剧</Button>}
+        {!videoLoading && !videoErr && videoPage < videoPages && <Button onClick={() => void load("video", videoPage + 1)} className="my-2 px-4 text-primary">{tr("加载更多短剧")}</Button>}
 
         {postLoading && !visiblePosts.length && <div className="flex justify-center py-8"><Loader className="w-7 h-7 spinner" /></div>}
-        {postErr && !visiblePosts.length && <Empty icon={<TagIcon size={26} />} title="吃瓜帖子加载失败" sub={postErr} action="重试" onAction={() => void load("post", 1, true)} />}
+        {postErr && !visiblePosts.length && <Empty icon={<TagIcon size={26} />} title={tr("吃瓜帖子加载失败")} sub={postErr} action={tr("重试")} onAction={() => void load("post", 1, true)} />}
         {visiblePosts.length > 0 && <section className="mb-6">
           <div className="mb-3 flex items-baseline gap-2">
-            <h2 className="text-[15px] font-bold text-on">吃瓜</h2>
+            <h2 className="text-[15px] font-bold text-on">{tr("吃瓜")}</h2>
             <span className="text-[12px] text-mut tabular-nums">{postTotal}</span>
           </div>
           <FilteredContent items={visiblePosts} scopeKey={`tag-post:${tag}`}>{shownPosts => <div className={`ios-media-grid ${wide ? "is-wide" : ""}`}>
@@ -481,12 +478,12 @@ export function TagPage({ tag, name, onBack, wide }: { tag: string; name: string
           </div>}</FilteredContent>
         </section>}
         <div ref={postSentinel} className="h-2" />
-        {postErr && visiblePosts.length > 0 && <div role="status" className="flex flex-wrap items-center justify-center gap-2 py-2 text-[12px] text-mut"><span>吃瓜加载失败：{postErr}</span><Button onClick={() => void load("post", postPage + 1)} className="px-3 text-primary">重试</Button></div>}
+        {postErr && visiblePosts.length > 0 && <div role="status" className="flex flex-wrap items-center justify-center gap-2 py-2 text-[12px] text-mut"><span>{tr("吃瓜加载失败：{0}", postErr)}</span><Button onClick={() => void load("post", postPage + 1)} className="px-3 text-primary">{tr("重试")}</Button></div>}
         {postLoading && visiblePosts.length > 0 && <div className="flex justify-center py-3"><Loader className="w-6 h-6 spinner" /></div>}
-        {!postLoading && !postErr && postPage < postPages && <Button onClick={() => void load("post", postPage + 1)} className="my-2 px-4 text-primary">加载更多吃瓜</Button>}
-        {!videoLoading && !postLoading && !videoErr && !postErr && !visibleVideos.length && !visiblePosts.length && <Empty icon={<TagIcon size={26} />} title="该标签下暂无内容" />}
+        {!postLoading && !postErr && postPage < postPages && <Button onClick={() => void load("post", postPage + 1)} className="my-2 px-4 text-primary">{tr("加载更多吃瓜")}</Button>}
+        {!videoLoading && !postLoading && !videoErr && !postErr && !visibleVideos.length && !visiblePosts.length && <Empty icon={<TagIcon size={26} />} title={tr("该标签下暂无内容")} />}
       </div>
-      {searching && <InplaceSearch kind="video" wide={wide} onClose={() => setSearching(false)} onOpenVideo={(v, list, kw) => push({ kind: "feed", videoIds: list.map(x => x.id), index: list.findIndex(x => x.id === v.id), title: kw ? `搜索 · ${kw}` : "搜索" })} />}
+      {searching && <InplaceSearch kind="video" wide={wide} onClose={() => setSearching(false)} onOpenVideo={(v, list, kw) => push({ kind: "feed", videoIds: list.map(x => x.id), index: list.findIndex(x => x.id === v.id), title: kw ? tr("搜索 · {0}", kw) : tr("搜索") })} />}
     </div>
   );
 }

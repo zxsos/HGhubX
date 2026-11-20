@@ -9,6 +9,7 @@ import { useFsOrientation } from "../playback/useFsOrientation";
 import type { VideoHandle } from "../playback";
 import type { Toast } from "../../shared/model/store";
 import { resolveFullscreenEpisodeSwipe } from "./fullscreenEpisodeSwipe";
+import { tr } from "../../shared/i18n";
 
 export type PinchState = { d0: number; mx0: number; my0: number; s0: number; x0: number; y0: number };
 export type FeedPanel = "episodes" | "comments" | "article" | "detail" | "more" | null;
@@ -174,7 +175,7 @@ export function useFeedViewport({
       if (result) {
         setEpMap((m) => ({ ...m, [curId]: result.target }));
         setPanel(null);
-        toast?.(`第 ${result.target}集${totalEpisodes ? ` / ${totalEpisodes}` : ""}`, "info", "episode");
+        toast?.(tr("第 {0}集{1}", result.target, totalEpisodes ? ` / ${totalEpisodes}` : ""), "info", "episode");
         return;
       }
     }
@@ -184,7 +185,7 @@ export function useFeedViewport({
       if (want) {
         setEpMap((m) => ({ ...m, [curId]: want }));
         setPanel(null);
-        toast?.(`第 ${want}集${totalEpisodes ? ` / ${totalEpisodes}` : ""}`, "info", "episode");
+        toast?.(tr("第 {0}集{1}", want, totalEpisodes ? ` / ${totalEpisodes}` : ""), "info", "episode");
         return;
       }
     }

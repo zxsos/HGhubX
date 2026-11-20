@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { IChevR } from "../../shared/ui/icons";
 import { Button, Surface } from "../../shared/ui/ios/controls";
+import { tr } from "../../shared/i18n";
 
 /** Keep the panel mounted so collapsing a group preserves drafts and async state. */
 export default function SettingsSection({ title, open, onToggle, children }: {
@@ -13,11 +14,11 @@ export default function SettingsSection({ title, open, onToggle, children }: {
   const panelId = `settings-panel-${title}`;
   return <section id={`settings-${title}`} aria-labelledby={triggerId} className="ios-settings-section">
     <Surface className="ios-setting-group ios-settings-frame" data-open={open}>
-      <h2 aria-label={title}>
-        <Button id={triggerId} aria-label={`${title}设置`} aria-expanded={open} aria-controls={panelId}
+      <h2 aria-label={tr(title)}>
+        <Button id={triggerId} aria-label={tr("{0}设置", tr(title))} aria-expanded={open} aria-controls={panelId}
           onClick={onToggle} className="ios-settings-trigger">
           <span className="ios-settings-heading">
-            <span className="ios-settings-title">{title}</span>
+            <span className="ios-settings-title">{tr(title)}</span>
           </span>
           <IChevR size={18} aria-hidden="true" className="ios-settings-chevron" />
         </Button>

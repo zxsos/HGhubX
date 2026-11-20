@@ -5,6 +5,7 @@ import "../../styles/launch.css";
 import UsageAgreement from "../../shared/ui/UsageAgreement";
 import { hasAcceptedAgreement } from "../../shared/storage/usageAgreement";
 import { holdBackForStartup, type RegisterStartupBack } from "../../shared/lib/back";
+import { tr } from "../../shared/i18n";
 
 // One reveal per WebView lifetime, including StrictMode and subsequent App remounts.
 let launchCompleted = false;
@@ -116,7 +117,7 @@ export function LaunchAnimation({
     return () => { disposed = true; void listener?.unregister().catch(() => {}); };
   }, [finish, registerBack]);
 
-  return <div className={exiting ? "hg-launch is-exiting" : "hg-launch"} role="dialog" aria-modal="true" aria-label="HGhubX 启动动画"
+  return <div className={exiting ? "hg-launch is-exiting" : "hg-launch"} role="dialog" aria-modal="true" aria-label={tr("HGhubX 启动动画")}
     onAnimationEnd={event => { if (event.target === event.currentTarget && event.animationName === "launch-exit") finish(); }}>
     <div className="hg-launch-stage" aria-hidden="true">
       <div className="hg-launch-halo" />

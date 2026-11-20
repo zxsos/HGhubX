@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { tr } from "../i18n";
 
 export type ContentPreferences = { blockedTags: string[]; paused: boolean; hideUntagged: boolean };
 export const CONTENT_PREFERENCES_KEY = "hghubx_content_preferences_v1";
@@ -55,8 +56,8 @@ export function blockReason(tags: readonly string[] | undefined, preferences: Co
     const rank = index.get(key);
     if (rank !== undefined && rank < first) first = rank;
   }
-  if (!hasTags) return preferences.hideUntagged ? "未提供标签" : null;
-  return first < Infinity ? `屏蔽标签：${preferences.blockedTags[first]}` : null;
+  if (!hasTags) return preferences.hideUntagged ? tr("未提供标签") : null;
+  return first < Infinity ? tr("屏蔽标签：{0}", preferences.blockedTags[first]) : null;
 }
 
 type Snapshot = { preferences: ContentPreferences; revision: number; storageError: string | null };
@@ -69,7 +70,7 @@ function update(next: ContentPreferences) {
   if (same(snapshot.preferences, preferences) && !snapshot.storageError) return;
   let storageError: string | null = null;
   try { localStorage.setItem(CONTENT_PREFERENCES_KEY, JSON.stringify(preferences)); }
-  catch { storageError = "本次偏好已生效，但本机保存失败；重启后可能恢复原设置。"; }
+  catch { storageError = tr("本次偏好已生效，但本机保存失败；重启后可能恢复原设置。"); }
   snapshot = { preferences, revision: snapshot.revision + 1, storageError };
   emit();
 }

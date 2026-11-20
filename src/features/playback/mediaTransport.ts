@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { LOCAL, platform, playlist } from "../../shared/api/api";
+import { tr } from "../../shared/i18n";
 
 type PlaybackSource = { engine: "hls.js" | "native"; url: string; route: string };
 
@@ -49,7 +50,7 @@ export function connectNativeMedia(video: HTMLVideoElement, source: PlaybackSour
       }
       attach(`${origin.replace(/\/$/, "")}${source.route}`);
     }).catch(() => {
-      if (current()) callbacks.onError("本地媒体服务启动失败，请切换视频或重试");
+      if (current()) callbacks.onError(tr("本地媒体服务启动失败，请切换视频或重试"));
     });
   } else attach(source.url);
   return () => {

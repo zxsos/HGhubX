@@ -1,3 +1,4 @@
+import { tr } from "../../shared/i18n";
 export type FullscreenEpisodeSwipe =
   | { target: number }
   | { message: string }
@@ -12,10 +13,10 @@ export function resolveFullscreenEpisodeSwipe(current: number, total: number, dy
   if (!Number.isFinite(dy) || dy === 0) return null;
   const episode = Number.isFinite(current) ? Math.max(1, Math.floor(current)) : 1;
   if (dy < 0) {
-    if (!total || episode >= total) return { message: "当前已是最后一集" };
+    if (!total || episode >= total) return { message: tr("当前已是最后一集") };
     return { target: Math.min(total, episode + 1) };
   }
-  if (episode <= 1) return { message: "当前已是第一集" };
+  if (episode <= 1) return { message: tr("当前已是第一集") };
   const upper = total > 0 ? total : episode - 1;
   return { target: Math.max(1, Math.min(episode - 1, upper)) };
 }

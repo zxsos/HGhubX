@@ -22,6 +22,7 @@ import { useFeedTouchGestures } from "./useFeedTouchGestures";
 import { useFeedActions, type FeedMeta } from "./useFeedActions";
 import FeedItemChrome from "./FeedItemChrome";
 import { FeedMobileTopTools, FeedPlayerShellChrome } from "./FeedPlayerShellChrome";
+import { tr } from "../../shared/i18n";
 
 type Props = {
   videoIds: number[];
@@ -162,7 +163,7 @@ export default function Feed({
   const lockControls = () => {
     setPanel(null);
     setControlsLocked(true);
-    toast("已锁定屏幕", "info", "screen-lock");
+    toast(tr("已锁定屏幕"), "info", "screen-lock");
   };
   const togglePlayback = useCallback(() => {
     videoRef.current?.toggle();
@@ -171,7 +172,7 @@ export default function Feed({
   const toggleSwipeEp = () => {
     const next = !swipeEp;
     setSwipeEp(next);
-    toast(next ? "上下划切集已开启" : "上下划切集已关闭", "info", "swipe-toggle");
+    toast(next ? tr("上下划切集已开启") : tr("上下划切集已关闭"), "info", "swipe-toggle");
   };
 
   useEffect(() => { setTagMenu(false); setTagSelection([]); }, [curId, store.lineEpoch, accountScope]);
@@ -311,7 +312,7 @@ export default function Feed({
         title: post?.title || "",
         cover: post?.cover || "",
         desc: post?.content || post?.desc || "",
-        author: post?.author?.name || "吃瓜",
+        author: post?.author?.name || tr("吃瓜"),
         authorId: post?.author?.id || -1,
         tags: post?.tags || [],
         score: 0,
@@ -390,7 +391,7 @@ export default function Feed({
       request.then(value => {
         if (!mounted.current || actionContext.current.accountScope !== accountScope || actionContext.current.lineEpoch !== epoch) return;
         if (!value) {
-          setTagErrors(previous => ({ ...previous, [key]: "标签暂不可用，请重试" }));
+          setTagErrors(previous => ({ ...previous, [key]: tr("标签暂不可用，请重试") }));
           return;
         }
         if (kind === "post") setPosts(previous => ({ ...previous, [id]: value as Post }));
@@ -399,7 +400,7 @@ export default function Feed({
         setChecked(previous => ({ ...previous, [key]: true }));
       }).catch(error => {
         if (mounted.current && actionContext.current.accountScope === accountScope && actionContext.current.lineEpoch === epoch) {
-          setTagErrors(previous => ({ ...previous, [key]: error instanceof Error ? error.message : "标签暂不可用，请重试" }));
+          setTagErrors(previous => ({ ...previous, [key]: error instanceof Error ? error.message : tr("标签暂不可用，请重试") }));
         }
       });
     });
@@ -439,12 +440,12 @@ export default function Feed({
           video_id: curId, episode: curEp, resolved: !!streamUrl, kind: streamKind, host,
           status: raw.status ?? null, msg: String(raw.msg ?? "") || null,
         });
-        if (!streamUrl) throw new Error("暂无播放地址");
+        if (!streamUrl) throw new Error(tr("暂无播放地址"));
         setPlayUrls((m) => ({ ...m, [playKey]: streamUrl }));
         if (hevcStream) setHevcUrls((m) => ({ ...m, [playKey]: hevcStream }));
         if (kind === "video") addHistory(curId, curEp);
       })
-      .catch((e) => { if (alive) setErr((e as Error).message || "取播放地址失败"); });
+      .catch((e) => { if (alive) setErr((e as Error).message || tr("取播放地址失败")); });
       return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active, curId, curEp, proxyRetry, allowed, permissionKey, requestPlay]);
@@ -581,31 +582,31 @@ export default function Feed({
 
   if (curId && mode === "home" && blocked) {
     return <div className="absolute inset-0 bg-black flex items-center justify-center" inert={!active || undefined} aria-hidden={!active || undefined}>
-      <Loader className="w-9 h-9 spinner" label="正在跳过内容" />
+      <Loader className="w-9 h-9 spinner" label={tr("正在跳过内容")} />
     </div>;
   }
 
   if (curId && filtering && !tagsReady && !tagErrors[tagKey]) {
     return <div className="absolute inset-0 bg-black flex items-center justify-center" inert={!active || undefined} aria-hidden={!active || undefined}>
-      <Loader className="w-9 h-9 spinner" label="正在加载内容" />
+      <Loader className="w-9 h-9 spinner" label={tr("正在加载内容")} />
     </div>;
   }
 
   if (curId && filtering && !tagsReady && tagErrors[tagKey]) {
     return <div className="absolute inset-0 bg-black flex flex-col items-center justify-center gap-3" inert={!active || undefined} aria-hidden={!active || undefined}>
-      <span className="text-[13px] text-white/70">暂时无法加载内容</span>
+      <span className="text-[13px] text-white/70">{tr("暂时无法加载内容")}</span>
       <Button onClick={() => {
         setTagErrors(previous => { const next = { ...previous }; delete next[tagKey]; return next; });
         setProxyRetry(value => value + 1);
-      }} className="min-h-11 rounded-full bg-white/10 px-4 text-white">重试</Button>
+      }} className="min-h-11 rounded-full bg-white/10 px-4 text-white">{tr("重试")}</Button>
     </div>;
   }
 
   if (!effectiveVideoIds.length) {
     return <div className="absolute inset-0 bg-black flex flex-col items-center justify-center gap-3" inert={!active || undefined} aria-hidden={!active || undefined}>
-      <span className="text-[14px] text-white/70">当前列表没有可播放内容</span>
+      <span className="text-[14px] text-white/70">{tr("当前列表没有可播放内容")}</span>
       <PreferenceStorageNotice className="mx-4 max-w-sm" />
-      {onBack && <Button onClick={onBack} className="min-h-11 rounded-full bg-white/10 px-5 text-white">返回</Button>}
+      {onBack && <Button onClick={onBack} className="min-h-11 rounded-full bg-white/10 px-5 text-white">{tr("返回")}</Button>}
     </div>;
   }
 
@@ -673,7 +674,7 @@ export default function Feed({
                           setErr(m); setWaiting(false);
                           if (preferHevc && hevcUrl) {
                             setPreferHevc(false);
-                            toast("高清播不了，已切回标准", "info");
+                            toast(tr("高清播不了，已切回标准"), "info");
                           }
                         }} />
                       </div>
@@ -741,23 +742,23 @@ export default function Feed({
       <FeedMobileTopTools
         isDesktop={isDesktop} controlsLocked={controlsLocked} active={active && !searching} fs={fs} idle={idle}
         rotated={rotated} clean={clean} currentQuality={playUrl ? (preferHevc && hevcUrl && playUrl === hevcUrl ? "HD" : "SD") : null}
-        searchLabel={kind === "post" ? "搜吃瓜帖" : "搜短剧"}
+        searchLabel={kind === "post" ? tr("搜吃瓜帖") : tr("搜短剧")}
         onSearch={mode === "context" ? () => { closePanels(); setSearching(true); } : undefined}
       />
       {searching && mode === "context" && active && (
         <InplaceSearch kind={kind} wide={isDesktop} onClose={() => setSearching(false)}
-          onOpenVideo={(v, list, kw) => store.push({ kind: "feed", videoIds: list.map(x => x.id), index: list.findIndex(x => x.id === v.id), title: kw ? `搜索 · ${kw}` : "搜索" })}
+          onOpenVideo={(v, list, kw) => store.push({ kind: "feed", videoIds: list.map(x => x.id), index: list.findIndex(x => x.id === v.id), title: kw ? tr("搜索 · {0}", kw) : tr("搜索") })}
           onOpenPost={(p) => store.push({ kind: "post", id: p.id })} />
       )}
       <TagBlockMenu open={active && tagMenu} tags={meta.tags} initialSelected={tagSelection} onClose={() => setTagMenu(false)} onSettings={openPreferences} />
       {!isDesktop && <MobileHoldGuide open={showHoldGuide} onClose={holdGuide.dismiss} target={holdTargetRef} bottomInset={bottomInset} />}
       {controlsLocked && <PlaybackLock active={active} rotated={rotated} immersive={!isDesktop && fs && !rotated} hideUnlockUntilTapped={!isDesktop}
-        onBlocked={() => toast("轻触即可解锁", "info", "screen-lock")}
+        onBlocked={() => toast(tr("轻触即可解锁"), "info", "screen-lock")}
         onUnlock={() => {
           setControlsLocked(false);
           setClean(false);
           wake();
-          toast("已解锁", "info", "screen-lock");
+          toast(tr("已解锁"), "info", "screen-lock");
         }} />}
     </div>
   );

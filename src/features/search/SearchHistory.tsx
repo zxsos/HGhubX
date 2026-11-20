@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { Button } from "../../shared/ui/ios/controls";
 import { IClose } from "../../shared/ui/icons";
+import { tr } from "../../shared/i18n";
 
 const HOLD_MS = 480;
 const MOVE_SLOP = 8;
@@ -83,24 +84,24 @@ export function SearchHistory({ items, onPick, onRemove, onClear, className = ""
   };
 
   return (
-    <section ref={sectionRef} role="region" aria-label="搜索历史" className={className}>
+    <section ref={sectionRef} role="region" aria-label={tr("搜索历史")} className={className}>
       <div className="flex items-center justify-between gap-2">
-        <h2 className="text-[14px] font-semibold text-on/90">搜索历史</h2>
+        <h2 className="text-[14px] font-semibold text-on/90">{tr("搜索历史")}</h2>
         {editing ? (
           <div className="ios-history-actions">
-            <Button onClick={clearAll} className="ios-history-action">清空</Button>
+            <Button onClick={clearAll} className="ios-history-action">{tr("清空")}</Button>
             <span aria-hidden="true" className="ios-history-separator">|</span>
-            <Button onClick={() => setEditing(false)} className="ios-history-action ios-history-done">完成</Button>
+            <Button onClick={() => setEditing(false)} className="ios-history-action ios-history-done">{tr("完成")}</Button>
           </div>
         ) : (
-          <Button onClick={clearAll} className="ios-history-action -mr-2">清空</Button>
+          <Button onClick={clearAll} className="ios-history-action -mr-2">{tr("清空")}</Button>
         )}
       </div>
       <div className={editing ? "flex flex-wrap gap-3 mt-2.5" : "flex flex-wrap gap-2 mt-2.5"}>
         {items.map((term) => (
           <Button
             key={term}
-            aria-label={editing ? `删除搜索历史 ${term}` : undefined}
+            aria-label={editing ? tr("删除搜索历史 {0}", term) : undefined}
             onClick={() => clickTerm(term)}
             onPointerDown={editing ? clearHold : startHold}
             onPointerMove={editing ? undefined : moveHold}
@@ -108,8 +109,8 @@ export function SearchHistory({ items, onPick, onRemove, onClear, className = ""
             onPointerCancel={finishHold}
             onPointerLeave={cancelHold}
             onContextMenu={(event) => { event.preventDefault(); setEditing(true); }}
-            aria-description={editing ? undefined : "长按可删除"}
-            title={editing ? "点击删除" : "长按可删除"}
+            aria-description={editing ? undefined : tr("长按可删除")}
+            title={editing ? tr("点击删除") : tr("长按可删除")}
             style={editing ? { height: 36, minHeight: 36, minWidth: 0 } : undefined}
             className={editing ? "ios-history-chip" : "ios-filter-pill text-on/90"}
           >

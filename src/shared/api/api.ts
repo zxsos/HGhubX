@@ -3,6 +3,7 @@ import { tracePlayback } from "../diagnostics/playbackDiagnostics";
 import type {
   AccountHistoryPage, AccountIdentity, AccountSnapshot, CommentPage, Detail, HotSearchVideo, Paged, PlayInfo, Post, PostCategory, RankItem, TagGroup, TopicCard, TopicDetail, User, UserProfile, VideoCard,
 } from "./types";
+import { tr } from "../i18n";
 
 /* ── 运行环境 ───────────────────────────────────────────── */
 
@@ -69,7 +70,7 @@ const notifyNet = (r: Parameters<NetObserver>[0]) => {
 };
 const failMessage = (msg: string, status?: string) =>
   status
-    ? `服务器请求失败（HTTP ${status}），请稍后重试或在设置中切换线路`
+    ? tr("服务器请求失败（HTTP {0}），请稍后重试或在设置中切换线路", status)
     : msg.length > 140 ? `${msg.slice(0, 140)}…` : msg;
 
 async function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
@@ -79,7 +80,7 @@ async function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T> 
     notifyNet({ ok: true, cmd });
     return r;
   } catch (e) {
-    const msg = typeof e === "string" ? e : "请求失败，请检查网络";
+    const msg = typeof e === "string" ? e : tr("请求失败，请检查网络");
     const status = /^HTTP (\d{3})\b/.exec(msg)?.[1];
     const networkish = !status && NET_FAIL.test(msg);
     // 落盘完整错误链（dns error / connection refused / 证书错误…），toast 只显示截断版
@@ -332,8 +333,8 @@ export async function selfTest(): Promise<string> {
 
 export const fmt = (n: number | undefined) => {
   const v = Number(n) || 0;
-  if (v >= 100_000_000) return `${(v / 100_000_000).toFixed(1).replace(/\.0$/, "")}亿`;
-  if (v >= 10_000) return `${(v / 10_000).toFixed(1).replace(/\.0$/, "")}万`;
+  if (v >= 100_000_000) return tr("{0}亿", (v / 100_000_000).toFixed(1).replace(/\.0$/, ""));
+  if (v >= 10_000) return tr("{0}万", (v / 10_000).toFixed(1).replace(/\.0$/, ""));
   return String(v);
 };
 

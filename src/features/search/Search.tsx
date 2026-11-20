@@ -12,6 +12,7 @@ import { useSearchResults } from "./useSearchResults";
 import { SearchTags } from "./SearchTags";
 import { SearchHistory } from "./SearchHistory";
 import { IBack, IChevR, IClose, IFireF, IPlayF, IRefresh, ISearch, ITrophy } from "../../shared/ui/icons";
+import { tr, N_ } from "../../shared/i18n";
 
 export default function Search({ active, wide }: { active: boolean; wide: boolean }) {
   const { push, searchHist, addSearch, removeSearch, clearSearchHist, lineEpoch, accountScope } = useStore();
@@ -62,7 +63,7 @@ export default function Search({ active, wide }: { active: boolean; wide: boolea
       hotLoadedAt.current = Date.now();
     } catch (e) {
       if (!aliveRef.current || seq !== hotSeq.current || reqEpoch !== hotEpoch.current) return;
-      setHotError(e instanceof Error ? e.message : "热搜榜加载失败，请重试");
+      setHotError(e instanceof Error ? e.message : tr("热搜榜加载失败，请重试"));
     } finally {
       if (seq === hotSeq.current) {
         hotBusy.current = false;
@@ -150,8 +151,8 @@ export default function Search({ active, wide }: { active: boolean; wide: boolea
     <ol className="ios-search-hot-grid mt-3" aria-busy={hotLoading || hotTagPending}>
       {list.map((video, i) => (
         <li key={video.video_id} className="min-w-0">
-          <Button aria-label={`播放 ${video.title}`} title={video.title} className="ios-search-hot-item"
-            onClick={() => push({ kind: "feed", videoIds: list.map(item => item.video_id), index: i, title: "热搜榜" })}>
+          <Button aria-label={tr("播放 {0}", video.title)} title={video.title} className="ios-search-hot-item"
+            onClick={() => push({ kind: "feed", videoIds: list.map(item => item.video_id), index: i, title: tr("热搜榜") })}>
             <span aria-hidden="true" className={`ios-search-hot-rank ${i < 3 ? "text-primary" : "text-mut"}`}>{String(i + 1).padStart(2, "0")}</span>
             <span className="ios-search-hot-content">
               <span className="ios-search-hot-title">{video.title}</span>
@@ -166,23 +167,23 @@ export default function Search({ active, wide }: { active: boolean; wide: boolea
 
   return (
     <div className="ios-page absolute inset-0 bg-bg flex flex-col">
-      <div className="ios-page-heading shrink-0"><h1 className="ios-page-title">搜索</h1></div>
+      <div className="ios-page-heading shrink-0"><h1 className="ios-page-title">{tr("搜索")}</h1></div>
       {/* 搜索栏 */}
       <div className="shrink-0 pb-3 flex items-center gap-2.5" >
         <Form className="ios-search-form flex-1 min-w-0 flex items-center gap-2"
           onSubmit={(e) => { e.preventDefault(); submit(q); }}>
           <ISearch size={17} className="text-mut shrink-0" />
-          <Input aria-label="搜索短剧、帖子、题材…" ref={inputRef} value={q}
+          <Input aria-label={tr("搜索短剧、帖子、题材…")} ref={inputRef} value={q}
             onChange={(e) => {
               const next = e.target.value;
               setQ(next);
               if (!next && submitted) { setSubmitted(""); results.clear(); }
             }}
-            placeholder="搜索短剧、帖子、题材…"
+            placeholder={tr("搜索短剧、帖子、题材…")}
             className="flex-1 min-w-0 bg-transparent text-[14px] text-on placeholder-dim outline-none" />
-          {(q || submitted) && <Button aria-label="清空搜索" type="button" onClick={() => { results.clear(); setQ(""); setSubmitted(""); inputRef.current?.focus(); }} className="ios-icon-button ios-search-clear"><IClose size={16} /></Button>}
+          {(q || submitted) && <Button aria-label={tr("清空搜索")} type="button" onClick={() => { results.clear(); setQ(""); setSubmitted(""); inputRef.current?.focus(); }} className="ios-icon-button ios-search-clear"><IClose size={16} /></Button>}
         </Form>
-        <Button onClick={() => push({ kind: "ranks" })} aria-label="排行榜"
+        <Button onClick={() => push({ kind: "ranks" })} aria-label={tr("排行榜")}
           variant="primary" className="ios-icon-button ios-search-shortcut">
           <ITrophy size={19} />
         </Button>
@@ -191,22 +192,22 @@ export default function Search({ active, wide }: { active: boolean; wide: boolea
       <div className="flex-1 scroll-y pb-24">
         {!querying ? (
           <>
-            <Surface role="region" aria-label="热搜榜" className="mt-1 rounded-(--r-md) bg-s2 p-3.5 a-rise">
+            <Surface role="region" aria-label={tr("热搜榜")} className="mt-1 rounded-(--r-md) bg-s2 p-3.5 a-rise">
                 <div className="flex items-center justify-between gap-2">
-                  <h2 className="flex items-center gap-1.5 text-[14px] font-semibold text-on/90"><IFireF size={15} className="text-primary" />热搜榜</h2>
-                  <Button onClick={() => void refreshHot()} disabled={hotLoading} aria-label="刷新热搜榜"
+                  <h2 className="flex items-center gap-1.5 text-[14px] font-semibold text-on/90"><IFireF size={15} className="text-primary" />{tr("热搜榜")}</h2>
+                  <Button onClick={() => void refreshHot()} disabled={hotLoading} aria-label={tr("刷新热搜榜")}
                     className="-mr-2 px-2 inline-flex items-center justify-end gap-1 text-[12px] text-mut pressable">
-                    {hotLoading ? <Loader className="w-3 h-3" /> : <IRefresh size={12} />}{hotLoading ? "刷新中" : "刷新"}
+                    {hotLoading ? <Loader className="w-3 h-3" /> : <IRefresh size={12} />}{hotLoading ? tr("刷新中") : tr("刷新")}
                   </Button>
                 </div>
                 {hotError && <p role="status" className="mt-2 text-[12px] text-mut leading-relaxed">
-                  {hotVideos.length > 0 ? "刷新失败，保留上次榜单。" : "热搜榜暂不可用。"}{hotError}
+                  {hotVideos.length > 0 ? tr("刷新失败，保留上次榜单。") : tr("热搜榜暂不可用。")}{hotError}
                 </p>}
                 {hotVideos.length > 0 ? (
                   filtering ? (
                     <>
                       {hotTagPending && !verifiedHotVideos.length && (
-                        <p role="status" className="mt-3 text-[12px] text-mut">正在按屏蔽偏好核验热搜榜…</p>
+                        <p role="status" className="mt-3 text-[12px] text-mut">{tr("正在按屏蔽偏好核验热搜榜…")}</p>
                       )}
                       {verifiedHotVideos.length > 0 && (
                         <FilteredContent items={verifiedHotVideos} scopeKey={`hot:${lineEpoch}`} className="mt-3 mb-0 bg-s3/80">
@@ -215,18 +216,18 @@ export default function Search({ active, wide }: { active: boolean; wide: boolea
                       )}
                       {!hotTagPending && currentHotFailed.length > 0 && (
                         <div role="status" className="mt-2.5 flex flex-wrap items-center justify-between gap-2 text-[12px] text-mut">
-                          <span>{currentHotFailed.length} 条热搜未能核验标签，已暂缓展示</span>
+                          <span>{tr("{0} 条热搜未能核验标签，已暂缓展示", currentHotFailed.length)}</span>
                           <Button onClick={() => setHotTagState(prev => ({
                             epoch: lineEpoch,
                             tags: prev.epoch === lineEpoch ? prev.tags : {},
                             failed: [],
                             retry: prev.retry + 1,
-                          }))} className="-mr-2 px-2 min-h-9 inline-flex items-center text-primary">重试核验</Button>
+                          }))} className="-mr-2 px-2 min-h-9 inline-flex items-center text-primary">{tr("重试核验")}</Button>
                         </div>
                       )}
                     </>
                   ) : renderHotList(verifiedHotVideos)
-                ) : !hotError && <p role="status" className="mt-3 text-[12px] text-mut">{hotLoading ? "加载中…" : "暂无热搜影片"}</p>}
+                ) : !hotError && <p role="status" className="mt-3 text-[12px] text-mut">{hotLoading ? tr("加载中…") : tr("暂无热搜影片")}</p>}
               </Surface>
 
             {searchHist.length > 0 && (
@@ -239,41 +240,41 @@ export default function Search({ active, wide }: { active: boolean; wide: boolea
           </>
         ) : (
           <>
-            <SegmentedControl className="mt-1 mb-3" aria-label="搜索结果类型" activeIndex={tab === "video" ? 0 : 1}>
-              {([["video", "视频"], ["post", "帖子"]] as const).map(([k, label]) => (
+            <SegmentedControl className="mt-1 mb-3" aria-label={tr("搜索结果类型")} activeIndex={tab === "video" ? 0 : 1}>
+              {([["video", tr("视频")], ["post", tr("帖子")]] as const).map(([k, label]) => (
                 <Button aria-pressed={tab === k} key={k} onClick={() => changeTab(k)}>{label}</Button>
               ))}
             </SegmentedControl>
             <div role="status" className="text-[12px] text-mut mb-2.5" aria-live="polite">
-              {loading && <span className="block">{request?.page === 1 ? `正在搜索「${submitted}」…` : "正在加载更多…"}</span>}
-              {result && <>「{result.keyword}」已加载 <span className="text-primary font-bold">{count}{result.total !== null ? ` / ${result.total}` : ""}</span> 条{result.kind === "post" ? "帖子" : "视频"}</>}
+              {loading && <span className="block">{request?.page === 1 ? tr("正在搜索「{0}」…", submitted) : tr("正在加载更多…")}</span>}
+              {result && <>「{result.keyword}{tr("」已加载")}{" "}<span className="text-primary font-bold">{count}{result.total !== null ? ` / ${result.total}` : ""}</span>{" "}{tr("条")}{result.kind === "post" ? tr("帖子") : tr("视频")}</>}
             </div>
             {err && <div role="alert" className="flex flex-wrap items-center gap-2 mb-3 text-[13px] text-danger">
-              <span>「{submitted}」{request?.page && request.page > 1 ? "加载更多失败" : "搜索失败"}：{err}</span>
-              <Button onClick={results.retry} disabled={loading} className="px-3 text-primary">重试</Button>
+              <span>「{submitted}」{request?.page && request.page > 1 ? tr("加载更多失败") : tr("搜索失败")}：{err}</span>
+              <Button onClick={results.retry} disabled={loading} className="px-3 text-primary">{tr("重试")}</Button>
             </div>}
-            <section aria-label="搜索结果" aria-busy={loading}>
+            <section aria-label={tr("搜索结果")} aria-busy={loading}>
               {result && count > 0 ? <>
                 {result.kind === "video" ? (
-                  <Masonry videos={items} scopeKey={JSON.stringify([submitted, tab, result.keyword, result.kind])} wide={wide} onOpen={(v, visible) => push({ kind: "feed", videoIds: visible.map((x) => x.id), index: visible.findIndex((x) => x.id === v.id), title: `搜索 · ${result.keyword}` })} />
+                  <Masonry videos={items} scopeKey={JSON.stringify([submitted, tab, result.keyword, result.kind])} wide={wide} onOpen={(v, visible) => push({ kind: "feed", videoIds: visible.map((x) => x.id), index: visible.findIndex((x) => x.id === v.id), title: tr("搜索 · {0}", result.keyword) })} />
                 ) : (
                   <FilteredContent items={posts} scopeKey={JSON.stringify([submitted, tab, result.keyword, result.kind])}>{visible => <div className={`ios-media-grid ${wide ? "is-wide" : ""}`}>
                     {visible.map((post) => (
-                      <MediaCard key={post.id} title={post.title} cover={post.cover} subtitle={`${fmt(post.hot)} 次浏览`} onOpen={() => push({ kind: "post", id: post.id })} />
+                      <MediaCard key={post.id} title={post.title} cover={post.cover} subtitle={tr("{0} 次浏览", fmt(post.hot))} onOpen={() => push({ kind: "post", id: post.id })} />
                     ))}
                   </div>}</FilteredContent>
                 )}
                 <div className="flex justify-center py-4">
-                  {loading ? <Loader label="搜索结果更新中" className="w-6 h-6 spinner" />
+                  {loading ? <Loader label={tr("搜索结果更新中")} className="w-6 h-6 spinner" />
                     : !err && result.keyword === submitted && (result.page < result.pages ? (
-                      <Button onClick={results.loadMore} className="px-5 h-9 rounded-(--r-ctl) bg-s3 text-[13px] text-on/85 pressable">加载更多</Button>
-                    ) : <span className="text-[12px] text-dim">— 已经到底啦 —</span>)}
+                      <Button onClick={results.loadMore} className="px-5 h-9 rounded-(--r-ctl) bg-s3 text-[13px] text-on/85 pressable">{tr("加载更多")}</Button>
+                    ) : <span className="text-[12px] text-dim">{tr("— 已经到底啦 —")}</span>)}
                 </div>
               </> : loading ? (
-                <div className="flex justify-center py-12"><Loader label="正在搜索" className="w-8 h-8 spinner" /></div>
+                <div className="flex justify-center py-12"><Loader label={tr("正在搜索")} className="w-8 h-8 spinner" /></div>
               ) : !err && (
-                <Empty icon={<ISearch size={26} />} title="没有找到相关内容" sub="换个关键词试试，比如「都市」「逆袭」"
-                  action="看看排行榜" onAction={() => push({ kind: "ranks" })} />
+                <Empty icon={<ISearch size={26} />} title={tr("没有找到相关内容")} sub={tr("换个关键词试试，比如「都市」「逆袭」")}
+                  action={tr("看看排行榜")} onAction={() => push({ kind: "ranks" })} />
               )}
             </section>
           </>
@@ -285,9 +286,9 @@ export default function Search({ active, wide }: { active: boolean; wide: boolea
 
 /* ================= 排行榜 ================= */
 const RANK_TABS = [
-  { k: "hot", label: "热播榜" },
-  { k: "recommend", label: "推荐榜" },
-  { k: "potential", label: "潜力榜" },
+  { k: "hot", label: N_("热播榜") },
+  { k: "recommend", label: N_("推荐榜") },
+  { k: "potential", label: N_("潜力榜") },
 ] as const;
 
 export function RankPage({ onBack, wide }: { onBack: () => void; wide: boolean }) {
@@ -319,7 +320,7 @@ export function RankPage({ onBack, wide }: { onBack: () => void; wide: boolean }
     } catch (error) {
       if (reqEpoch !== epochRef.current) return;
       update({ items: previous?.items ?? [], loadedAt: previous?.loadedAt ?? 0, loading: false,
-        error: error instanceof Error ? error.message : "榜单加载失败，请重试" });
+        error: error instanceof Error ? error.message : tr("榜单加载失败，请重试") });
     } finally { pending.current.delete(inflightKey); }
   };
   useEffect(() => {
@@ -345,19 +346,19 @@ export function RankPage({ onBack, wide }: { onBack: () => void; wide: boolean }
         <div className="absolute inset-0 pointer-events-none" style={{ background: "radial-gradient(90% 120% at 100% 0%, var(--p-pc) 0%, transparent 60%)", opacity: 0.32 }} />
         <div className="ios-subpage-inner relative">
           <div className="ios-subpage-bar">
-            <Button aria-label="返回" onClick={onBack} className="ios-nav-btn"><IBack size={20} /></Button>
+            <Button aria-label={tr("返回")} onClick={onBack} className="ios-nav-btn"><IBack size={20} /></Button>
             <span className="w-9 h-9 rounded-[12px] bg-pc text-on-pc flex items-center justify-center shrink-0"><ITrophy size={19} /></span>
             <div className="flex-1 min-w-0">
-              <h1 className="text-[17px] font-bold text-on leading-tight">排行榜</h1>
-              <div className="text-[12px] text-mut leading-tight mt-0.5">{meta.label}{items.length ? ` · TOP ${items.length}` : ""}</div>
+              <h1 className="text-[17px] font-bold text-on leading-tight">{tr("排行榜")}</h1>
+              <div className="text-[12px] text-mut leading-tight mt-0.5">{tr(meta.label)}{items.length ? ` · TOP ${items.length}` : ""}</div>
             </div>
-            <Button aria-label="刷新榜单" disabled={loading} onClick={() => void load(tab)} className="ios-nav-btn">
-              {loading ? <Loader label="正在更新榜单" className="w-4 h-4" /> : <IRefresh size={18} />}
+            <Button aria-label={tr("刷新榜单")} disabled={loading} onClick={() => void load(tab)} className="ios-nav-btn">
+              {loading ? <Loader label={tr("正在更新榜单")} className="w-4 h-4" /> : <IRefresh size={18} />}
             </Button>
           </div>
-          <SegmentedControl className="mb-3" aria-label="榜单类型" activeIndex={RANK_TABS.findIndex(item => item.k === tab)}>
+          <SegmentedControl className="mb-3" aria-label={tr("榜单类型")} activeIndex={RANK_TABS.findIndex(item => item.k === tab)}>
             {RANK_TABS.map((t) => (
-              <Button aria-pressed={tab === t.k} key={t.k} onClick={() => setTab(t.k)}>{t.label}</Button>
+              <Button aria-pressed={tab === t.k} key={t.k} onClick={() => setTab(t.k)}>{tr(t.label)}</Button>
             ))}
           </SegmentedControl>
         </div>
@@ -365,20 +366,20 @@ export function RankPage({ onBack, wide }: { onBack: () => void; wide: boolean }
 
       <div className="flex-1 scroll-y pt-3.5 pb-8">
         {err && <div role="alert" className="flex flex-wrap items-center gap-2 mb-3 text-[13px] text-danger">
-          <span>榜单加载失败：{err}{items.length > 0 ? "；已保留上次榜单" : ""}</span>
-          <Button onClick={() => void load(tab)} disabled={loading} className="px-3 text-primary">重试</Button>
+          <span>{tr("榜单加载失败：{0}{1}", err, items.length > 0 ? tr("；已保留上次榜单") : "")}</span>
+          <Button onClick={() => void load(tab)} disabled={loading} className="px-3 text-primary">{tr("重试")}</Button>
         </div>}
-        <section aria-label={meta.label} aria-busy={loading}>
+        <section aria-label={tr(meta.label)} aria-busy={loading}>
           {items.length > 0 ? <>
-            {loading && <p role="status" className="text-[12px] text-mut mb-2">正在刷新，当前显示上次榜单…</p>}
+            {loading && <p role="status" className="text-[12px] text-mut mb-2">{tr("正在刷新，当前显示上次榜单…")}</p>}
             <FilteredContent items={items} scopeKey={tab}>{visible => visible.map((it) => (
               <RankRow key={`${it.video_id}-${it.rank}`} item={it} metricMax={max}
-                onOpen={() => push({ kind: "feed", videoIds: visible.map((x) => x.video_id), index: visible.findIndex((x) => x.video_id === it.video_id), title: meta.label })} />
+                onOpen={() => push({ kind: "feed", videoIds: visible.map((x) => x.video_id), index: visible.findIndex((x) => x.video_id === it.video_id), title: tr(meta.label) })} />
             ))}</FilteredContent>
           </> : loading ? (
-            <div className="flex justify-center py-12"><Loader label="正在加载榜单" className="w-8 h-8 spinner" /></div>
+            <div className="flex justify-center py-12"><Loader label={tr("正在加载榜单")} className="w-8 h-8 spinner" /></div>
           ) : !err && (
-            <Empty icon={<ITrophy size={26} />} title="榜单暂时为空" />
+            <Empty icon={<ITrophy size={26} />} title={tr("榜单暂时为空")} />
           )}
         </section>
         {wide && <div className="h-2" />}

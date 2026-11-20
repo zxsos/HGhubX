@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { Button } from "./controls";
 import { registerOverlayBack } from "../../lib/back";
 import { getFullscreenElement } from "../../lib/fullscreen";
+import { tr } from "../../i18n";
 
 type Layer = { token: symbol; ancestors: symbol[]; element: HTMLElement; panel: HTMLElement; previous: HTMLElement | null; lastFocus: HTMLElement | null };
 const LayerContext = createContext<symbol[]>([]);
@@ -169,7 +170,7 @@ function DialogFrame({ open, onClose, children, kind, width, label, z, avoidNati
         }}
         data-avoid-native-keyboard={avoidNativeKeyboard || undefined}
         aria-hidden={!open || undefined} inert={!open ? true : undefined}>
-        {kind !== "guide" && <Button className="ios-overlay-backdrop" aria-label="关闭对话框" onClick={onClose} tabIndex={-1} />}
+        {kind !== "guide" && <Button className="ios-overlay-backdrop" aria-label={tr("关闭对话框")} onClick={onClose} tabIndex={-1} />}
         <div role="dialog" aria-modal="true" aria-label={label} tabIndex={-1} className="ios-dialog" onKeyDown={event => event.stopPropagation()}
           style={{ "--ios-dialog-width": `${width ?? 440}px` } as CSSProperties}>
           {kind === "sheet" && <div className="ios-sheet-grip" aria-hidden="true" />}
@@ -181,10 +182,10 @@ function DialogFrame({ open, onClose, children, kind, width, label, z, avoidNati
 }
 
 export function Modal(props: { open: boolean; onClose: () => void; children: ReactNode; width?: number; label?: string }) {
-  return <DialogFrame {...props} kind="modal" label={props.label ?? "对话框"} />;
+  return <DialogFrame {...props} kind="modal" label={props.label ?? tr("对话框")} />;
 }
 export function Sheet(props: { open: boolean; onClose: () => void; children: ReactNode; z?: string; label?: string; avoidNativeKeyboard?: boolean }) {
-  return <DialogFrame {...props} kind="sheet" label={props.label ?? "详情面板"} />;
+  return <DialogFrame {...props} kind="sheet" label={props.label ?? tr("详情面板")} />;
 }
 
 /** Full-player coach marks retain the shared focus trap, inert background and back handling. */

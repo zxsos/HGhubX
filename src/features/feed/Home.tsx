@@ -8,6 +8,7 @@ import { Empty } from "../../shared/ui/ui";
 import { Button } from "../../shared/ui/ios/controls";
 import { useContentPreferences } from "../../shared/model/contentPreferences";
 import { PreferenceStorageNotice } from "../../shared/ui/PreferenceStorageNotice";
+import { tr } from "../../shared/i18n";
 
 const loadFeed = () => import("./Feed");
 const Feed = lazy(loadFeed);
@@ -74,7 +75,7 @@ export default function Home({ active, bottomInset }: { active: boolean; bottomI
       setDone(!list.length || !!(res?.pagination && p >= res.pagination.pages));
     } catch (e) {
       if (!mounted.current) return;
-      const message = (e as Error).message || "加载失败";
+      const message = (e as Error).message || tr("加载失败");
       const stale = requestEpoch !== lineEpochRef.current;
       if (!stale) {
         setError(message);
@@ -136,17 +137,17 @@ export default function Home({ active, bottomInset }: { active: boolean; bottomI
         </Suspense>
       ) : hiddenCount > 0 ? (
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-bg px-5 pb-24">
-          <Empty icon={<ISearch size={26} />} title="已隐藏不感兴趣的内容"
-            sub={loading ? "正在补充其他内容…" : error ? `继续加载失败：${error}` : done ? "当前推荐已筛选完，可调整屏蔽标签。" : "已达到本次自动补充上限，可继续加载。"} />
-          {loading ? <Loader label="正在补充内容" /> : !done && <Button className="mt-3 px-5 rounded-full bg-s3" onClick={loadNextFilteredPage}>{error ? "重试加载" : "继续加载"}</Button>}
-          <Button className="mt-3 px-4 text-primary" onClick={() => push({ kind: "settings", section: "内容偏好" })}>管理屏蔽标签</Button>
+          <Empty icon={<ISearch size={26} />} title={tr("已隐藏不感兴趣的内容")}
+            sub={loading ? tr("正在补充其他内容…") : error ? tr("继续加载失败：{0}", error) : done ? tr("当前推荐已筛选完，可调整屏蔽标签。") : tr("已达到本次自动补充上限，可继续加载。")} />
+          {loading ? <Loader label={tr("正在补充内容")} /> : !done && <Button className="mt-3 px-5 rounded-full bg-s3" onClick={loadNextFilteredPage}>{error ? tr("重试加载") : tr("继续加载")}</Button>}
+          <Button className="mt-3 px-4 text-primary" onClick={() => push({ kind: "settings", section: "内容偏好" })}>{tr("管理屏蔽标签")}</Button>
         </div>
       ) : !loading && error ? (
         <div className="absolute inset-0 flex items-center justify-center bg-bg">
-          <Empty icon={<ISearch size={26} />} title="首页加载失败" sub={error} action="重试" onAction={() => void load(1)} />
+          <Empty icon={<ISearch size={26} />} title={tr("首页加载失败")} sub={error} action={tr("重试")} onAction={() => void load(1)} />
         </div>
       ) : !loading && done ? (
-        <div className="absolute inset-0 flex items-center justify-center bg-bg"><Empty icon={<ISearch size={26} />} title="暂无视频" sub="稍后刷新试试" action="刷新" onAction={() => void load(1)} /></div>
+        <div className="absolute inset-0 flex items-center justify-center bg-bg"><Empty icon={<ISearch size={26} />} title={tr("暂无视频")} sub={tr("稍后刷新试试")} action={tr("刷新")} onAction={() => void load(1)} /></div>
       ) : (
         <div className="absolute inset-0 flex items-center justify-center"><Loader className="w-9 h-9 spinner" /></div>
       )}

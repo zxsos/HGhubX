@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Paged } from "../api/types";
+import { tr } from "../i18n";
 
 type Options<T> = {
   enabled?: boolean;
@@ -70,7 +71,7 @@ export function usePaginatedList<T>({
       setHasMore(next < state.pages && incoming.length > 0);
     } catch (error) {
       if (version === generation.current) {
-        setErr(error instanceof Error ? error.message : "加载失败，请重试");
+        setErr(error instanceof Error ? error.message : tr("加载失败，请重试"));
       }
     } finally {
       if (version === generation.current) {

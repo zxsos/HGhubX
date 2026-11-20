@@ -3,9 +3,10 @@ import { normalizeTag } from "../model/contentPreferences";
 import { IChevR } from "./icons";
 import { Button } from "./ios/controls";
 import "../../styles/video-details.css";
+import { tr } from "../i18n";
 
 /** Tag labels are routes, not decorative badges. Preserve the provider's display spelling. */
-export function ContentTags({ tags, onOpen, onBlock, label = "视频标签" }: {
+export function ContentTags({ tags, onOpen, onBlock, label = tr("视频标签") }: {
   tags: readonly string[]; onOpen: (tag: string) => void; onBlock?: (tag: string) => void; label?: string;
 }) {
   const timer = useRef<number | null>(null);
@@ -19,9 +20,9 @@ export function ContentTags({ tags, onOpen, onBlock, label = "视频标签" }: {
   useEffect(() => () => clearTimer(), []);
   const names = tags.map(tag => typeof tag === "string" ? tag.trim().replace(/\s+/g, " ") : "");
   const unique = names.filter((tag, index) => tag && names.findIndex(name => normalizeTag(name) === normalizeTag(tag)) === index);
-  if (!unique.length) return <p className="video-detail-empty-tags">暂未提供标签</p>;
+  if (!unique.length) return <p className="video-detail-empty-tags">{tr("暂未提供标签")}</p>;
   return <div className="content-tags" role="group" aria-label={label}>
-    {unique.map(tag => <Button key={normalizeTag(tag)} aria-label={`查看标签 ${tag}`} className="content-tag-link"
+    {unique.map(tag => <Button key={normalizeTag(tag)} aria-label={tr("查看标签 {0}", tag)} className="content-tag-link"
       onPointerDown={event => {
         if (!onBlock || event.button !== 0) return;
         clearTimer();

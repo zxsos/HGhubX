@@ -5,6 +5,7 @@ import { ICheck, IClose } from "./icons";
 import { Button } from "./ios/controls";
 import { Modal, Sheet } from "./ui";
 import "../../styles/content-preferences.css";
+import { tr } from "../i18n";
 
 export function TagBlockMenu({ open, tags, initialSelected, onClose, onSettings }: {
   open: boolean; tags: readonly string[]; initialSelected?: readonly string[]; onClose: () => void; onSettings?: () => void;
@@ -37,16 +38,16 @@ export function TagBlockMenu({ open, tags, initialSelected, onClose, onSettings 
   const content = <div className="content-tag-menu" data-expanded={expanded}>
     <header className="content-tag-menu-header">
       <div className="min-w-0">
-        <h2 className="text-[18px] font-bold text-on">不感兴趣</h2>
+        <h2 className="text-[18px] font-bold text-on">{tr("不感兴趣")}</h2>
       </div>
-      <Button aria-label="关闭不感兴趣" className="ios-icon-button" onClick={onClose}><IClose size={18} /></Button>
+      <Button aria-label={tr("关闭不感兴趣")} className="ios-icon-button" onClick={onClose}><IClose size={18} /></Button>
     </header>
     <div className="content-tag-menu-body" data-tag-menu-scroll>
-      {preferences.paused && <p role="status" className="content-preference-note mb-2">屏蔽已暂停，保存后仍暂停，恢复后生效。</p>}
-      {options.length ? <div id={optionsId} className="content-tag-options" role="group" aria-label="选择屏蔽标签">
+      {preferences.paused && <p role="status" className="content-preference-note mb-2">{tr("屏蔽已暂停，保存后仍暂停，恢复后生效。")}</p>}
+      {options.length ? <div id={optionsId} className="content-tag-options" role="group" aria-label={tr("选择屏蔽标签")}>
         {visibleOptions.map(tag => {
           const blocked = isTagBlocked(tag), tooLong = tag.trim().length > MAX_TAG_LENGTH;
-          const checked = selected.includes(tag), label = `${tag}${blocked ? " · 已屏蔽" : tooLong ? " · 标签过长" : ""}`;
+          const checked = selected.includes(tag), label = `${tag}${blocked ? tr(" · 已屏蔽") : tooLong ? tr(" · 标签过长") : ""}`;
           return <Button key={normalizeTag(tag)} aria-label={label} disabled={blocked || tooLong || (!checked && validSelected.length >= capacity)} aria-pressed={checked || blocked}
             className="content-tag-option" data-selected={checked} data-blocked={blocked}
             onClick={() => setSelected(previous => previous.includes(tag) ? previous.filter(value => value !== tag) : [...previous, tag])}>
@@ -54,23 +55,23 @@ export function TagBlockMenu({ open, tags, initialSelected, onClose, onSettings 
             <span>{label}</span>
           </Button>;
         })}
-      </div> : <div className="content-preference-empty"><p className="font-semibold text-on">暂无可选标签</p><p className="mt-1">可在管理页添加标签。</p></div>}
+      </div> : <div className="content-preference-empty"><p className="font-semibold text-on">{tr("暂无可选标签")}</p><p className="mt-1">{tr("可在管理页添加标签。")}</p></div>}
       {options.length > 4 && <Button className="content-tag-menu-expand" aria-expanded={expanded} aria-controls={optionsId}
-        onClick={() => setExpanded(value => !value)}>{expanded ? "收起标签" : `全部标签（${options.length}）`}</Button>}
-      {capacity === 0 && <p role="status" className="content-preference-note mt-3">已达到 {MAX_BLOCKED_TAGS} 个屏蔽标签上限，请到设置中清理后再添加。</p>}
-      {capacity > 0 && capacity < options.filter(tag => !isTagBlocked(tag)).length && <p role="status" className="mt-3 text-[13px] text-mut">还可添加 {capacity} 个标签。</p>}
+        onClick={() => setExpanded(value => !value)}>{expanded ? tr("收起标签") : tr("全部标签（{0}）", options.length)}</Button>}
+      {capacity === 0 && <p role="status" className="content-preference-note mt-3">{tr("已达到 {0} 个屏蔽标签上限，请到设置中清理后再添加。", MAX_BLOCKED_TAGS)}</p>}
+      {capacity > 0 && capacity < options.filter(tag => !isTagBlocked(tag)).length && <p role="status" className="mt-3 text-[13px] text-mut">{tr("还可添加 {0} 个标签。", capacity)}</p>}
       {storageError && <div role="alert" className="content-preference-note mt-3 text-danger"><p>{storageError}</p>
-        <Button className="min-h-11 px-3 text-on" onClick={() => { setSubmittedAt(revision); blockTags([]); }}>重试保存</Button>
+        <Button className="min-h-11 px-3 text-on" onClick={() => { setSubmittedAt(revision); blockTags([]); }}>{tr("重试保存")}</Button>
       </div>}
     </div>
     <footer className="content-tag-menu-footer">
-      <p id={selectionId} role="status" aria-live="polite" className="sr-only">{validSelected.length ? `已选择 ${validSelected.length} 个标签` : "请选择要屏蔽的标签"}</p>
+      <p id={selectionId} role="status" aria-live="polite" className="sr-only">{validSelected.length ? tr("已选择 {0} 个标签", validSelected.length) : tr("请选择要屏蔽的标签")}</p>
       <div className="content-tag-menu-actions">
-        {onSettings && <Button className="content-tag-menu-manage text-mut" onClick={() => { onClose(); onSettings(); }}>管理屏蔽标签</Button>}
-        {options.length > 0 && <Button variant="primary" aria-label="屏蔽所选标签" aria-describedby={selectionId} disabled={!validSelected.length} onClick={() => { setSubmittedAt(revision); blockTags(validSelected); }}>屏蔽 · {validSelected.length}</Button>}
+        {onSettings && <Button className="content-tag-menu-manage text-mut" onClick={() => { onClose(); onSettings(); }}>{tr("管理屏蔽标签")}</Button>}
+        {options.length > 0 && <Button variant="primary" aria-label={tr("屏蔽所选标签")} aria-describedby={selectionId} disabled={!validSelected.length} onClick={() => { setSubmittedAt(revision); blockTags(validSelected); }}>{tr("屏蔽 · {0}", validSelected.length)}</Button>}
       </div>
     </footer>
   </div>;
-  return isMobile ? <Sheet open={open} onClose={onClose} label="不感兴趣" z="content-preference-overlay">{content}</Sheet>
-    : <Modal open={open} onClose={onClose} label="不感兴趣" width={400}>{content}</Modal>;
+  return isMobile ? <Sheet open={open} onClose={onClose} label={tr("不感兴趣")} z="content-preference-overlay">{content}</Sheet>
+    : <Modal open={open} onClose={onClose} label={tr("不感兴趣")} width={400}>{content}</Modal>;
 }

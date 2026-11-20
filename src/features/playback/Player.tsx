@@ -9,6 +9,7 @@ import VideoSurface, { type VideoHandle } from "./VideoSurface";
 import { useInlinePlayerFullscreen } from "./useInlinePlayerFullscreen";
 import "../../styles/post-player.css";
 import { ICompress, IExpand, ILockF, IPauseF, IPlayF, IVol, IVolMute } from "../../shared/ui/icons";
+import { tr } from "../../shared/i18n";
 
 type Props = {
   src: string;              // 原始 m3u8 地址
@@ -137,7 +138,7 @@ export default function Player({
           {errMsg && (
             <div role="alert" className="absolute left-2 top-2 z-30 max-w-[80%] rounded bg-black/70 px-2 py-1 text-[12px] leading-tight text-red-300 break-all">
               <span>{errMsg}</span>
-              <Button onClick={retry} disabled={!active} className="ml-2 px-2 py-1 text-white">重试</Button>
+              <Button onClick={retry} disabled={!active} className="ml-2 px-2 py-1 text-white">{tr("重试")}</Button>
             </div>
           )}
 
@@ -148,7 +149,7 @@ export default function Player({
           )}
 
           {!playing && !waiting && !errMsg && (
-            <Button onClick={toggle} aria-label="播放"
+            <Button onClick={toggle} aria-label={tr("播放")}
               className="absolute inset-0 flex items-center justify-center">
               <span className="w-16 h-16 rounded-full bg-black/45 backdrop-blur-sm flex items-center justify-center elev-2 pressable">
                 <IPlayF size={26} className="text-white ml-0.5" />
@@ -157,7 +158,7 @@ export default function Player({
           )}
 
           {controls && (
-            <div className="player-inline-controls" role="group" aria-label="播放控制">
+            <div className="player-inline-controls" role="group" aria-label={tr("播放控制")}>
               <div className="post-player-seek-row">
                 <div className="post-player-seek-wrap">
                   {seek.scrubbing && (
@@ -165,23 +166,23 @@ export default function Player({
                       <strong>{fmtTime(seek.time)}</strong><span> / {fmtTime(duration)}</span>
                     </span>
                   )}
-                  <Input aria-label="播放进度" type="range" {...seek.inputProps}
+                  <Input aria-label={tr("播放进度")} type="range" {...seek.inputProps}
                     className="hg-range" style={{ ...seek.inputProps.style, "--fill": `${pct}%` } as React.CSSProperties} />
                 </div>
                 <span className="post-player-time">{fmtTime(seek.time)} / {fmtTime(duration)}</span>
               </div>
               <div className="post-player-actions">
-                <Button onClick={toggle} aria-label={playing ? "暂停" : "播放"} className="pressable">
+                <Button onClick={toggle} aria-label={playing ? tr("暂停") : tr("播放")} className="pressable">
                   {playing ? <IPauseF size={16} /> : <IPlayF size={16} />}
                 </Button>
-                <Button onClick={() => onToggleMute?.()} aria-label={muted ? "取消静音" : "静音"} className="pressable">
+                <Button onClick={() => onToggleMute?.()} aria-label={muted ? tr("取消静音") : tr("静音")} className="pressable">
                   {muted ? <IVolMute size={16} /> : <IVol size={16} />}
                 </Button>
-                <Button onClick={() => setControlsLocked(true)} aria-label="锁定播放控制" title="锁定播放控制" aria-pressed={false} className="pressable">
+                <Button onClick={() => setControlsLocked(true)} aria-label={tr("锁定播放控制")} title={tr("锁定播放控制")} aria-pressed={false} className="pressable">
                   <ILockF size={16} />
                 </Button>
-                <Button onClick={cycleRate} aria-label={`播放速度 ${rate} 倍`} className="text-[12px] font-bold text-white/85 pressable tabular-nums">{rate}x</Button>
-                <Button onClick={toggleFull} aria-label={full ? "退出全屏" : "全屏"} aria-pressed={full} className="pressable">
+                <Button onClick={cycleRate} aria-label={tr("播放速度 {0} 倍", rate)} className="text-[12px] font-bold text-white/85 pressable tabular-nums">{rate}x</Button>
+                <Button onClick={toggleFull} aria-label={full ? tr("退出全屏") : tr("全屏")} aria-pressed={full} className="pressable">
                   {full ? <ICompress size={16} /> : <IExpand size={16} />}
                 </Button>
               </div>

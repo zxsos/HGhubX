@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { normalizeTag } from "../../shared/model/contentPreferences";
 import { Button } from "../../shared/ui/ios/controls";
+import { tr } from "../../shared/i18n";
 
 export function CurrentVideoTags({ tags, onOpen, onBlock }: {
   tags: readonly string[];
@@ -19,8 +20,8 @@ export function CurrentVideoTags({ tags, onOpen, onBlock }: {
   };
   useEffect(() => () => clearTimer(), []);
   if (!unique.length) return null;
-  return <div className="current-video-tags" role="group" aria-label="当前视频标签">
-    {unique.map(tag => <Button key={normalizeTag(tag)} className="current-video-tag" aria-label={`查看标签 ${tag}，长按可屏蔽`}
+  return <div className="current-video-tags" role="group" aria-label={tr("当前视频标签")}>
+    {unique.map(tag => <Button key={normalizeTag(tag)} className="current-video-tag" aria-label={tr("查看标签 {0}，长按可屏蔽", tag)}
       onPointerDown={event => {
         if (event.button !== 0) return;
         clearTimer();

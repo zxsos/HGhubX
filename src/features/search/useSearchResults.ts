@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "../../shared/api/api";
 import type { Post, VideoCard } from "../../shared/api/types";
 import { useStore } from "../../shared/model/store";
+import { tr } from "../../shared/i18n";
 
 type SearchKind = "video" | "post";
 type Result = {
@@ -71,7 +72,7 @@ export function useSearchResults(scope?: "original") {
       if (items.length <= CACHE_ITEMS) cache.current.set(key, { result: value, at: Date.now() });
       while (cache.current.size > CACHE_LIMIT) cache.current.delete(cache.current.keys().next().value!);
     } catch (error) {
-      if (sequence.current === seq) setError(error instanceof Error ? error.message : "搜索失败，请重试");
+      if (sequence.current === seq) setError(error instanceof Error ? error.message : tr("搜索失败，请重试"));
     } finally {
       if (sequence.current === seq) { busy.current = false; setLoading(false); }
     }
