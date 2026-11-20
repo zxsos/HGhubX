@@ -99,11 +99,10 @@ function Probe() {
       onSearch={contextSearch ? () => setOpenedTag("search") : undefined}
     />
     {fsPreview && <FeedPlayerShellChrome
-      videoRef={{ current: null }} speedLockTargetRef={{ current: null }} barRef={{ current: null }}
+      videoRef={{ current: null }} barRef={{ current: null }}
       playbackClock={clock} isDesktop={false} active fs idle={fsIdle} rotated={false} vpLandscape={false}
       theater={false} setTheater={() => {}} fullscreen={false} controlsLocked={false}
       paused={false} duration={120} rate={rate} setRate={setRate} effRate={rate}
-      holdSpeed={0} holdSlow={false} speedLock={0} setSpeedLock={() => {}} lockArmed={false}
       muted={muted} setMuted={setMuted} volume={1} setVolume={() => {}}
       swipeEp={swipeEp} setSwipeEp={setSwipeEp} preferHevc={preferHevc} setPreferHevc={setPreferHevc}
       portraitFit={portraitFit} setPortraitFit={setPortraitFit} playKey="preview"

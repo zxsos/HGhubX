@@ -320,7 +320,7 @@ export default function Feed({
   const landscapeVideo = videoSize.w > 0 && videoSize.h > 0 && videoSize.w > videoSize.h;
 
   const {
-    zoom, setZoom, holdSpeed, holdSlow, speedLock, setSpeedLock, lockArmed, speedLockTargetRef,
+    zoom, setZoom, holdSpeed, holdSlow,
     scrub, barRef, barPct, onDown, onMove, onUp, onBarDown, onBarMove, onBarUp,
   } = useFeedTouchGestures({
     boxRef, videoRef, pinchRef, playbackClock, isDesktop, active, controlsLocked, showHoldGuide,
@@ -339,8 +339,8 @@ export default function Feed({
     isLiked, isFav, setLiked, setCollected, setFollowing, actionPending, toast,
   });
 
-  /* 倍速：中心小方块打开偏好，右上长按 2x 起、左右滑换挡，左下 0.5x。 */
-  const effRate = holdSpeed || speedLock || (holdSlow ? 0.5 : rate);
+  /* 倍速：右上长按临时加速、左右滑换挡，左下长按 0.5x；松手恢复持久倍速。 */
+  const effRate = holdSpeed || (holdSlow ? 0.5 : rate);
   /* The pinch-zoom reset capsule fades in place without unmounting (issue #19). */
   const capsuleOn = !fs && !clean && !isDesktop && zoom.s > 1.05;
 
@@ -699,11 +699,10 @@ export default function Feed({
         </div>
 
         <FeedPlayerShellChrome
-          videoRef={videoRef} speedLockTargetRef={speedLockTargetRef} barRef={barRef} playbackClock={playbackClock}
+          videoRef={videoRef} barRef={barRef} playbackClock={playbackClock}
           isDesktop={isDesktop} active={active} fs={fs} idle={idle} rotated={rotated} vpLandscape={vpLandscape}
           theater={theater} setTheater={setTheater} fullscreen={fullscreen} controlsLocked={controlsLocked}
           paused={paused} duration={duration} rate={rate} setRate={setRate} effRate={effRate}
-          holdSpeed={holdSpeed} holdSlow={holdSlow} speedLock={speedLock} setSpeedLock={setSpeedLock} lockArmed={lockArmed}
           muted={muted} setMuted={setMuted} volume={volume} setVolume={setVolume} swipeEp={swipeEp} setSwipeEp={setSwipeEp}
           preferHevc={preferHevc} setPreferHevc={setPreferHevc} portraitFit={portraitFit} setPortraitFit={setPortraitFit}
           playKey={playKey} curId={curId} curEp={curEp} index={index} effectiveLength={effectiveVideoIds.length}

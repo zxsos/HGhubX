@@ -212,6 +212,22 @@ async function gestureChecks(page) {
     surface.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 92, pointerType: 'touch', button: 0, clientX: bounds.x + 220, clientY: bounds.y + 220 }));
   });
   await page.waitForFunction(() => !document.querySelector('[data-seek-bar]')?.dataset.scrubbing);
+  // 长按只保留临时加速；拖动到顶部胶囊锁定 2x 的旧交互必须消失。
+  const holdBox = await page.locator('[data-mobile-hold-target]').first().boundingBox();
+  assert(holdBox, 'Gesture surface must expose a hold target');
+  const holdPoint = { x: holdBox.x + holdBox.width * .78, y: holdBox.y + holdBox.height * .28 };
+  await page.evaluate(({ x, y }) => {
+    const surface = document.querySelector('[data-mobile-hold-target]');
+    surface.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 94, pointerType: 'touch', isPrimary: true, button: 0, buttons: 1, clientX: x, clientY: y }));
+  }, holdPoint);
+  await page.waitForFunction(() => document.querySelector('video')?.playbackRate > 1.5);
+  assert.equal(await page.getByText(/移入此处锁定|松手即可锁定|已锁定 · 点按解除/).count(), 0,
+    'Speed-lock capsule and its prompts must be removed');
+  await page.evaluate(({ x, y }) => {
+    const surface = document.querySelector('[data-mobile-hold-target]');
+    surface.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 94, pointerType: 'touch', isPrimary: true, button: 0, buttons: 0, clientX: x, clientY: y }));
+  }, holdPoint);
+  await page.waitForFunction(() => document.querySelector('video')?.playbackRate === 1);
   // 2.2.0 反馈回归：切集过渡期（下一集地址未解析）手势 overlay 必须常驻。
   // 修复前第二划落在卸载后的封面/滚动列表上被丢弃或切到别的视频；修复后集数连加且视频不变。
   await page.evaluate(() => window.playerSeekFixture.setLogging(true));
@@ -240,7 +256,7 @@ async function gestureChecks(page) {
   await page.waitForFunction(() => document.querySelectorAll(".a-toast").length === 1);
   assert.equal(await page.locator(".a-toast").count(), 1, "Rapid swipe-toggle taps must keep one toast card");
   assert.match(await page.locator(".a-toast").innerText(), /上下划切集/);
-  return { singleTapMs, bottomOnlyScrub: true, fastSwipeEpisodes: [2, 3], sameVideo: true, swipeToggleToastCards: 1 };
+  return { singleTapMs, bottomOnlyScrub: true, temporaryHoldRestored: 1, fastSwipeEpisodes: [2, 3], sameVideo: true, swipeToggleToastCards: 1 };
 }
 
 // issue #142 回归：手机竖屏视口 + 真实竖屏源（360x640，高>宽）。

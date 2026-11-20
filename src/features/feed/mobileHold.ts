@@ -8,13 +8,6 @@ export type HoldMenuBounds = { left: number; top: number; size: number };
 export type HoldRotation = 0 | 90;
 export type HoldRect = { left: number; top: number; width: number; height: number };
 
-/** Match the actual visible lock target, including the rotated DOM rectangle. */
-export function isInsideHoldTarget(clientX: number, clientY: number, rect: HoldRect): boolean {
-  return rect.width > 0 && rect.height > 0
-    && clientX >= rect.left && clientX <= rect.left + rect.width
-    && clientY >= rect.top && clientY <= rect.top + rect.height;
-}
-
 /** Invert the player's clockwise CSS rotation. Native landscape is already in
  * player coordinates and uses rotation=0. Use this for both gestures and guides.
  */

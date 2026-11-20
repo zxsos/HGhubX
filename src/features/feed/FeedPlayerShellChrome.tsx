@@ -25,7 +25,6 @@ function PanelFallback() {
 
 type Props = {
   videoRef: RefObject<VideoHandle | null>;
-  speedLockTargetRef: RefObject<HTMLButtonElement | null>;
   barRef: MutableRefObject<HTMLDivElement | null>;
   playbackClock: PlaybackClock;
   isDesktop: boolean;
@@ -44,11 +43,6 @@ type Props = {
   rate: number;
   setRate: Dispatch<SetStateAction<number>>;
   effRate: number;
-  holdSpeed: number;
-  holdSlow: boolean;
-  speedLock: number;
-  setSpeedLock: Dispatch<SetStateAction<number>>;
-  lockArmed: boolean;
   muted: boolean;
   setMuted: Dispatch<SetStateAction<boolean>>;
   volume: number;
@@ -96,9 +90,9 @@ type Props = {
 };
 
 export function FeedPlayerShellChrome({
-  videoRef, speedLockTargetRef, barRef, playbackClock,
+  videoRef, barRef, playbackClock,
   isDesktop, active, fs, idle, rotated, vpLandscape, theater, setTheater, fullscreen, controlsLocked,
-  paused, duration, rate, setRate, effRate, holdSpeed, holdSlow, speedLock, setSpeedLock, lockArmed,
+  paused, duration, rate, setRate, effRate,
   muted, setMuted, volume, setVolume, swipeEp, setSwipeEp, preferHevc, setPreferHevc, portraitFit, setPortraitFit,
   playKey, curId, curEp, index, effectiveLength, kind, meta, likeCount, collectCount, episodes, related,
   follows, followPending, post, articleHtml, panel, setPanel,
@@ -153,22 +147,6 @@ export function FeedPlayerShellChrome({
             else go(1);
           }}
         />
-      )}
-
-      {/* 移动端：倍速状态胶囊，也是长按锁定的真实命中目标（isOverSpeedLock）。 */}
-      {!isDesktop && (holdSpeed || holdSlow || speedLock || rate !== 1) && (holdSpeed || holdSlow || !fs || !idle) && (
-        <Button
-          ref={speedLockTargetRef}
-          onClick={() => {
-            if (speedLock) { setSpeedLock(0); toast("已解除倍速锁定", "info"); }
-            else if (rate !== 1 && !holdSpeed) setRate(1);
-          }}
-          className="absolute left-1/2 -translate-x-1/2 z-30 flex items-center gap-1.5 px-3.5 h-8 rounded-full text-[13px] font-semibold whitespace-nowrap pressable"
-          style={{ top: rotated ? 14 : "calc(var(--sat, 0px) + 54px)", background: "rgba(0,0,0,.36)", color: lockArmed || speedLock ? "rgba(255,255,255,.96)" : "rgba(255,255,255,.88)" }}>
-          <IBoltF size={13} />
-          {/* 两态文案等宽（6 字），避免命中矩形在手指停留时伸缩造成 armed 抖动 */}
-          {effRate}x {holdSpeed ? (lockArmed ? "松手即可锁定" : "移入此处锁定") : speedLock ? "已锁定 · 点按解除" : holdSlow ? "减速中 · 松开恢复" : "倍速"}
-        </Button>
       )}
 
       {/* 移动端全屏进度条（横竖屏统一在底部突出显示，闲置隐藏时横拖画面自动唤起底部条） */}
@@ -232,9 +210,8 @@ export function FeedPlayerShellChrome({
             </Button>
             <PlaybackTime clock={playbackClock} duration={duration} padMinutes className="mobile-fs-time shrink-0 text-[12px] font-semibold hg-ink-2 tabular-nums" />
             <Button
-              aria-label={speedLock ? "解除倍速锁定" : `切换倍速，当前 ${effRate} 倍`}
+              aria-label={`切换倍速，当前 ${effRate} 倍`}
               onClick={() => {
-                if (speedLock) { setSpeedLock(0); return; }
                 const seq = [1, 1.25, 1.5, 2];
                 const i = seq.indexOf(rate);
                 setRate(seq[(i + 1) % seq.length]);
