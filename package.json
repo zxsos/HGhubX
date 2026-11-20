@@ -19,6 +19,8 @@
     "test:ui-feedback": "node scripts/test-ui-feedback.mjs",
     "test:home-controls": "node tests/test-home-controls.mjs",
     "test:post-flicker": "node scripts/test-post-flicker.mjs",
+    "check:i18n": "node scripts/check-i18n.mjs",
+    "test:i18n": "node scripts/test-i18n.mjs",
     "test:smoke": "node scripts/test-smoke.mjs",
     "tauri": "tauri",
     "app:dev": "tauri dev",

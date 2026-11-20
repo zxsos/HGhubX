@@ -13,7 +13,13 @@
 ## 事实来源
 
 - 键与迁移：[`src/shared/storage/storage.ts`](../../src/shared/storage/storage.ts) 的 `STORAGE_KEYS`（`app`、`swipeEp`、
-  `theme`、`autoLine`）、`LEGACY_KEYS`、`StorageKey`、`readStorage()`。
+  `theme`、`autoLine`、`locale`）、`LEGACY_KEYS`、`StorageKey`、`readStorage()`。
+- 界面多语言：[`src/shared/i18n/index.ts`](../../src/shared/i18n/index.ts) 的 `Locale`、`DEFAULT_LOCALE`（`zh-CN`）、
+  `LOCALE_OPTIONS`、`tr()`、`N_()`、`initLocale()`、`setLocale()`、`useLocale()`；按需加载词典
+  [`src/shared/i18n/locales/zh-TW.ts`](../../src/shared/i18n/locales/zh-TW.ts)、
+  [`src/shared/i18n/locales/en.ts`](../../src/shared/i18n/locales/en.ts)；词典与占位符校验
+  [`scripts/check-i18n.mjs`](../../scripts/check-i18n.mjs) 及浏览器切换/持久化回归
+  [`scripts/test-i18n.mjs`](../../scripts/test-i18n.mjs)。
 - 内容偏好：[`src/shared/model/contentPreferences.ts`](../../src/shared/model/contentPreferences.ts) 的
   `CONTENT_PREFERENCES_KEY`、`MAX_BLOCKED_TAGS`、`MAX_TAG_LENGTH`、`normalizeTag()`、
   `normalizePreferences()`、`readPreferences()`、`tagIndex()`、`blockReason()`、`update()`、
@@ -47,6 +53,7 @@
 | `hghubx_app_v1` | `hghub_app_v1` | 游客偏好、收藏、关注、观看记录、收藏已知集数基线（`favEpCounts`）、搜索历史、音量、`muteOnStartup`、`swipeEp`、`preferHevc`、`fsIdleSecs`、`startupTab` |
 | `hghubx_swipe_ep_v2` | `hghub_swipe_ep_v2` | 上下划切集的一次性迁移标记 |
 | `hghubx_theme` | `hghub_theme` | `light`/`dark`/`system` |
+| `hghubx_locale` | — | 界面语言偏好（`zh-CN`/`zh-TW`/`en`，默认 `zh-CN`） |
 | `hghubx_auto_line` | `hg.autoLine` | 自动选线开关 |
 | `hghubx_usage_agreement` | — | 使用协议版本与签署时间 |
 | `hghubx_mobile_hold_guide_v1` | — | 移动端首次长按倍速教程已读标记 |
@@ -72,7 +79,9 @@
    当前标签页，修改后下次启动生效（#180-1）。
 3. 主题偏好单独存 `STORAGE_KEYS.theme`（`light`/`dark`/`system`）。启动时先应用已保存主题，
    再根据 `prefers-color-scheme` 解析 `system`；解析结果不覆盖偏好本身。写主题失败只忽略，
-   不阻塞界面。
+   不阻塞界面。界面语言单独存 `STORAGE_KEYS.locale`（`zh-CN`/`zh-TW`/`en`），未保存或词典加载失败时
+   回退默认 `zh-CN`（不跟随系统语言）；切换到 `zh-TW` 或 `en` 时先按需加载对应词典 chunk，成功后才写
+   `localStorage`、同步 `<html lang>` 并触发界面重绘。
 4. 内容偏好存在 `CONTENT_PREFERENCES_KEY`，结构是
    `{blockedTags, paused, hideUntagged}`。`normalizeTag()` 只做 trim、压缩空白和小写化，
    不做模糊匹配；最多 200 个标签、单个 64 字符。读取失败/JSON 损坏 → 全空偏好；写入失败 →

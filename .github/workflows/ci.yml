@@ -70,6 +70,8 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Version fields
         run: node scripts/check-version-sync.mjs
+      - name: i18n dictionaries
+        run: node scripts/check-i18n.mjs
       - name: Documentation links
         run: node scripts/check-doc-links.mjs
       - name: Build frontend
