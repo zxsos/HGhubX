@@ -173,6 +173,7 @@ type Store = {
   stack: Page[]; push: (p: PageInput) => void; openRootPage: (p: PageInput) => void; pop: () => void;
   user: User | null; setUser: (u: User | null, origin?: string) => void;
   accountScope: string; accountSync: { busy: boolean; error: string; lastSynced: number; favoritesKnown: boolean };
+  accountGeneration: () => number;
   syncAccount: (options?: { manual?: boolean }) => Promise<void>;
   setCollected: (kind: "video" | "post", id: number, on: boolean, knownEpisodes?: number) => Promise<void>;
   setLiked: (kind: "video" | "post", id: number, ep: number, on: boolean) => Promise<void>;
@@ -505,6 +506,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     tab, setTab, stack, push, openRootPage, pop,
     user, setUser, loginOpen, setLoginOpen, logout,
     accountScope: account.accountScope, accountSync: account.accountSync, syncAccount: account.syncAccount,
+    accountGeneration: account.generation,
     likes: account.likes, favs: account.favs, postLikes: account.postLikes, postFavs: account.postFavs, history: account.history, follows: account.follows,
     favEpCounts: account.favEpCounts, seedFavoriteEpisodes: account.seedFavoriteEpisodes, ackFavoriteEpisodes: account.ackFavoriteEpisodes,
     isLiked: account.isLiked, isFav: account.isFav,

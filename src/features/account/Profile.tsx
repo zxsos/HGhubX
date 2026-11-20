@@ -1,6 +1,6 @@
 import { Button, SegmentedControl, Surface } from "../../shared/ui/ios/controls";
 import { Loader } from "../../shared/ui/ios/effects";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { api, APP_VERSION, fmt, isMobile, platform } from "../../shared/api/api";
 import type { Detail, Post } from "../../shared/api/types";
 import { detailEpisodeCount, formatWatchProgress, resolveResumeTarget, unwatchedNewEpisodes } from "../../shared/model/favoriteProgress";
@@ -22,7 +22,7 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
   const {
     user, setLoginOpen, logout, history, favs, postFavs, favEpCounts,
     seedFavoriteEpisodes, ackFavoriteEpisodes, setCollected, toast,
-    clearHistory, removeHistory, push, accountSync, syncAccount,
+    clearHistory, removeHistory, push, accountSync, syncAccount, accountGeneration,
   } = useStore();
   const [tab, setTab] = useState<"fav" | "history">("fav");
   const [favKind, setFavKind] = useState<"video" | "post">("video");
@@ -57,7 +57,19 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
   } | null>(null);
   const [removingBlocked, setRemovingBlocked] = useState(false);
   const mounted = useRef(true);
-  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  const actionRevision = useRef(0);
+  useLayoutEffect(() => {
+    mounted.current = true;
+    const invalidate = () => { actionRevision.current++; };
+    window.addEventListener("hg:line-changed", invalidate);
+    window.addEventListener("hg:proxy-changed", invalidate);
+    return () => {
+      mounted.current = false;
+      invalidate();
+      window.removeEventListener("hg:line-changed", invalidate);
+      window.removeEventListener("hg:proxy-changed", invalidate);
+    };
+  }, []);
 
   const showingPosts = tab === "fav" && favKind === "post";
   const selectionMode = selectedIds.length > 0;
@@ -199,33 +211,45 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
   };
   const confirmRemoveSelected = async () => {
     if (removalPending.current || !selectedIds.length) return;
+    const generation = accountGeneration();
+    const revision = actionRevision.current;
+    const current = () => mounted.current && accountGeneration() === generation && actionRevision.current === revision;
     removalPending.current = true;
     setRemoving(true); setRemoveError("");
     const targets = [...selectedIds];
     try {
+      if (!current()) return;
       if (tab === "history") {
         await removeHistory(targets);
+        if (!current()) return;
       } else {
         const failed: number[] = [];
         for (const id of targets) {
-          try { await setCollected(showingPosts ? "post" : "video", id, false); }
-          catch { failed.push(id); }
+          if (!current()) return;
+          try {
+            await setCollected(showingPosts ? "post" : "video", id, false);
+            if (!current()) return;
+          } catch {
+            if (!current()) return;
+            failed.push(id);
+          }
         }
         if (failed.length) {
+          if (!current()) return;
           setSelectedIds(failed);
           throw new Error(failed.length === targets.length ? "移除失败，请重试" : `已移除 ${targets.length - failed.length} 项，${failed.length} 项失败，请重试`);
         }
       }
-      if (mounted.current) {
+      if (current()) {
         setSelectedIds([]);
         setRemoveOpen(false);
         toast(tab === "history" ? `已删除 ${targets.length} 条观看历史` : `已取消收藏 ${targets.length} 项`, "info");
       }
     } catch (error) {
-      if (mounted.current) setRemoveError(error instanceof Error ? error.message : "移除失败，请重试");
+      if (current()) setRemoveError(error instanceof Error ? error.message : "移除失败，请重试");
     } finally {
       removalPending.current = false;
-      if (mounted.current) setRemoving(false);
+      if (current()) setRemoving(false);
     }
   };
 

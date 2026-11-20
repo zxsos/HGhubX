@@ -16,7 +16,6 @@ if (!browserExecutable) {
 if (!browserExecutable) browserExecutable = chromium.executablePath();
 const scripts = [
   "test-inplace-search-back.mjs",
-  "test-account-sync-empty-state.mjs",
   "test-network-settings.mjs",
 ];
 await mkdir(output, { recursive: true });

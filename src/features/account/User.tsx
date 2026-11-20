@@ -170,9 +170,10 @@ function UserContent({ id, name, onBack, wide }: { id: number; name?: string; on
     return () => { alive = false; };
   }, [id, infoReload]);
 
+  const isOwnProfile = user?.id === id;
   const following = follows.includes(id);
   const onFollow = async () => {
-    if (followPending.current || actionPending(`follow:${id}`)) return;
+    if (isOwnProfile || followPending.current || actionPending(`follow:${id}`)) return;
     if (!user) { setLoginOpen(true); return; }
     const version = ++followVersion.current;
     const on = !following;
@@ -213,10 +214,10 @@ function UserContent({ id, name, onBack, wide }: { id: number; name?: string; on
             <span>粉丝 <b className="text-on">{stat(stats?.followers)}</b></span>
             <span>获赞 <b className="text-on">{stat(stats?.like_count)}</b></span>
           </div>
-          <Button onClick={() => void onFollow()} disabled={followBusy || actionPending(`follow:${id}`)} aria-busy={followBusy || actionPending(`follow:${id}`)} aria-pressed={following}
+          {!isOwnProfile && <Button onClick={() => void onFollow()} disabled={followBusy || actionPending(`follow:${id}`)} aria-busy={followBusy || actionPending(`follow:${id}`)} aria-pressed={following}
             className={`min-h-11 px-3.5 rounded-full text-[13px] font-semibold shrink-0 ${following ? "bg-s3 text-mut" : "bg-primary text-on-primary"}`}>
             {followBusy || actionPending(`follow:${id}`) ? "处理中…" : following ? "已关注" : "+ 关注"}
-          </Button>
+          </Button>}
         </div>
         {followError && <p role="alert" className="mt-3 text-[13px] text-danger break-words">{followError}。关注状态未更改，请重试。</p>}
       </Surface>

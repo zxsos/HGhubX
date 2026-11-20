@@ -25,6 +25,7 @@ Feed 负责列表播放页的条目位置、详情/帖子读取、标签门、�
 - [`src/features/posts/Posts.tsx`](../../src/features/posts/Posts.tsx) 的 `PostDetail`：
   吃瓜详情的正文/播放数据 effect 与线路事件下的后台刷新。
 - [`src/shared/model/store.tsx`](../../src/shared/model/store.tsx) 的 `lineEpoch` 和 `accountScope` 传递；
+  [`src/shared/model/store.tsx`](../../src/shared/model/store.tsx) 暴露的 `accountGeneration` 与
   [`src/shared/model/accountData.ts`](../../src/shared/model/accountData.ts) 的 `generation`；
   [`src/shared/model/contentPreferences.ts`](../../src/shared/model/contentPreferences.ts) 的 `blockReason`。
 - 后端读取：[`src-tauri/src/api/feed.rs`](../../src-tauri/src/api/feed.rs)、
@@ -80,6 +81,8 @@ Feed 负责列表播放页的条目位置、详情/帖子读取、标签门、�
 
 ## 约束与失败行为
 
+- [创作者主页](../../src/features/account/User.tsx)按当前登录账号 ID 判断是否为本人；
+  本人主页隐藏「关注」，并在处理关注操作前拦截本人目标。其他创作者主页仍可关注或取消关注。
 - `details`/`posts` 是 Feed 实例的局部状态，不是跨应用持久缓存；页面销毁后重新读取。
   这避免把旧标签或旧正文带进新会话，但也意味着返回 Feed 时可能重新请求。
 - 详情读失败不能标记 `checked`，不能把 `tags` 当空数组；启用过滤时不能让播放器抢跑。
@@ -97,7 +100,10 @@ Feed 负责列表播放页的条目位置、详情/帖子读取、标签门、�
   过渡期的触摸会被列表原生滚动吃掉（2.2.0 反馈的连划跳视频根因）。
 - 标准版「我的」卡片支持电脑右键、手机长按进入多选，继续点按切换选择；收藏页逐项取消收藏，历史页
   调用 `removeHistory()` 只删除选中记录。批量操作需确认，切换收藏/历史或短剧/帖子会清空选择；
-  收藏部分失败时保留失败项供重试，未选中的观看记录和收藏互不影响。
+  收藏部分失败时保留失败项供重试，未选中的观看记录和收藏互不影响。批量取消收藏在开始时捕获
+  `accountGeneration` 与 `actionRevision`；每项请求前后都校验二者，线路/代理事件或组件卸载会使修订号失效，
+  随即停止未发送项并抑制旧批次的错误、完成状态与 toast。账号代次检查独立于组件重挂载，避免 cleanup
+  执行前队列继续用新账号发起下一项。
 - 标准版「我的」收藏与观看历史保持原有网格列数；滚动容器接近底部哨兵（提前 300px）时
   每次扩展 12 项，不再显示「加载更多」按钮。
 - 标准版「我的 → 收藏 → 短剧」重新激活时，按已展现的列表范围后台刷新详情，每批最多 6 部。
@@ -127,8 +133,12 @@ cargo test --manifest-path src-tauri/Cargo.toml --lib
 ```
 
 `test:smoke` 当前包含 `api-loading`、`storage-migration`、`line-selection`、
-`diagnostic-copy`。浏览器 fixture 使用 mock Tauri IPC 且阻断外部请求，
+`diagnostic-copy`、`ui-feedback`、`home-controls`、`account-sync`（最后运行）。账号切换期间批量取消收藏的
+fixture 位于 `scripts/test-account-sync-empty-state.mjs`；需要单独运行时可执行
+`node scripts/test-account-sync-empty-state.mjs`。浏览器 fixture 使用 mock Tauri IPC 且阻断外部请求，
 不能证明真实上游的正文结构或账号接口；真实接口变化需要另加网络隔离的 fixture 或手动验证。
 `test:post-flicker` 是吃瓜详情线路/代理事件的回归（issue #165）：浏览器 fixture，
 mock IPC，本地 ffmpeg HLS 分片，不访问上游；需要 ffmpeg，归入播放诊断
 （`pnpm test:playback --scenarios post-flicker`，CI 的 core 分片），不进 smoke。
+账号切换 fixture 会挂起第一项取消收藏请求，切换账号后再释放，并检查没有发送第二项、没有向新账号
+写入旧结果或弹出旧批次成功提示；该回归随 `pnpm test:smoke` 的 `account-sync` 套件运行。

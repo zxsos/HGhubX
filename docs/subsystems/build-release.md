@@ -63,8 +63,10 @@ ad-hoc 签名都不应进入仓库或本机脚本输出。
    - `smoke`：安装 Chromium，运行 `pnpm test:smoke`。
    - `playback`：优先使用运行器的 FFmpeg 和浏览器；需要安装 FFmpeg 时沿用维护者指定的
      `https://mirrors.edge.kernel.org/ubuntu/`，失败不自动换源。单次工作流并行执行 `core` 与 `extended`
-     （覆盖 `seek,legacy,lifecycle,gesture,proxy,portrait-fit,ios-native,recovery,review,tv`）；
-     手动 `mode=playback` 可只跑播放诊断或指定 `scenarios` 子集。
+     （覆盖 `seek,legacy,lifecycle,gesture,proxy,portrait-fit,ios-native,recovery,review,tv,post-flicker`）；
+     `review` 场景运行 `scripts/test-round-review.mjs`（搜索返回键与网络设置检查）；账号同步/批量取消收藏
+     回归 `scripts/test-account-sync-empty-state.mjs` 在 smoke 的 `account-sync` 套件中运行，不在 `review` 中重复执行。
+     手动 `mode=playback` 可只跑播放诊断或指定 `scenarios` 子集（如 `pnpm test:playback --scenarios review`）。
 5. CI/CD 打包与发布（推送 `v*` tag 或手动 `mode=package`）：在分支上手动运行且 `tag` 留空时，
    只构建所选范围（如 `platforms=ios` 仅验证未签名 ipa），不发布 GitHub Release。各平台构建 job 先跑
    `node scripts/set-version.mjs "$V"`：同步 `package.json`、`tauri.conf.json`（含
@@ -142,6 +144,7 @@ node scripts/check-doc-links.mjs
 node scripts/check-version-sync.mjs
 ```
 
-`make check` 不包含 smoke；需要浏览器用例时单独 `pnpm test:smoke`。`pnpm test:playback` 需要
+`make check` 不包含 smoke；需要浏览器用例时单独 `pnpm test:smoke`（含 `account-sync`；账号 fixture
+也可单独用 `node scripts/test-account-sync-empty-state.mjs` 运行）。`pnpm test:playback` 需要
 FFmpeg/Chromium，iOS 打包校验通过 `ci.yml`（`mode=package, platforms=ios`）在 macOS runner 执行。
 报告里必须写清命令、版本/输入、字面结果和退出状态；没有运行的命令不能写成“已通过”。

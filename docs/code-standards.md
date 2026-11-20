@@ -83,7 +83,8 @@
 例：`src-tauri/src/net/tests.rs` 的代理探测测试构造真实的
 `{"status":1,"data":{"items":[...],"pagination":{...}}}`，并验证 POST 信封、无 Authorization；
 `media/mod.rs` 的 `live_play_chain` 标 `#[ignore]`，因为依赖上游实时地址；
-`scripts/test-smoke.mjs` 只跑不需要 ffmpeg/真实 Tauri/上游的四个用例。
+`scripts/test-smoke.mjs` 只跑不需要 ffmpeg/真实 Tauri/上游的七个套件：`api-loading`、
+`storage-migration`、`line-selection`、`diagnostic-copy`、`ui-feedback`、`home-controls`、`account-sync`（最后运行）。
 
 检查：测试进程是否能离线通过；fixture 是否包含 `status` 包装、分页、可选字段缺失和错误页。
 

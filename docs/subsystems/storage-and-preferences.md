@@ -20,7 +20,9 @@
   `useContentPreferences()`。
 - 本地账号：[`src/shared/model/accountData.ts`](../../src/shared/model/accountData.ts) 的 `ACCOUNT_KEY`、`CREDENTIAL_KEY`、
   `SyncState`、`favoritesKnown`、`favEpCounts`、`sanitize()`、`persist()`、`setUser()`、`syncAccount()`、`clearHistory()`、
-  `removeHistory()`、`addHistory()`、`accountScope`、`saveCredential()`/`readCredential()`/`clearCredential()`；收藏观看进度与新集更新计算见
+  `removeHistory()`、`addHistory()`、`generation()`、`accountScope`、`saveCredential()`/`readCredential()`/`clearCredential()`；
+  「我的」批量取消收藏协调与动作修订见 [`src/features/account/Profile.tsx`](../../src/features/account/Profile.tsx)；
+  收藏观看进度与新集更新计算见
   [`src/shared/model/favoriteProgress.ts`](../../src/shared/model/favoriteProgress.ts)。
 - 应用偏好：[`src/shared/model/store.tsx`](../../src/shared/model/store.tsx) 的 `Persist`、`DEFAULTS`、
   `normalizeHistory()`、`loadPersist()`、`readThemePreference()`、`LS`、
@@ -32,8 +34,9 @@
 - 清缓存：[`src-tauri/src/api/platform.rs`](../../src-tauri/src/api/platform.rs) 的
   `cache_clear`；[`src-tauri/src/cache.rs`](../../src-tauri/src/cache.rs) 的
   `CacheClearReport`、`clear_web_cache()`、`safe_cache_types()`。
-- 账号同步空状态：[`scripts/test-account-sync-empty-state.mjs`](../../scripts/test-account-sync-empty-state.mjs)
-  和 [`src/features/account/Profile.tsx`](../../src/features/account/Profile.tsx) 的 `favoriteStateUnknown`。
+- 账号同步与批量收藏回归：[`scripts/test-account-sync-empty-state.mjs`](../../scripts/test-account-sync-empty-state.mjs)，
+  由 `scripts/test-smoke.mjs` 的最后一项 `account-sync` 调用；界面未知态见
+  [`src/features/account/Profile.tsx`](../../src/features/account/Profile.tsx) 的 `favoriteStateUnknown`。
 - 迁移回归：[`scripts/test-storage-migration.mjs`](../../scripts/test-storage-migration.mjs)、
   [`tests/storage-migration.tsx`](../../tests/storage-migration.tsx)。
 
@@ -101,6 +104,10 @@
   自动重登只走原线路，或两端均可信且共享账号体系的线路。返回用户 ID 匹配且起始会话仍有效，
   才提交新 token 并重试资料和历史。失败保留原会话，提示在当前线路手动登录，同一代次不循环重登；
   手动「重试同步」重置拒绝标记。
+- 批量取消收藏：开始时捕获 `accountGeneration` 和 `actionRevision`；每项请求前后比较快照。账号代次改变，
+  或收到线路/代理变化事件、组件卸载导致修订号递增时，停止队列中尚未发送的项目，不写旧批次反馈。
+  `removeHistory()` 自身仍按账号代次与请求身份保护远端删除；外层确认流程只在调用前后校验组件反馈，
+  不把线路事件描述为可中断其内部远端队列。
 - 收藏未知：初始/登录/失败同步 → `favoritesKnown=false` → “收藏状态未知”；
   成功返回 `favorite_video_ids`（即使为空）→ true → 才允许显示“还没有收藏”。
 - 清历史：确认 → 增加 `clearVersion`、取消定时上传 → 远端分批删除当前账号历史 →
@@ -125,6 +132,8 @@
   把用户的 `false` 改回 `true`。
 - `accountScope`、`lineEpoch`、`generation` 必须一起进入异步结果校验；旧账号或旧线路的返回
   不能写进当前桶，否则会把 A 的收藏/历史显示在 B 上。
+- 批量收藏操作还要捕获最初的 `accountGeneration` 与 `actionRevision`，并在每项请求前后校验；
+  `lineEpoch` 的 React 更新和重挂载不是同步取消信号，线路/代理事件应立即让修订号失效。
 - 会话 token 绑定 origin 和 revision。`token()`/`user()`/`snapshot()` 按 origin 精确匹配；
   唯一跨 origin 通道是 `rebase_if_trusted()`——仅当旧新两端都是固定线路或本进程发布页确认的
   可信镜像时改写 origin（revision 递增并落盘），否则切线路仍 `SessionStore.clear()`。
@@ -142,14 +151,16 @@
 
 ```sh
 node scripts/test-storage-migration.mjs
-node scripts/test-account-sync-empty-state.mjs
+pnpm test:smoke
 cargo test --manifest-path src-tauri/Cargo.toml --lib
 pnpm test:playback --scenarios tv
 ```
 
 `test-storage-migration` 覆盖旧键、写/删失败、损坏 JSON 和一次性 swipe 迁移；
-`test-account-sync-empty-state` 覆盖同步中、失败、缺收藏字段、历史失败等“未知”状态，
-账号 401 静默重登成功与失败，以及返回收藏页后已缓存条目出现新集的情况。
+`pnpm test:smoke` 包含 `account-sync` 套件，调用 `test-account-sync-empty-state.mjs`，覆盖同步中、失败、
+缺收藏字段、历史失败等“未知”状态，账号 401 静默重登成功与失败、返回收藏页后已缓存条目出现新集，
+以及切换账号时停止批量取消收藏队列的回归；如需单独执行该脚本，可运行
+`node scripts/test-account-sync-empty-state.mjs`。
 `src-tauri/src/session.rs` 的 `silent_login_preserves_existing_session_on_user_mismatch` 覆盖重登接口返回另一个账号时
 原 token、用户、线路与代次保持不变。
 这些是本地 fixture，不证明真实账号后端返回结构；真实接口变化需另加 fixture。
