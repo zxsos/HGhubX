@@ -14,7 +14,7 @@ import { copyPlaybackLog, initPlaybackLog, setPlaybackLog, tracePlayback, usePla
 import { formatNetDiag, shortVerdict } from "../../shared/diagnostics/netDiagReport";
 import { copyText } from "../../shared/lib/clipboard";
 import { Loader } from "../../shared/ui/ios/effects";
-import { IBack, IBoltF, IBroom, IChevR, ICompress, IHeart, IInfo, ILink, ILockF, IMoon, IRefresh, ISun, IVolMute } from "../../shared/ui/icons";
+import { IBack, IBoltF, IBroom, IChevR, ICompress, IHeart, IHome, IInfo, ILink, ILockF, IMoon, IRefresh, ISun, IVolMute } from "../../shared/ui/icons";
 
 const SETTING_GROUPS = ["外观", "播放", "内容偏好", "本地数据", "网络", "播放诊断", "其他"] as const;
 type SettingGroup = typeof SETTING_GROUPS[number];
@@ -22,7 +22,7 @@ type SettingGroup = typeof SETTING_GROUPS[number];
 /* 独立设置页：线路 / 外观 / 播放 / 本地数据 / 清理缓存 / 网络诊断 / 关于
    入口：Windows 侧栏「设置」、Android「我的」右上角齿轮 */
 export default function Settings({ onBack, initialSection }: { onBack: () => void; wide: boolean; initialSection?: "内容偏好" }) {
-  const { theme, themePreference, setTheme, favs, history, muteOnStartup, setMuteOnStartup, preferHevc, setPreferHevc, fsIdleSecs, setFsIdleSecs, strictSecurity, strictSecurityReady, securityPending, cliRelaxed, setStrictSecurity, toast } = useStore();
+  const { theme, themePreference, setTheme, favs, history, muteOnStartup, setMuteOnStartup, preferHevc, setPreferHevc, fsIdleSecs, setFsIdleSecs, startupTab, setStartupTab, strictSecurity, strictSecurityReady, securityPending, cliRelaxed, setStrictSecurity, toast } = useStore();
   const [about, setAbout] = useState(false);
   const [agreementOpen, setAgreementOpen] = useState(false);
   const [clearOpen, setClearOpen] = useState(false);
@@ -137,6 +137,18 @@ export default function Settings({ onBack, initialSection }: { onBack: () => voi
           </>)}
 
           {section("播放", <>
+            <div className="ios-settings-row flex-wrap">
+              <span className="ios-setting-icon"><IHome size={16} /></span>
+              <div className="flex-1 min-w-0">
+                <div className="text-[14px] text-on">启动时打开的页面</div>
+                <div className="text-[12px] text-mut">下次启动生效；选非首页可避免开机自动播放、打乱观看历史</div>
+              </div>
+              <SegmentedControl className="w-full" aria-label="启动时打开的页面" activeIndex={(["home", "search", "category", "profile"] as const).indexOf(startupTab)}>
+                {([["home", "首页"], ["search", "搜索"], ["category", "分类"], ["profile", "我的"]] as const).map(([value, label]) => (
+                  <Button key={value} type="button" aria-pressed={startupTab === value} onClick={() => setStartupTab(value)}>{label}</Button>
+                ))}
+              </SegmentedControl>
+            </div>
             <div className="ios-settings-row">
               <span className="ios-setting-icon"><IVolMute size={16} /></span>
               <div className="flex-1 min-w-0">

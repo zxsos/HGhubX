@@ -44,7 +44,7 @@
 
 | 运行期键 | 旧键 | 内容 |
 | --- | --- | --- |
-| `hghubx_app_v1` | `hghub_app_v1` | 游客偏好、收藏、关注、观看记录、收藏已知集数基线（`favEpCounts`）、搜索历史、音量、`muteOnStartup`、`swipeEp`、`preferHevc`、`fsIdleSecs` |
+| `hghubx_app_v1` | `hghub_app_v1` | 游客偏好、收藏、关注、观看记录、收藏已知集数基线（`favEpCounts`）、搜索历史、音量、`muteOnStartup`、`swipeEp`、`preferHevc`、`fsIdleSecs`、`startupTab` |
 | `hghubx_swipe_ep_v2` | `hghub_swipe_ep_v2` | 上下划切集的一次性迁移标记 |
 | `hghubx_theme` | `hghub_theme` | `light`/`dark`/`system` |
 | `hghubx_auto_line` | `hg.autoLine` | 自动选线开关 |
@@ -67,7 +67,9 @@
 2. `loadPersist()` 从 `STORAGE_KEYS.app` 读取应用状态（收藏、观看记录、搜索历史、音量、静音、
    `swipeEp`、`preferHevc`），用 `DEFAULTS` 合并并 `normalizeHistory()` 升级旧的 `number[]`
    观看记录。`swipeEp` 有一个一次性迁移：旧配置的 `false` 是旧默认，不视为用户显式关闭；
-   迁移标记写入 `STORAGE_KEYS.swipeEp` 后才不再改用户后来选择的 `false`。
+   迁移标记写入 `STORAGE_KEYS.swipeEp` 后才不再改用户后来选择的 `false`。`startupTab`
+   只接受 `home`/`search`/`category`/`profile`，缺失或非法回退 `home`；启动时以它初始化
+   当前标签页，修改后下次启动生效（#180-1）。
 3. 主题偏好单独存 `STORAGE_KEYS.theme`（`light`/`dark`/`system`）。启动时先应用已保存主题，
    再根据 `prefers-color-scheme` 解析 `system`；解析结果不覆盖偏好本身。写主题失败只忽略，
    不阻塞界面。

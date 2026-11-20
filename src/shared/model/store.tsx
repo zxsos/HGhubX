@@ -77,13 +77,15 @@ type Persist = GuestData & {
   preferHevc: boolean;
   /** 移动全屏控件无操作自动隐藏秒数：0=不自动隐藏（#146-3） */
   fsIdleSecs: number;
+  /** 启动时打开的页面：默认首页；选非首页可避免开机自动播放污染观看历史（#180-1） */
+  startupTab: Tab;
 };
 
 const LS = STORAGE_KEYS.app;
 const DEFAULTS: Persist = {
   likes: [], favs: [], history: [], follows: [],
   muted: true, muteOnStartup: true, volume: 0.7, searchHist: [], swipeEp: true, preferHevc: false,
-  fsIdleSecs: 3,
+  fsIdleSecs: 3, startupTab: "home",
 };
 
 /** 旧版本 history 是 number[]，读出来时升级成带进度的结构 */
@@ -124,7 +126,8 @@ function loadPersist(): Persist {
       }
     } catch { /* ignore */ }
     const fsIdleSecs = [0, 3, 5, 10].includes(p.fsIdleSecs) ? p.fsIdleSecs : DEFAULTS.fsIdleSecs;
-    return { ...p, swipeEp, muteOnStartup, muted: muteOnStartup || p.muted === true, fsIdleSecs, history: normalizeHistory(p.history) };
+    const startupTab: Tab = (["home", "search", "category", "profile"] as Tab[]).includes(p.startupTab) ? p.startupTab : "home";
+    return { ...p, swipeEp, muteOnStartup, muted: muteOnStartup || p.muted === true, fsIdleSecs, startupTab, history: normalizeHistory(p.history) };
   } catch {
     return DEFAULTS;
   }
@@ -204,6 +207,7 @@ type Store = {
   swipeEp: boolean; setSwipeEp: (on: boolean) => void;
   preferHevc: boolean; setPreferHevc: (on: boolean) => void;
   fsIdleSecs: number; setFsIdleSecs: (s: number) => void;
+  startupTab: Tab; setStartupTab: (t: Tab) => void;
   volume: number; setVolume: (v: number) => void;
   searchHist: string[]; addSearch: (q: string) => void; clearSearchHist: () => void;
   strictSecurity: boolean; strictSecurityReady: boolean; securityPending: boolean; cliRelaxed: boolean; setStrictSecurity: (on: boolean) => Promise<void>;
@@ -257,7 +261,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [themePreference, setThemePreferenceState] = useState<ThemePreference>(readThemePreference);
   const [theme, setThemeState] = useState<Theme>(() => resolveTheme(readThemePreference()));
   const themeRef = useRef(theme);
-  const [tab, setTabRaw] = useState<Tab>("home");
+  const [tab, setTabRaw] = useState<Tab>(p.startupTab);
   const tabRef = useRef(tab);
   tabRef.current = tab;
   const [stack, setStack] = useState<Page[]>([]);
@@ -494,6 +498,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const setFsIdleSecs = useCallback((secs: number) => {
     setP((s) => ({ ...s, fsIdleSecs: [0, 3, 5, 10].includes(secs) ? secs : 3 }));
   }, []);
+  const setStartupTab = useCallback((t: Tab) => {
+    setP((s) => ({ ...s, startupTab: (["home", "search", "category", "profile"] as Tab[]).includes(t) ? t : "home" }));
+  }, []);
   const setVolume = useCallback((v: number) => {
     const volume = Math.max(0, Math.min(1, v));
     if (volume > 0) lastVolumeRef.current = volume;
@@ -518,12 +525,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     swipeEp: p.swipeEp, setSwipeEp,
     preferHevc: p.preferHevc, setPreferHevc,
     fsIdleSecs: p.fsIdleSecs, setFsIdleSecs,
+    startupTab: p.startupTab, setStartupTab,
     searchHist: p.searchHist, addSearch, clearSearchHist,
     strictSecurity, strictSecurityReady, securityPending, cliRelaxed, setStrictSecurity,
     get toasts() { return toastList; }, toast, lineEpoch,
   }), [theme, themePreference, setTheme, tab, setTab, stack, push, openRootPage, pop, user, loginOpen, logout,
     p, account,
-    setMuted, setMuteOnStartup, setSwipeEp, setPreferHevc, setFsIdleSecs, setVolume, addSearch, clearSearchHist, strictSecurity, strictSecurityReady, securityPending, cliRelaxed, setStrictSecurity,
+    setMuted, setMuteOnStartup, setSwipeEp, setPreferHevc, setFsIdleSecs, setStartupTab, setVolume, addSearch, clearSearchHist, strictSecurity, strictSecurityReady, securityPending, cliRelaxed, setStrictSecurity,
     toast, lineEpoch, theater, setTheater, fs, setFs, clean, setClean, locked, setLocked]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

@@ -15,8 +15,8 @@ const state = {
   searchHist: ["保留搜索记录"], volume: 0.42, muted: false,
   muteOnStartup: false, swipeEp: false, preferHevc: true,
 };
-// 迁移会为新字段补默认值（#146-3 全屏闲置隐藏秒数）：旧种子不带该字段，落盘应补齐。
-const migrated = { ...state, fsIdleSecs: 3 };
+// 迁移会为新字段补默认值（#146-3 全屏闲置隐藏秒数、#180-1 启动页）：旧种子不带这些字段，落盘应补齐。
+const migrated = { ...state, fsIdleSecs: 3, startupTab: "home" };
 const oldData = {
   hghub_app_v1: JSON.stringify(state), hghub_swipe_ep_v2: "1", hghub_theme: "light",
 };
