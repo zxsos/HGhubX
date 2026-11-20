@@ -10,9 +10,20 @@ import {
   IHeart, IHeartF, IList, ILockF, IMore, IPlayF, IStar, IStarF, IVertSwap, IVol, IVolMute,
 } from "../../shared/ui/icons";
 import { CurrentVideoTags } from "./CurrentVideoTags";
+import { useTagHint } from "./useTagHint";
 import type { FeedMeta } from "./useFeedActions";
 import type { FeedPanel } from "./useFeedViewport";
 import "../../styles/video-details.css";
+
+function MobileTagHint() {
+  const tagHint = useTagHint();
+  if (tagHint.dismissed) return null;
+  return <div className="current-video-tags-hint">
+    <span>点按查看同类 · 长按屏蔽</span>
+    <Button type="button" className="current-video-tags-hint-dismiss"
+      aria-label="不再显示标签操作提示" onClick={tagHint.dismiss}>不再显示</Button>
+  </div>;
+}
 
 type Props = {
   isActive: boolean;
@@ -287,7 +298,7 @@ export default function FeedItemChrome({
                 <p className="text-[15px] font-semibold leading-snug hg-ink-2 hg-ov-shadow-strong clamp-2">{meta.title}</p>
                 {kind === "video" && <div className="mobile-video-episode">第{curEp}集</div>}
                 <CurrentVideoTags tags={meta.tags} onOpen={openTag} onBlock={tag => openTagMenu([tag])} />
-                {meta.tags.length > 0 && <div className="current-video-tags-hint">点按查看同类 · 长按屏蔽</div>}
+                {meta.tags.length > 0 && <MobileTagHint />}
               </div>
             </div>
           )}
