@@ -332,7 +332,7 @@ export default function FeedItemChrome({
                 </div>
               )}
             </div>}
-            {!clean && <div className="mobile-playback-dock">
+            {!clean && <div className={mode === "home" && kind === "video" ? "mobile-playback-dock mobile-playback-dock-home" : "mobile-playback-dock"}>
               {kind === "video" ? <Button aria-label={episodes.length ? `选集，共 ${episodes.length} 集` : "选集"} onClick={() => setPanel("episodes")} className="mobile-playback-episodes">
                 <IList size={18} /><span>选集{episodes.length > 0 ? ` · 全${episodes.length}集` : ""}</span><IChevronUp size={16} />
               </Button> : <Button aria-label="图文详情" onClick={() => setPanel("detail")} className="mobile-playback-episodes">
