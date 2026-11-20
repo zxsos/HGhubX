@@ -217,9 +217,9 @@ async function gestureChecks(page) {
     surface.dispatchEvent(new PointerEvent('pointerup', { ...at(y1), buttons: 0 }));
   });
   await swipeUp();
-  await page.getByText('详情 · 第 2 集', { exact: true }).first().waitFor();
+  await page.locator('.mobile-video-episode').filter({ hasText: /^第2集$/ }).first().waitFor();
   await swipeUp();
-  await page.getByText('详情 · 第 3 集', { exact: true }).first().waitFor();
+  await page.locator('.mobile-video-episode').filter({ hasText: /^第3集$/ }).first().waitFor();
   await page.evaluate(() => window.__releasePlay());
   await page.waitForFunction(() => window.playerSeekFixture.logs.some(e => e.event === 'play.resolve' && e.data.video_id === 991 && e.data.episode === 3));
   assert.equal(await page.evaluate(() => window.playerSeekFixture.logs.some(e => e.event === 'play.resolve' && e.data.video_id === 992)), false,
