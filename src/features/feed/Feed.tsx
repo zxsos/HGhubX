@@ -141,7 +141,7 @@ export default function Feed({
   } = useFeedViewport({
     playerRootRef, boxRef, videoRef, pinchRef, videoIds, effectiveVideoIds, startIndex, mode, kind, active,
     isItemAllowed, isDesktop, fs, setFs, setClean, paused, wake, swipeEp, epMap, setEpMap,
-    episodesByVideo, setPanel, onNearEnd,
+    episodesByVideo, setPanel, onNearEnd, toast,
   });
 
   const curId = effectiveVideoIds[index];

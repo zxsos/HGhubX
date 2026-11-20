@@ -118,9 +118,12 @@ Feed 负责列表播放页的条目位置、详情/帖子读取、标签门、�
 - 吃瓜详情的正文仅在正文内容或安全模式改变时重新清洗。渲染时复用同一个
   `dangerouslySetInnerHTML` 属性对象；滚动更新「阅读进度」以及刷新得到同一正文时不替换
   图片节点，避免懒加载图片反复消失、重载和撑开布局（issue #165）。
-- 上下划切集的提示 toast 带 `tag="episode"`（`useFeedTouchGestures.ts`）；`store.tsx` 的
+- 上下划切集的提示 toast 带 `tag="episode"`（`useFeedTouchGestures.ts` 与 `useFeedViewport.ts`）；`store.tsx` 的
   `pushToastItem` 对同 tag 原地替换内容并重置 2200ms 计时，快速连续划集只显示一张最新卡片，
-  不堆叠、不重放入场动画；无 tag 的 toast 仍按原逻辑堆叠（最多 3 张）。
+  不堆叠、不重放入场动画；无 tag 的 toast 仍按原逻辑堆叠（最多 3 张）。桌面端开启「上下划切集」或处于全屏时，
+  `useFeedViewport` 在播放区滚动容器上注册非被动 `wheel` 监听（`{ passive: false }`），按位移阈值与冷却时间将
+  滚轮/触控板纵向滚动转为单步 `stepDir`，避免浏览器原生纵向滚动直接切到下一部剧；底部控制栏「下一集 ↓ / 下一部 ↓」
+  按钮同样遵循 `swipeEp` 开关。
 
 ## 验证命令
 
