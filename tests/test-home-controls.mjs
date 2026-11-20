@@ -88,7 +88,7 @@ try {
   assert.ok(cleanLockBox && cleanLockBox.x > 390 / 2);
   assert.equal(await page.locator(".feed-current-quality").count(), 0);
   await page.screenshot({ path: path.join(output, "home-clean.png") });
-  await page.getByRole("button", { name: "屏幕锁定", exact: true }).click();
+  await page.getByRole("button", { name: "锁定屏幕", exact: true }).click();
   assert.equal(await probe("locked"), true);
   await page.evaluate(() => { window.homeControlsProbe.setLocked(false); window.homeControlsProbe.setClean(false); });
   console.log("✓ clean-screen playback shows a right-center screen-lock control");

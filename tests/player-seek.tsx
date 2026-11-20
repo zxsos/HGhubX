@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { createRoot } from "react-dom/client";
 import { Feed } from "../src/features/feed";
 import { AppProvider } from "../src/shared/model/store";
+import { ToastHost } from "../src/shared/ui/ui";
 import { api } from "../src/shared/api/api";
 import "../src/index.css";
 import { flushPlaybackLog, initPlaybackLog, playbackLogApi, setPlaybackLog } from "../src/shared/diagnostics/playbackDiagnostics";
@@ -114,6 +115,7 @@ function Fixture() {
   fixture.setActive = setActive;
   fixture.setMounted = setMounted;
   return <AppProvider>
+    <ToastHost />
     <div data-player-fixture data-active={active} style={portraitFitTest
       ? { position: "relative", width: window.innerWidth, height: window.innerHeight }
       : { position: "relative", width: 900, height: 540 }}>

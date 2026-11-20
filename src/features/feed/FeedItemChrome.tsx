@@ -135,7 +135,7 @@ export default function FeedItemChrome({
         </span>
       )}
       {!isDesktop && kind === "video" && clean && (
-        <Button aria-label="屏幕锁定" onClick={onLock} className="mobile-clean-lock"
+        <Button aria-label="锁定屏幕" title="锁定屏幕" onClick={onLock} className="mobile-clean-lock"
           style={{ right: playbackLockRightInset(rotated, fs) }}>
           <ILockF size={19} />
         </Button>

@@ -1,5 +1,5 @@
 import { Button } from "../../shared/ui/ios/controls";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { registerOverlayBack } from "../../shared/lib/back";
 import { ILockF } from "../../shared/ui/icons";
 
@@ -10,20 +10,21 @@ export function playbackLockRightInset(rotated = false, immersive = false) {
 
 /** Shield pointer input, hardware back, and playback/shell shortcuts without pausing the media. */
 export default function PlaybackLock({
-  active, onUnlock, rotated = false, immersive = false,
+  active, onUnlock, onBlocked, rotated = false, immersive = false,
 }: {
-  active: boolean; onUnlock: () => void; rotated?: boolean; immersive?: boolean;
+  active: boolean; onUnlock: () => void; onBlocked?: () => void; rotated?: boolean; immersive?: boolean;
 }) {
   const [nudge, setNudge] = useState(false);
+  const nudgeTimer = useRef(0);
+  const pulse = (notify = false) => {
+    setNudge(true);
+    if (notify) onBlocked?.();
+    window.clearTimeout(nudgeTimer.current);
+    nudgeTimer.current = window.setTimeout(() => setNudge(false), 1200);
+  };
 
   useEffect(() => {
     if (!active) return;
-    let timer = 0;
-    const pulse = () => {
-      setNudge(true);
-      window.clearTimeout(timer);
-      timer = window.setTimeout(() => setNudge(false), 1200);
-    };
     const removeBack = registerOverlayBack(() => { pulse(); return true; });
     const block = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
@@ -41,7 +42,7 @@ export default function PlaybackLock({
     };
     window.addEventListener("keydown", block, true);
     return () => {
-      window.clearTimeout(timer);
+      window.clearTimeout(nudgeTimer.current);
       removeBack();
       window.removeEventListener("keydown", block, true);
     };
@@ -50,9 +51,10 @@ export default function PlaybackLock({
   const rightInset = playbackLockRightInset(rotated, immersive);
 
   return <div data-playback-lock-shield className="absolute inset-0 z-50" style={{ touchAction: "none" }}
-    onPointerDown={e => { e.stopPropagation(); setNudge(true); }} onClick={e => e.stopPropagation()} onWheel={e => e.stopPropagation()}>
-    <Button type="button" data-playback-unlock aria-label="解锁播放控制" title="解锁播放控制" aria-pressed
+    onPointerDown={e => { e.stopPropagation(); pulse(true); }} onClick={e => e.stopPropagation()} onWheel={e => e.stopPropagation()}>
+    <Button type="button" data-playback-unlock aria-label="解锁屏幕" title="解锁屏幕" aria-pressed
       style={{ right: rightInset }}
+      onPointerDown={e => e.stopPropagation()}
       onClick={onUnlock} className={`playback-unlock absolute top-1/2 -translate-y-1/2 w-11 h-11 rounded-full flex items-center justify-center ${nudge ? "is-nudged" : ""}`}>
       <ILockF size={19} />
     </Button>

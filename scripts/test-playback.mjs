@@ -307,12 +307,18 @@ async function portraitFitChecks(page) {
     }));
   });
   await page.waitForFunction(() => document.querySelector(".player-root")?.dataset.clean === "true");
-  const cleanLock = page.getByRole("button", { name: "屏幕锁定", exact: true });
+  const cleanLock = page.getByRole("button", { name: "锁定屏幕", exact: true });
   await cleanLock.waitFor();
   const cleanBox = await cleanLock.boundingBox();
   await cleanLock.click();
-  const unlock = page.getByRole("button", { name: "解锁播放控制", exact: true });
+  const unlock = page.getByRole("button", { name: "解锁屏幕", exact: true });
   await unlock.waitFor();
+  await page.getByText("已锁定屏幕", { exact: true }).waitFor();
+  assert.equal(await page.locator(".a-toast").count(), 1, "Locking must show exactly one status toast");
+  // Rapid taps on the shield only refresh the same screen-lock toast; they must not stack cards.
+  for (let i = 0; i < 5; i += 1) await page.mouse.click(40, 120);
+  await page.getByText("轻触即可解锁", { exact: true }).waitFor();
+  assert.equal(await page.locator(".a-toast").count(), 1, "Repeated locked-area taps must keep one toast");
   const unlockBox = await unlock.boundingBox();
   assert(cleanBox && unlockBox, "Both the clean lock and unlock controls must be measurable");
   const anchorDelta = Math.hypot(cleanBox.x - unlockBox.x, cleanBox.y - unlockBox.y);
@@ -323,6 +329,10 @@ async function portraitFitChecks(page) {
   const qualityAlignDelta = Math.abs(cleanCenter.y - qualityCenter.y);
   assert(qualityAlignDelta < 1, `Lock and quality indicator must share the upright right edge (delta ${qualityAlignDelta.toFixed(1)}px)`);
   await unlock.click();
+  await page.getByText("已解锁", { exact: true }).waitFor();
+  await unlock.waitFor({ state: "hidden" });
+  assert.equal(await page.locator(".a-toast").count(), 1, "Unlocking must replace the hint instead of stacking");
+  assert.equal(await page.getByRole("button", { name: "锁定屏幕", exact: true }).count(), 0, "Unlock exits clean mode and hides the lock icon");
   return { viewport: "390x844", portrait_source: "360x640", portrait_object_fit: portrait.objectFit,
     landscape_default_fit: "contain", landscape_toggle: ["contain", "cover", "contain"] };
 }
