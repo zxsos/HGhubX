@@ -321,7 +321,8 @@ input[type="range"].hg-range::-webkit-slider-thumb { -webkit-appearance: none; w
 .player-root.is-locked [inert] button,
 .player-root.is-locked .desktop-controls,
 .player-root.is-locked .desktop-video-meta,
-.player-root.is-locked .desktop-social { visibility: hidden; }
+.player-root.is-locked .desktop-social,
+.player-root.is-locked .desktop-context-header { visibility: hidden; }
 .desktop-control-row { display: flex; align-items: center; gap: 5px; height: 38px; }
 .player-control {
   height: 32px; min-width: 32px; padding: 0 8px; border-radius: 7px;
@@ -388,11 +389,17 @@ input[type="range"].hg-range::-webkit-slider-thumb { -webkit-appearance: none; w
 .player-root .desktop-controls,
 .player-root .desktop-social,
 .player-root .desktop-video-meta,
-.player-root .desktop-browse-inline { transition: opacity .28s ease; }
+.player-root .desktop-browse-inline,
+.player-root .desktop-context-header { transition: opacity .28s ease; }
 .player-root.is-idle .desktop-controls,
 .player-root.is-idle .desktop-social,
 .player-root.is-idle .desktop-video-meta,
-.player-root.is-idle .desktop-browse-inline { opacity: 0; pointer-events: none; }
+.player-root.is-idle .desktop-browse-inline,
+.player-root.is-idle .desktop-context-header { opacity: 0; pointer-events: none; }
+
+/* 控件闲置隐藏时，媒体容器内的鼠标指针一并隐藏；移动鼠标即由 wake() 恢复（#180-4）。 */
+.player-root.is-idle,
+.player-root.is-idle * { cursor: none !important; }
 
 /* 进度条在淡出时仍保留命中区域，避免快速点击穿透到视频并触发暂停。
    仅激活播放页启用；其他隐藏按钮继续不接收点击。 */

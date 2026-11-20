@@ -84,7 +84,13 @@
   移动沉浸全屏按设置 `fsIdleSecs`（`hghubx_app_v1` 内，0/3/5/10 秒，默认 3，0=不自动隐藏），
   单击画面切换显隐、双击仍是暂停/播放；暂停时不隐藏。桌面与内嵌全屏统一经
   `src/shared/lib/fullscreen.ts` 兼容标准与 `webkit` 前缀 Fullscreen API，不支持或被拒绝时
-  回退至应用内全屏并同步 Tauri 窗口全屏；移动端 Feed 底部信息容器保持 `pointer-events: none`
+  回退至应用内全屏并同步 Tauri 窗口全屏。桌面闲置隐藏（`.player-root.is-idle`）同时淡出
+  控制条、社交栏、左下信息、上下切换按钮与上下文页左上角标题栏（`.desktop-context-header`），
+  并把媒体容器内的鼠标指针设为 `cursor: none`，移动鼠标由 `wake()` 恢复；锁定
+  （`.player-root.is-locked`）同样隐藏左上角标题栏的按钮与文字。桌面原生/回退全屏由
+  `useFeedViewport` 的 `fullscreen` 跟踪（不经过 `store.fs`）：进入全屏前先按当前条目重锚
+  `scrollTop` 并清掉待定滚动切换，全屏期间 `onScroll` 与重锚 effect 都跳过，避免容器高度
+  变化后按旧像素偏移切到别的剧（issue #180）。移动端 Feed 底部信息容器保持 `pointer-events: none`
   （仅对详情按钮与进度条显式开启命中），避免跨宽布局盒遮挡右侧操作栏（如「全屏」）与画面手势。CSS 旋转舞台（`.fs-landscape`）上
   的分区判定/横拖定位/上下划切集/长按换挡都先经 `getHoldPoint` 把屏幕坐标换算回
   播放器坐标（rotate(90deg)：播放器 x=屏幕 dy、y=屏幕 -dx），长按锁定的命中检测则用

@@ -99,6 +99,10 @@ export function useFeedViewport({
   const idxRef = useRef(index);
   idxRef.current = index;
   const anchoredScroll = useRef<number | null>(null);
+  /* 桌面原生/回退全屏由 fullscreen 跟踪，不经过 store.fs；滚动判定与重锚都要认它，
+     否则全屏改变容器高度后 onScroll 会按旧像素偏移算出别的条目（#180-3）。 */
+  const fullscreenRef = useRef(fullscreen);
+  fullscreenRef.current = fullscreen;
   useLayoutEffect(() => {
     const id = effectiveVideoIds[index];
     if (id !== undefined && (position.id !== id || position.index !== index)) {
@@ -126,7 +130,7 @@ export function useFeedViewport({
 
   /* 滚动定位 */
   const onScroll = useCallback(() => {
-    if (fs || pinchRef.current) return;
+    if (fs || fullscreenRef.current || pinchRef.current) return;
     const el = boxRef.current;
     if (!el) return;
     if (anchoredScroll.current !== null) {
@@ -140,7 +144,7 @@ export function useFeedViewport({
     if (onNearEnd && mode === "home" && i >= effectiveVideoIds.length - 3) onNearEnd();
     window.clearTimeout(swipeTimer.current);
     swipeTimer.current = window.setTimeout(() => resolveSwipe(i), 150);
-  }, [boxRef, pinchRef, effectiveVideoIds.length, onNearEnd, resolveSwipe, fs, mode, renderIndex]);
+  }, [boxRef, pinchRef, effectiveVideoIds.length, onNearEnd, resolveSwipe, fs, fullscreen, mode, renderIndex]);
 
   const go = useCallback((delta: number) => {
     if (!effectiveVideoIds.length) return;
@@ -236,6 +240,15 @@ export function useFeedViewport({
       keepAlive();
       return;
     }
+    /* 进入全屏前固定当前条目并清掉待定的滚动切换，和移动端 enterFs 一致：
+       全屏会改变容器高度，残留的 scrollTop/防抖会把画面切到别的剧（#180-3）。 */
+    window.clearTimeout(swipeTimer.current);
+    const box = boxRef.current;
+    if (box) {
+      const top = idxRef.current * (box.clientHeight || 1);
+      anchoredScroll.current = top;
+      box.scrollTop = top;
+    }
     wake();
     keepAlive();
     const token = ++fsTokenRef.current;
@@ -316,13 +329,13 @@ export function useFeedViewport({
   useEffect(() => {
     const el = boxRef.current;
     if (!el) return undefined;
-    if (fs) {
+    if (fs || fullscreen) {
       el.scrollTop = 0;
       return undefined;
     }
     const syncScroll = () => {
       const box = boxRef.current;
-      if (!box || fs) return;
+      if (!box || fs || fullscreen) return;
       box.scrollTop = index * (box.clientHeight || 1);
     };
     syncScroll();
@@ -334,7 +347,7 @@ export function useFeedViewport({
       window.clearTimeout(t1);
       window.clearTimeout(t2);
     };
-  }, [boxRef, fs, vpLandscape, index]);
+  }, [boxRef, fs, fullscreen, vpLandscape, index]);
 
   useEffect(() => {
     mountedRef.current = true;
