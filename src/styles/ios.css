@@ -123,13 +123,16 @@ html.theme-light {
 .ios-rank-meter { height:3px; border-radius:3px; background:var(--p-s3); overflow:hidden; }
 .ios-rank-meter span { display:block; height:100%; background:var(--p-primary); }
 .ios-rank-metric { display:inline-flex; align-items:center; gap:4px; flex:none; color:var(--p-primary); font-size:13px; font-weight:600; font-variant-numeric:tabular-nums; white-space:nowrap; }
-.ios-subpage-header { background:var(--p-s1); border-bottom:1px solid var(--ios-edge); }
+.ios-subpage-header { width:100%; background:var(--p-s1); border-bottom:1px solid var(--ios-edge); }
 .ios-subpage-bar { display:flex; align-items:center; gap:10px; min-height:56px; padding-block:8px; }
 .ios-nav-btn.ios-button { display:inline-flex; align-items:center; justify-content:center; width:40px; height:40px; min-width:40px; min-height:40px; padding:0; flex-shrink:0; border-radius:50%; color:var(--p-on); background:transparent; }
-/* Titles and scrollers share one column. Phones fill the viewport; the
-   padding, not the page width, absorbs asymmetric system insets. */
+/* Subpage header surfaces span the panel; only their content shares the
+   centered column with the scroller. Padding absorbs asymmetric safe insets. */
 .ios-page { container-type:inline-size; background:var(--p-bg); }
-.ios-page>.scroll-y,.ios-page>.shrink-0 {
+.ios-page>.scroll-y,
+.ios-page>.shrink-0:not(.ios-subpage-header),
+.ios-page>.ios-subpage-header>.ios-subpage-bar,
+.ios-page>.ios-subpage-header>.ios-subpage-inner {
   width:100%; max-width:960px; margin-left:auto; margin-right:auto;
   padding-left:calc(var(--ios-page-inset) + var(--sal,0px));
   padding-right:calc(var(--ios-page-inset) + var(--sar,0px));
@@ -140,7 +143,10 @@ html.theme-light {
   padding-bottom:calc(90px + var(--sab,0px));
 }
 @supports (width:clamp(720px, 62vw, 960px)) {
-  .ios-page>.scroll-y,.ios-page>.shrink-0 { max-width:clamp(720px, 62vw, 960px); }
+  .ios-page>.scroll-y,
+  .ios-page>.shrink-0:not(.ios-subpage-header),
+  .ios-page>.ios-subpage-header>.ios-subpage-bar,
+  .ios-page>.ios-subpage-header>.ios-subpage-inner { max-width:clamp(720px, 62vw, 960px); }
 }
 .ios-page-title { font-size:34px; line-height:1.2; font-weight:750; letter-spacing:-1px; }
 .ios-page-heading { padding-top:calc(var(--sat,0px) + 24px); padding-bottom:16px; }

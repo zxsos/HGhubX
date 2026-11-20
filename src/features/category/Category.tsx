@@ -297,7 +297,7 @@ export function ChannelPage({ cate, name, onBack, wide }: { cate: string; name: 
           <Button onClick={() => setSearching(true)} aria-label={cate === "original" ? "搜索原创" : "搜索短剧"} className="ios-nav-btn"><ISearch size={18} /></Button>
         </div>
         {cate === "original" && (
-          <div className="pb-3 flex flex-wrap gap-2">
+          <div className="ios-subpage-inner pb-3 flex flex-wrap gap-2">
             {ORIGINAL_CATES.map((s) => (
               <Button aria-pressed={originalCate === s.value} key={s.value} onClick={() => changeOriginalCate(s.value)}
                 className="ios-filter-pill">{s.label}</Button>
@@ -305,7 +305,7 @@ export function ChannelPage({ cate, name, onBack, wide }: { cate: string; name: 
           </div>
         )}
         {cate !== "original" && (
-          <div className="pb-3 flex flex-wrap gap-2">
+          <div className="ios-subpage-inner pb-3 flex flex-wrap gap-2">
             {CHANNEL_SORTS.map((s) => (
               <Button aria-pressed={serverSort === s.value} key={s.value} onClick={() => changeServerSort(s.value)}
                 className="ios-filter-pill">{s.label}</Button>
