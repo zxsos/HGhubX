@@ -90,6 +90,7 @@ try {
   await page.screenshot({ path: path.join(output, "home-clean.png") });
   await page.getByRole("button", { name: "锁定屏幕", exact: true }).click();
   assert.equal(await probe("locked"), true);
+  assert.equal(await page.locator(".mobile-clean-lock").count(), 0, "Locked clean mode must hide the lock icon");
   await page.evaluate(() => { window.homeControlsProbe.setLocked(false); window.homeControlsProbe.setClean(false); });
   console.log("✓ clean-screen playback shows a right-center screen-lock control");
 

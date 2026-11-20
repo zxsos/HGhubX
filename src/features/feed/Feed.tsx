@@ -672,7 +672,7 @@ export default function Feed({
                 )}
 
                 <FeedItemChrome
-                  isActive={isActive} isDesktop={isDesktop} fs={fs} clean={clean} rotated={rotated} mode={mode} kind={kind}
+                  isActive={isActive} isDesktop={isDesktop} fs={fs} clean={clean} controlsLocked={controlsLocked} rotated={rotated} mode={mode} kind={kind}
                   title={title} index={index} effectiveLength={effectiveVideoIds.length} bottomInset={bottomInset}
                   curEp={curEp} duration={duration} meta={meta} post={post} hevcUrl={hevcUrl}
                   preferHevc={preferHevc} setPreferHevc={setPreferHevc}
@@ -729,7 +729,7 @@ export default function Feed({
       )}
       <TagBlockMenu open={active && tagMenu} tags={meta.tags} initialSelected={tagSelection} onClose={() => setTagMenu(false)} onSettings={openPreferences} />
       {!isDesktop && <MobileHoldGuide open={showHoldGuide} onClose={holdGuide.dismiss} target={holdTargetRef} bottomInset={bottomInset} />}
-      {controlsLocked && <PlaybackLock active={active} rotated={rotated} immersive={!isDesktop && fs && !rotated}
+      {controlsLocked && <PlaybackLock active={active} rotated={rotated} immersive={!isDesktop && fs && !rotated} hideUnlockUntilTapped={!isDesktop}
         onBlocked={() => toast("轻触即可解锁", "info", "screen-lock")}
         onUnlock={() => {
           setControlsLocked(false);

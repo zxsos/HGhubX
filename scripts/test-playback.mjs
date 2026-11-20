@@ -249,7 +249,7 @@ async function gestureChecks(page) {
 //   修复前：landscapeVideo=false 且已测量、非全屏、vpLandscape=false → "cover"（裁切铺满）→ 断言失败；
 //   修复后：竖屏视频一律 "contain"（保留原始比例）→ 断言通过。
 // 第二段用横屏源验证「铺满/适应」切换链路未被修复破坏（该分支修复前后行为一致）。
-async function portraitFitChecks(page) {
+async function portraitFitChecks(page, dir) {
   // The mobile fullscreen transition asks Tauri to lock the screen orientation.
   // This scenario runs in Chromium, so provide only that bridge and keep the
   // rest of the playback stack real.
@@ -332,13 +332,22 @@ async function portraitFitChecks(page) {
   const cleanBox = await cleanLock.boundingBox();
   await cleanLock.click();
   const unlock = page.getByRole("button", { name: "解锁屏幕", exact: true });
-  await unlock.waitFor();
   await page.getByText("已锁定屏幕", { exact: true }).waitFor();
+  assert.equal(await page.locator(".mobile-clean-lock").count(), 0, "Locking must hide the clean lock icon");
+  assert.equal(await unlock.count(), 0, "Unlock control must stay hidden until the first tap");
   assert.equal(await page.locator(".a-toast").count(), 1, "Locking must show exactly one status toast");
+  await page.screenshot({ path: join(dir, "lock-hidden.png") });
   // Rapid taps on the shield only refresh the same screen-lock toast; they must not stack cards.
   for (let i = 0; i < 5; i += 1) await page.mouse.click(40, 120);
+  await unlock.waitFor();
   await page.getByText("轻触即可解锁", { exact: true }).waitFor();
   assert.equal(await page.locator(".a-toast").count(), 1, "Repeated locked-area taps must keep one toast");
+  await page.screenshot({ path: join(dir, "unlock-revealed.png") });
+  await page.waitForTimeout(2300);
+  assert.equal(await unlock.count(), 0, "Unlock control must hide with the screen-lock hint");
+  assert.equal(await page.locator(".a-toast").count(), 0, "Screen-lock hint must expire with the unlock control");
+  await page.mouse.click(40, 120);
+  await unlock.waitFor();
   const unlockBox = await unlock.boundingBox();
   assert(cleanBox && unlockBox, "Both the clean lock and unlock controls must be measurable");
   const anchorDelta = Math.hypot(cleanBox.x - unlockBox.x, cleanBox.y - unlockBox.y);
@@ -800,7 +809,7 @@ try {
     const result = { name, status: "running", started: new Date().toISOString() }; report.cases.push(result);
     let deadline;
     try {
-      const action = name === "recovery" ? explicitRecoveryCheck(page) : name === "proxy" ? proxyRecoveryCheck(page) : name === "gesture" ? gestureChecks(page) : name === "portrait-fit" ? portraitFitChecks(page) : name === "seek" || name === "legacy" ? seekChecks(page, name === "legacy") : lifecycleCheck(page);
+      const action = name === "recovery" ? explicitRecoveryCheck(page) : name === "proxy" ? proxyRecoveryCheck(page) : name === "gesture" ? gestureChecks(page) : name === "portrait-fit" ? portraitFitChecks(page, dir) : name === "seek" || name === "legacy" ? seekChecks(page, name === "legacy") : lifecycleCheck(page);
       result.metrics = await Promise.race([action, new Promise((_, reject) => { deadline = setTimeout(() => reject(new Error("Scenario exceeded 45 seconds")), 45000); })]);
       assert.deepEqual(pageErrors, [], "Browser script errors");
       assert.deepEqual(externalRequests, [], "Unexpected external network requests");

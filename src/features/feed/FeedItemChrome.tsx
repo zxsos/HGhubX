@@ -30,6 +30,7 @@ type Props = {
   isDesktop: boolean;
   fs: boolean;
   clean: boolean;
+  controlsLocked: boolean;
   rotated: boolean;
   mode: "home" | "context";
   kind: "video" | "post";
@@ -86,7 +87,7 @@ type Props = {
 };
 
 export default function FeedItemChrome({
-  isActive, isDesktop, fs, clean, rotated, mode, kind, title, index, effectiveLength, bottomInset,
+  isActive, isDesktop, fs, clean, controlsLocked, rotated, mode, kind, title, index, effectiveLength, bottomInset,
   curEp, duration, meta, post, hevcUrl, preferHevc, setPreferHevc,
   landscapeVideo, capsuleOn, zoom, setZoom,
   liked, collected, likePending, collectPending, heartBurst, likeCount, collectCount,
@@ -133,7 +134,7 @@ export default function FeedItemChrome({
           {index + 1} / {effectiveLength}
         </span>
       )}
-      {!isDesktop && kind === "video" && clean && (
+      {!isDesktop && kind === "video" && clean && !controlsLocked && (
         <Button aria-label="锁定屏幕" title="锁定屏幕" onClick={onLock} className="mobile-clean-lock"
           style={{ right: playbackLockRightInset(rotated, fs) }}>
           <ILockF size={19} />
