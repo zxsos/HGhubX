@@ -16,7 +16,7 @@ const scriptScenarios = {
   tv: { script: "test-tv-remote.mjs", timeout: 480000, metrics: { transport: "mock Tauri IPC; actual TV bootstrap, worker, library and player" } },
   "post-flicker": { script: "test-post-flicker.mjs", timeout: 240000, metrics: { transport: "mock Tauri IPC; real PostDetail/AppProvider/Player; local HLS fixture" } },
 };
-const ALL_SCENARIOS = ["seek", "legacy", "lifecycle", "gesture", "proxy", "portrait-fit", "ios-native", "recovery", "review", "tv", "post-flicker"];
+const ALL_SCENARIOS = ["seek", "legacy", "lifecycle", "gesture", "proxy", "portrait-fit", "episode-toast", "ios-native", "recovery", "review", "tv", "post-flicker"];
 const { values: args } = parseArgs({ options: {
   "media-dir": { type: "string" }, output: { type: "string" }, "browser-executable": { type: "string" },
   scenarios: { type: "string", default: "seek,legacy,lifecycle,gesture,proxy,portrait-fit" }, help: { type: "boolean" },
@@ -265,6 +265,52 @@ async function gestureChecks(page) {
 //   修复前：landscapeVideo=false 且已测量、非全屏、vpLandscape=false → "cover"（裁切铺满）→ 断言失败；
 //   修复后：竖屏视频一律 "contain"（保留原始比例）→ 断言通过。
 // 第二段用横屏源验证「铺满/适应」切换链路未被修复破坏（该分支修复前后行为一致）。
+// A landscape fullscreen episode swap resets the measured video size. Until the
+// next source is playing, the stage is not rotated yet; the episode hint must
+// stay hidden instead of flashing at the portrait toast anchor.
+async function episodeToastChecks(page) {
+  await page.addInitScript(() => {
+    const { promise, resolve } = Promise.withResolvers();
+    window.__playGate = promise;
+    window.__releasePlay = resolve;
+    window.__TAURI_INTERNALS__ = { invoke: async () => null };
+  });
+  await page.goto(`${report.ui}/tests/player-seek.html?portrait-fit=1&swipe-ep=1&proxy=${encodeURIComponent(report.media)}`);
+  const dismissGuide = async () => {
+    const done = page.locator(".mobile-hold-guide-done").first();
+    await done.waitFor({ state: "visible", timeout: 5000 }).catch(() => {});
+    await done.click({ timeout: 5000 }).catch(() => {});
+  };
+  const waitForPlayback = () => page.waitForFunction(() => {
+    const v = document.querySelector("video");
+    return v && v.videoWidth === 320 && v.videoHeight === 180 && v.currentTime > .2 && !v.paused;
+  });
+  await dismissGuide();
+  await waitForPlayback();
+  await page.getByRole("button", { name: "全屏", exact: true }).click();
+  await page.waitForFunction(() => document.querySelector(".player-root")?.classList.contains("fs-landscape"));
+  const toast = page.locator(".a-toast").filter({ hasText: /第 2 ?集 \/ 3/ });
+  // The rotated stage maps a rightward screen drag to a swipe-up in video space.
+  await page.evaluate(() => {
+    const surface = document.querySelector("[data-mobile-hold-target]");
+    const box = surface.getBoundingClientRect();
+    const y = box.y + box.height / 2;
+    const x0 = box.x + box.width * .3, x1 = box.x + box.width * .7;
+    surface.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerId: 121, pointerType: "touch", isPrimary: true, button: 0, buttons: 1, clientX: x0, clientY: y }));
+    surface.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, pointerId: 121, pointerType: "touch", isPrimary: true, button: 0, buttons: 1, clientX: x1, clientY: y }));
+    surface.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerId: 121, pointerType: "touch", isPrimary: true, button: 0, buttons: 0, clientX: x1, clientY: y }));
+  });
+  await page.waitForTimeout(350);
+  assert.equal(await toast.count(), 0, "Episode hint must wait while the next video is still loading");
+  await page.evaluate(() => window.__releasePlay());
+  await waitForPlayback();
+  await page.waitForFunction(() => document.querySelector(".player-root")?.classList.contains("fs-landscape"));
+  await toast.waitFor();
+  assert.equal(await toast.count(), 1, "Episode hint must appear once the next video starts playing");
+  assert(await toast.evaluate(el => !!el.closest(".player-root.fs-landscape")), "Episode hint must land in the rotated landscape stage");
+  return { deferredWhileLoading: true, host: "rotated-stage", text: (await toast.innerText()).trim() };
+}
+
 async function portraitFitChecks(page, dir) {
   // The mobile fullscreen transition asks Tauri to lock the screen orientation.
   // This scenario runs in Chromium, so provide only that bridge and keep the
@@ -826,8 +872,8 @@ try {
       }
       continue;
     }
-    const mobileContext = name === "gesture" || name === "portrait-fit";
-    const context = await browser.newContext({ ...(mobileContext ? {userAgent:"Mozilla/5.0 (iPhone; CPU iPhone OS 17_1_1 like Mac OS X) AppleWebKit/605.1.15 Version/17.1 Mobile/15E148 Safari/604.1",hasTouch:true} : {}), viewport: name === "portrait-fit" ? { width: 390, height: 844 } : { width: 1000, height: 900 } });
+    const mobileContext = name === "gesture" || name === "portrait-fit" || name === "episode-toast";
+    const context = await browser.newContext({ ...(mobileContext ? {userAgent:"Mozilla/5.0 (iPhone; CPU iPhone OS 17_1_1 like Mac OS X) AppleWebKit/605.1.15 Version/17.1 Mobile/15E148 Safari/604.1",hasTouch:true} : {}), viewport: name === "portrait-fit" || name === "episode-toast" ? { width: 390, height: 844 } : { width: 1000, height: 900 } });
     await context.exposeBinding("collectPlaybackLogs", (_source, entries) => {
       for (const e of entries) jsonl(join(dir, "playback.jsonl"), { ts: e.data.at, event: `web.${e.event}`, data: e.data, transport: "browser-fixture" });
     });
@@ -850,7 +896,7 @@ try {
     const result = { name, status: "running", started: new Date().toISOString() }; report.cases.push(result);
     let deadline;
     try {
-      const action = name === "recovery" ? explicitRecoveryCheck(page) : name === "proxy" ? proxyRecoveryCheck(page) : name === "gesture" ? gestureChecks(page) : name === "portrait-fit" ? portraitFitChecks(page, dir) : name === "seek" || name === "legacy" ? seekChecks(page, name === "legacy") : lifecycleCheck(page);
+      const action = name === "recovery" ? explicitRecoveryCheck(page) : name === "proxy" ? proxyRecoveryCheck(page) : name === "gesture" ? gestureChecks(page) : name === "portrait-fit" ? portraitFitChecks(page, dir) : name === "episode-toast" ? episodeToastChecks(page) : name === "seek" || name === "legacy" ? seekChecks(page, name === "legacy") : lifecycleCheck(page);
       result.metrics = await Promise.race([action, new Promise((_, reject) => { deadline = setTimeout(() => reject(new Error("Scenario exceeded 45 seconds")), 45000); })]);
       assert.deepEqual(pageErrors, [], "Browser script errors");
       assert.deepEqual(externalRequests, [], "Unexpected external network requests");

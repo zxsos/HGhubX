@@ -36,12 +36,14 @@ type Args = {
   setPanel: Dispatch<SetStateAction<FeedPanel>>;
   setTagMenu: Dispatch<SetStateAction<boolean>>;
   toast: (msg: string, icon?: Toast["icon"], tag?: string) => void;
+  /** Episode changes may need to wait for the next frame to settle the landscape stage. */
+  episodeToast: (msg: string, immediate?: boolean) => void;
 };
 
 export function useFeedTouchGestures({
   boxRef, videoRef, pinchRef, playbackClock, isDesktop, active, controlsLocked, showHoldGuide,
   rotated, fs, clean, setClean, idle, setIdle, arm, wake, swipeEp, kind, curId, epMap, setEpMap,
-  episodesLength, effectiveLength, go, duration, playUrl, playKey, setPanel, setTagMenu, toast,
+  episodesLength, effectiveLength, go, duration, playUrl, playKey, setPanel, setTagMenu, toast, episodeToast,
 }: Args) {
   const [holdSpeed, setHoldSpeed] = useState(0);
   const [holdSlow, setHoldSlow] = useState(false);
@@ -226,13 +228,13 @@ export function useFeedTouchGestures({
           const result = resolveFullscreenEpisodeSwipe(ep, total, dy);
           if (result && "message" in result) {
             /* Reuse the episode toast slot so repeated boundary swipes replace instead of stack. */
-            toast(result.message, "info", "episode");
+            episodeToast(result.message, true);
             return;
           }
           if (result) {
             const want = result.target;
             setEpMap((m) => ({ ...m, [curId]: want }));
-            toast(`第 ${want}集${total ? ` / ${total}` : ""}`, "info", "episode");
+            episodeToast(`第 ${want}集${total ? ` / ${total}` : ""}`);
             try { navigator.vibrate?.(12); } catch { /* ignore */ }
             return;
           }
@@ -241,7 +243,7 @@ export function useFeedTouchGestures({
         const want = dir === 1 ? (total > 1 && ep < total ? ep + 1 : 0) : (ep > 1 ? ep - 1 : 0);
         if (swipeEp && kind === "video" && want) {
           setEpMap((m) => ({ ...m, [curId]: want }));
-          toast(`第 ${want}集${total ? ` / ${total}` : ""}`, "info", "episode");
+          episodeToast(`第 ${want}集${total ? ` / ${total}` : ""}`);
           try { navigator.vibrate?.(12); } catch { /* ignore */ }
           return;
         }

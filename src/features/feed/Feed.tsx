@@ -208,6 +208,28 @@ export default function Feed({
   const playUrl = preferHevc && hevcUrl ? hevcUrl : mainUrl;
   const measurementKey = JSON.stringify([accountScope, store.lineEpoch, permissionKey, playKey, playUrl]);
   const videoSize = vsize.key === measurementKey ? vsize : { key: measurementKey, w: 0, h: 0 };
+  /* A fullscreen episode swap has no decoded frame yet, so the landscape stage
+     is not rotated. Hold the episode hint until the next source actually plays. */
+  const pendingEpisodeToast = useRef<string | null>(null);
+  const showEpisodeToast = useCallback((msg: string, immediate = false) => {
+    if (immediate || isDesktop || !fs) { toast(msg, "info", "episode"); return; }
+    pendingEpisodeToast.current = msg;
+  }, [fs, isDesktop, toast]);
+  useEffect(() => {
+    const pending = pendingEpisodeToast.current;
+    if (!pending) return;
+    if (err) { pendingEpisodeToast.current = null; return; }
+    if (!fs || isDesktop) {
+      pendingEpisodeToast.current = null;
+      toast(pending, "info", "episode");
+      return;
+    }
+    // Wait for the new playback, not the previous frame: the rotated stage is
+    // only valid after its own dimensions and first playing frame are known.
+    if (playingKey !== playKey || videoSize.key !== measurementKey || videoSize.h <= 0) return;
+    pendingEpisodeToast.current = null;
+    toast(pending, "info", "episode");
+  }, [err, fs, isDesktop, measurementKey, playKey, playingKey, toast, videoSize]);
   // 等播放画面就绪再提示，启动动画/协议、加载失败和其他面板不叠加教程。
   const showHoldGuide = !isDesktop && !holdGuide.seen && active && allowed
     && !!playUrl && duration > 0 && !err && !panel && !tagMenu && !controlsLocked;
@@ -326,7 +348,7 @@ export default function Feed({
     boxRef, videoRef, pinchRef, playbackClock, isDesktop, active, controlsLocked, showHoldGuide,
     rotated, fs, clean, setClean, idle, setIdle, arm, wake, swipeEp, kind, curId, epMap, setEpMap,
     episodesLength: episodes.length, effectiveLength: effectiveVideoIds.length, go,
-    duration, playUrl, playKey, setPanel, setTagMenu, toast,
+    duration, playUrl, playKey, setPanel, setTagMenu, toast, episodeToast: showEpisodeToast,
   });
   useEffect(() => { setBarScrubbing(barPct !== null || scrub !== null); }, [barPct, scrub]);
 
