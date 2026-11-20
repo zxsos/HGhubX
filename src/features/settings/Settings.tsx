@@ -22,7 +22,7 @@ type SettingGroup = typeof SETTING_GROUPS[number];
 /* 独立设置页：线路 / 外观 / 播放 / 本地数据 / 清理缓存 / 网络诊断 / 关于
    入口：Windows 侧栏「设置」、Android「我的」右上角齿轮 */
 export default function Settings({ onBack, initialSection }: { onBack: () => void; wide: boolean; initialSection?: "内容偏好" }) {
-  const { theme, themePreference, setTheme, favs, history, muteOnStartup, setMuteOnStartup, preferHevc, setPreferHevc, fsIdleSecs, setFsIdleSecs, startupTab, setStartupTab, strictSecurity, strictSecurityReady, securityPending, cliRelaxed, setStrictSecurity, toast } = useStore();
+  const { theme, themePreference, setTheme, favs, history, muteOnStartup, setMuteOnStartup, preferHevc, setPreferHevc, fsIdleSecs, setFsIdleSecs, startupTab, setStartupTab, ambientGlow, setAmbientGlow, strictSecurity, strictSecurityReady, securityPending, cliRelaxed, setStrictSecurity, toast } = useStore();
   const [about, setAbout] = useState(false);
   const [agreementOpen, setAgreementOpen] = useState(false);
   const [clearOpen, setClearOpen] = useState(false);
@@ -164,6 +164,14 @@ export default function Settings({ onBack, initialSection }: { onBack: () => voi
                 <div className="text-[12px] text-mut">有高清就用 HEVC，播不了会自动切回标准</div>
               </div>
               <Toggle desktop on={preferHevc} onChange={setPreferHevc} label="优先高清" />
+            </div>
+            <div className="ios-settings-row">
+              <span className="ios-setting-icon"><ISun size={16} /></span>
+              <div className="flex-1 min-w-0">
+                <div className="text-[14px] text-on">微光效果</div>
+                <div className="text-[12px] text-mut">画面颜色会轻微扩散到黑边，关闭可省电</div>
+              </div>
+              <Toggle desktop on={ambientGlow} onChange={setAmbientGlow} label="微光效果" />
             </div>
             {isMobile && <div className="ios-settings-row flex-wrap">
               <span className="ios-setting-icon"><ICompress size={16} /></span>

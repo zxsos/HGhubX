@@ -11,7 +11,7 @@ function Probe() {
     likes: store.likes, favs: store.favs, history: store.history, follows: store.follows,
     searchHist: store.searchHist, volume: store.volume, muted: store.muted,
     muteOnStartup: store.muteOnStartup, swipeEp: store.swipeEp,
-    preferHevc: store.preferHevc, fsIdleSecs: store.fsIdleSecs, startupTab: store.startupTab, theme: store.theme,
+    preferHevc: store.preferHevc, fsIdleSecs: store.fsIdleSecs, startupTab: store.startupTab, ambientGlow: store.ambientGlow, theme: store.theme,
   })}</pre>;
 }
 

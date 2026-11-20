@@ -79,13 +79,15 @@ type Persist = GuestData & {
   fsIdleSecs: number;
   /** 启动时打开的页面：默认首页；选非首页可避免开机自动播放污染观看历史（#180-1） */
   startupTab: Tab;
+  /** Ambient light around the player, sampled from the current frame. */
+  ambientGlow: boolean;
 };
 
 const LS = STORAGE_KEYS.app;
 const DEFAULTS: Persist = {
   likes: [], favs: [], history: [], follows: [],
   muted: true, muteOnStartup: true, volume: 0.7, searchHist: [], swipeEp: true, preferHevc: false,
-  fsIdleSecs: 3, startupTab: "home",
+  fsIdleSecs: 3, startupTab: "home", ambientGlow: true,
 };
 
 /** 旧版本 history 是 number[]，读出来时升级成带进度的结构 */
@@ -127,7 +129,8 @@ function loadPersist(): Persist {
     } catch { /* ignore */ }
     const fsIdleSecs = [0, 3, 5, 10].includes(p.fsIdleSecs) ? p.fsIdleSecs : DEFAULTS.fsIdleSecs;
     const startupTab: Tab = (["home", "search", "category", "profile"] as Tab[]).includes(p.startupTab) ? p.startupTab : "home";
-    return { ...p, swipeEp, muteOnStartup, muted: muteOnStartup || p.muted === true, fsIdleSecs, startupTab, history: normalizeHistory(p.history) };
+    const ambientGlow = p.ambientGlow !== false;
+    return { ...p, swipeEp, muteOnStartup, muted: muteOnStartup || p.muted === true, fsIdleSecs, startupTab, ambientGlow, history: normalizeHistory(p.history) };
   } catch {
     return DEFAULTS;
   }
@@ -208,6 +211,7 @@ type Store = {
   preferHevc: boolean; setPreferHevc: (on: boolean) => void;
   fsIdleSecs: number; setFsIdleSecs: (s: number) => void;
   startupTab: Tab; setStartupTab: (t: Tab) => void;
+  ambientGlow: boolean; setAmbientGlow: (on: boolean) => void;
   volume: number; setVolume: (v: number) => void;
   searchHist: string[]; addSearch: (q: string) => void; removeSearch: (q: string) => void; clearSearchHist: () => void;
   strictSecurity: boolean; strictSecurityReady: boolean; securityPending: boolean; cliRelaxed: boolean; setStrictSecurity: (on: boolean) => Promise<void>;
@@ -506,6 +510,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const setStartupTab = useCallback((t: Tab) => {
     setP((s) => ({ ...s, startupTab: (["home", "search", "category", "profile"] as Tab[]).includes(t) ? t : "home" }));
   }, []);
+  const setAmbientGlow = useCallback((on: boolean) => {
+    setP((s) => ({ ...s, ambientGlow: on }));
+  }, []);
   const setVolume = useCallback((v: number) => {
     const volume = Math.max(0, Math.min(1, v));
     if (volume > 0) lastVolumeRef.current = volume;
@@ -531,12 +538,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     preferHevc: p.preferHevc, setPreferHevc,
     fsIdleSecs: p.fsIdleSecs, setFsIdleSecs,
     startupTab: p.startupTab, setStartupTab,
+    ambientGlow: p.ambientGlow, setAmbientGlow,
     searchHist: p.searchHist, addSearch, removeSearch, clearSearchHist,
     strictSecurity, strictSecurityReady, securityPending, cliRelaxed, setStrictSecurity,
     get toasts() { return toastList; }, toast, lineEpoch,
   }), [theme, themePreference, setTheme, tab, setTab, stack, push, openRootPage, pop, user, loginOpen, logout,
     p, account,
-    setMuted, setMuteOnStartup, setSwipeEp, setPreferHevc, setFsIdleSecs, setStartupTab, setVolume, addSearch, removeSearch, clearSearchHist, strictSecurity, strictSecurityReady, securityPending, cliRelaxed, setStrictSecurity,
+    setMuted, setMuteOnStartup, setSwipeEp, setPreferHevc, setFsIdleSecs, setStartupTab, setAmbientGlow, setVolume, addSearch, removeSearch, clearSearchHist, strictSecurity, strictSecurityReady, securityPending, cliRelaxed, setStrictSecurity,
     toast, lineEpoch, theater, setTheater, fs, setFs, clean, setClean, locked, setLocked]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

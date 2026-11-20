@@ -181,7 +181,7 @@ jobs:
       matrix: >-
         ${{
           (inputs.scenarios == '' || inputs.scenarios == 'all') &&
-          fromJSON('{"include":[{"shard":"core","scenarios":"seek,legacy,lifecycle,gesture,proxy,portrait-fit,post-flicker"},{"shard":"extended","scenarios":"ios-native,recovery,review"}]}') ||
+          fromJSON('{"include":[{"shard":"core","scenarios":"seek,legacy,lifecycle,gesture,proxy,portrait-fit,ambient,post-flicker"},{"shard":"extended","scenarios":"ios-native,recovery,review"}]}') ||
           fromJSON(format('{{"include":[{{"shard":"custom","scenarios":{0}}}]}}', toJSON(inputs.scenarios)))
         }}
     steps:

@@ -83,7 +83,7 @@ const HIDDEN_POST_TAG = "\u9ec4\u679c";
 /* ================= 吃瓜详情（网页式浏览） ================= */
 export function PostDetail({ id, onBack, active = true }: { id: number; onBack: () => void; active?: boolean }) {
   const {
-    toast, strictSecurity, muted, setMuted, volume, push, lineEpoch, accountScope,
+    toast, strictSecurity, muted, setMuted, volume, ambientGlow, push, lineEpoch, accountScope,
     isLiked, isFav, setLiked, setCollected, actionPending,
   } = useStore();
   const { preferences, blockReason } = useContentPreferences();
@@ -220,6 +220,7 @@ export function PostDetail({ id, onBack, active = true }: { id: number; onBack: 
             <div data-post-media className="relative w-full bg-black mx-auto" style={{ height: isMobile ? "min(48vh, 420px)" : "min(60vh, 640px)" }}>
               {play && src ? (
                 <Player src={src} scopeKey={id} poster={cover(currentPost.cover)} autoPlay active={active && !tagMenu && !commentsOpen} controls muted={muted} volume={volume}
+                  ambientGlow={ambientGlow}
                   onToggleMute={() => setMuted((m) => !m)} diagnosticContext={{ video_id: id, active: active && !tagMenu && !commentsOpen }} className="w-full h-full"
                   onEnded={() => {
                     /* 多段吃瓜视频：播完自动接下一段；末段保留播放器以便回拖或重看 */

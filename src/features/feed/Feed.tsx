@@ -47,7 +47,7 @@ export default function Feed({
   const {
     isLiked, isFav, setLiked, setCollected, setFollowing, actionPending, accountScope,
     muted, setMuted, volume, setVolume, toast, addHistory, user, setLoginOpen,
-    swipeEp, setSwipeEp, preferHevc, setPreferHevc,
+    swipeEp, setSwipeEp, preferHevc, setPreferHevc, ambientGlow,
   } = store;
   const isDesktop = !isMobile;
   const holdGuide = useMobileHoldGuide();
@@ -653,6 +653,7 @@ export default function Feed({
                       <VideoSurface ref={videoRef} src={playUrl} poster={posterUrl} autoPlay active={active && !tagMenu && !showHoldGuide && !searching} muted={muted}
                         diagnosticContext={{ active: active && !tagMenu && !showHoldGuide && !searching, view: mode, kind, video_id: curId, episode: curEp }}
                         volume={volume} rate={effRate}
+                        ambientGlow={ambientGlow}
                         measurementKey={measurementKey}
                         fit={!isDesktop && landscapeVideo && !fs && !vpLandscape ? portraitFit : "contain"}
                         onClick={() => { if (isDesktop) videoRef.current?.toggle(); }}

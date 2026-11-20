@@ -16,7 +16,7 @@ const scriptScenarios = {
   tv: { script: "test-tv-remote.mjs", timeout: 480000, metrics: { transport: "mock Tauri IPC; actual TV bootstrap, worker, library and player" } },
   "post-flicker": { script: "test-post-flicker.mjs", timeout: 240000, metrics: { transport: "mock Tauri IPC; real PostDetail/AppProvider/Player; local HLS fixture" } },
 };
-const ALL_SCENARIOS = ["seek", "legacy", "lifecycle", "gesture", "proxy", "portrait-fit", "episode-toast", "ios-native", "recovery", "review", "tv", "post-flicker"];
+const ALL_SCENARIOS = ["seek", "legacy", "lifecycle", "gesture", "proxy", "portrait-fit", "episode-toast", "ambient", "ios-native", "recovery", "review", "tv", "post-flicker"];
 const { values: args } = parseArgs({ options: {
   "media-dir": { type: "string" }, output: { type: "string" }, "browser-executable": { type: "string" },
   scenarios: { type: "string", default: "seek,legacy,lifecycle,gesture,proxy,portrait-fit" }, help: { type: "boolean" },
@@ -265,6 +265,7 @@ async function gestureChecks(page) {
 //   修复前：landscapeVideo=false 且已测量、非全屏、vpLandscape=false → "cover"（裁切铺满）→ 断言失败；
 //   修复后：竖屏视频一律 "contain"（保留原始比例）→ 断言通过。
 // 第二段用横屏源验证「铺满/适应」切换链路未被修复破坏（该分支修复前后行为一致）。
+<<<<<<< ours
 // A landscape fullscreen episode swap resets the measured video size. Until the
 // next source is playing, the stage is not rotated yet; the episode hint must
 // stay hidden instead of flashing at the portrait toast anchor.
@@ -276,10 +277,20 @@ async function episodeToastChecks(page) {
     window.__TAURI_INTERNALS__ = { invoke: async () => null };
   });
   await page.goto(`${report.ui}/tests/player-seek.html?portrait-fit=1&swipe-ep=1&proxy=${encodeURIComponent(report.media)}`);
+=======
+// Ambient glow is a sampled color wash behind the video. It must follow the
+// live setting, render on a readable source, and leave no layer when disabled.
+async function ambientGlowChecks(page) {
+  await page.addInitScript(() => {
+    window.__TAURI_INTERNALS__ = { invoke: async () => null };
+  });
+  const open = () => page.goto(`${report.ui}/tests/player-seek.html?diagnostics=1&portrait-fit=1&proxy=${encodeURIComponent(report.portraitMedia)}`);
+>>>>>>> theirs
   const dismissGuide = async () => {
     const done = page.locator(".mobile-hold-guide-done").first();
     await done.waitFor({ state: "visible", timeout: 5000 }).catch(() => {});
     await done.click({ timeout: 5000 }).catch(() => {});
+<<<<<<< ours
   };
   const waitForPlayback = () => page.waitForFunction(() => {
     const v = document.querySelector("video");
@@ -312,6 +323,87 @@ async function episodeToastChecks(page) {
 }
 
 async function portraitFitChecks(page, dir) {
+=======
+    await page.waitForFunction(() => !document.querySelector(".mobile-hold-guide-done"), null, { timeout: 5000 }).catch(() => {});
+  };
+  const waitForPlayback = () => page.waitForFunction(() => {
+    const v = document.querySelector("video");
+    return v && v.videoWidth === 360 && v.videoHeight === 640 && v.currentTime > 1 && !v.paused;
+  });
+  const openSettingsPage = async () => {
+    await page.getByRole("button", { name: "诊断设置", exact: true }).click();
+    const settings = page.locator(".ios-settings-page");
+    await settings.waitFor({ state: "visible" });
+    await settings.getByRole("button", { name: "播放设置", exact: true }).click();
+    await page.waitForFunction(() => {
+      const panel = document.querySelector("#settings-播放");
+      return panel && !panel.querySelector("[hidden]");
+    });
+    return settings;
+  };
+  const closeSettingsPage = async (settings) => {
+    await settings.getByRole("button", { name: "返回", exact: true }).click();
+    await settings.waitFor({ state: "hidden" });
+  };
+  const persistedAmbient = () => page.evaluate(() => JSON.parse(localStorage.getItem("hghubx_app_v1") || "{}").ambientGlow);
+
+  await open();
+  await dismissGuide();
+  await waitForPlayback();
+  await page.waitForFunction(() => Number(document.querySelector(".hg-ambient-glow-canvas")?.dataset.frames || 0) > 0);
+  const on = await page.evaluate(() => ({
+    layers: document.querySelectorAll(".hg-ambient-glow").length,
+    frames: Number(document.querySelector(".hg-ambient-glow-canvas")?.dataset.frames || 0),
+    canvas: !!document.querySelector(".hg-ambient-glow-canvas"),
+  }));
+  assert.equal(on.layers, 1, "Ambient glow must render by default");
+  assert.equal(on.canvas, true, "Ambient glow needs a sample canvas");
+  assert(on.frames > 0, "Ambient glow must sample the playing video");
+
+  const settings = await openSettingsPage();
+  const glow = settings.getByRole("switch", { name: "微光效果", exact: true });
+  const hevc = settings.getByRole("switch", { name: "优先高清", exact: true });
+  const [glowBox, hevcBox] = await Promise.all([glow.boundingBox(), hevc.boundingBox()]);
+  assert(glowBox && hevcBox, "Both playback toggles must occupy a real box");
+  assert(Math.abs(glowBox.x - hevcBox.x) <= 1, "Ambient glow toggle must right-align with the priority-HD toggle");
+  assert(Math.abs(glowBox.width - hevcBox.width) <= 1 && Math.abs(glowBox.height - hevcBox.height) <= 1,
+    "Ambient glow toggle must match the priority-HD toggle size");
+  assert.equal(await glow.getAttribute("aria-checked"), "true", "Settings page must reflect the persisted ambient glow setting");
+  await glow.click();
+  await page.waitForFunction(() => document.querySelectorAll(".hg-ambient-glow").length === 0);
+  assert.equal(await glow.getAttribute("aria-checked"), "false", "Settings page switch must disable ambient glow");
+  await page.waitForFunction(() => JSON.parse(localStorage.getItem("hghubx_app_v1") || "{}").ambientGlow === false);
+  await closeSettingsPage(settings);
+
+  await page.getByRole("button", { name: "更多播放设置", exact: true }).click();
+  const more = page.getByRole("dialog", { name: "播放设置", exact: true });
+  await more.waitFor({ state: "visible" });
+  assert.equal(await more.getByRole("switch", { name: "微光效果", exact: true }).count(), 0,
+    "Ambient glow must not appear in the More playback panel");
+  await more.getByRole("button", { name: "关闭播放设置", exact: true }).click();
+  await more.waitFor({ state: "hidden" });
+
+  await page.reload();
+  await dismissGuide();
+  await waitForPlayback();
+  const off = await page.evaluate(() => ({
+    layers: document.querySelectorAll(".hg-ambient-glow").length,
+    persisted: JSON.parse(localStorage.getItem("hghubx_app_v1") || "{}").ambientGlow,
+  }));
+  assert.equal(off.layers, 0, "Disabling ambient glow must remove the layer");
+  assert.equal(off.persisted, false, "Ambient glow preference must persist");
+
+  const settingsAfterReload = await openSettingsPage();
+  const glowAfterReload = settingsAfterReload.getByRole("switch", { name: "微光效果", exact: true });
+  assert.equal(await glowAfterReload.getAttribute("aria-checked"), "false", "Settings page must restore the disabled state");
+  await glowAfterReload.click();
+  await page.waitForFunction(() => document.querySelectorAll(".hg-ambient-glow").length === 1);
+  assert.equal(await persistedAmbient(), true, "Settings page switch must persist re-enabling");
+  return { defaultOn: true, sampledFrames: on.frames, offLayers: off.layers, settingsToggle: true, morePanelToggle: false };
+}
+
+async function portraitFitChecks(page) {
+>>>>>>> theirs
   // The mobile fullscreen transition asks Tauri to lock the screen orientation.
   // This scenario runs in Chromium, so provide only that bridge and keep the
   // rest of the playback stack real.
@@ -781,7 +873,7 @@ try {
     vite = await createViteServer({ root, server: { host: "127.0.0.1", port: 0, strictPort: false, hmr: false, open: false } });
     await vite.listen(); report.ui = `http://127.0.0.1:${vite.httpServer.address().port}`;
     media = await serveMedia(mediaDir); report.media = `http://127.0.0.1:${media.address().port}`;
-    if (scenarios.includes("portrait-fit")) {
+    if (scenarios.includes("portrait-fit") || scenarios.includes("ambient")) {
       temporaryPortraitMedia = await mkdtemp(join(tmpdir(), "hghubx-playback-portrait-"));
       try { generateHlsFixture(temporaryPortraitMedia, "360x640"); } catch { throw new Error("Cannot generate portrait HLS fixture: install FFmpeg (libx264/AAC) or set FFMPEG_PATH"); }
       portraitMedia = await serveMedia(temporaryPortraitMedia); report.portraitMedia = `http://127.0.0.1:${portraitMedia.address().port}`;
@@ -872,8 +964,8 @@ try {
       }
       continue;
     }
-    const mobileContext = name === "gesture" || name === "portrait-fit" || name === "episode-toast";
-    const context = await browser.newContext({ ...(mobileContext ? {userAgent:"Mozilla/5.0 (iPhone; CPU iPhone OS 17_1_1 like Mac OS X) AppleWebKit/605.1.15 Version/17.1 Mobile/15E148 Safari/604.1",hasTouch:true} : {}), viewport: name === "portrait-fit" || name === "episode-toast" ? { width: 390, height: 844 } : { width: 1000, height: 900 } });
+    const mobileContext = name === "gesture" || name === "portrait-fit" || name === "episode-toast" || name === "ambient";
+    const context = await browser.newContext({ ...(mobileContext ? {userAgent:"Mozilla/5.0 (iPhone; CPU iPhone OS 17_1_1 like Mac OS X) AppleWebKit/605.1.15 Version/17.1 Mobile/15E148 Safari/604.1",hasTouch:true} : {}), viewport: name === "portrait-fit" || name === "episode-toast" || name === "ambient" ? { width: 390, height: 844 } : { width: 1000, height: 900 } });
     await context.exposeBinding("collectPlaybackLogs", (_source, entries) => {
       for (const e of entries) jsonl(join(dir, "playback.jsonl"), { ts: e.data.at, event: `web.${e.event}`, data: e.data, transport: "browser-fixture" });
     });
@@ -896,7 +988,7 @@ try {
     const result = { name, status: "running", started: new Date().toISOString() }; report.cases.push(result);
     let deadline;
     try {
-      const action = name === "recovery" ? explicitRecoveryCheck(page) : name === "proxy" ? proxyRecoveryCheck(page) : name === "gesture" ? gestureChecks(page) : name === "portrait-fit" ? portraitFitChecks(page, dir) : name === "episode-toast" ? episodeToastChecks(page) : name === "seek" || name === "legacy" ? seekChecks(page, name === "legacy") : lifecycleCheck(page);
+      const action = name === "recovery" ? explicitRecoveryCheck(page) : name === "proxy" ? proxyRecoveryCheck(page) : name === "gesture" ? gestureChecks(page) : name === "portrait-fit" ? portraitFitChecks(page, dir) : name === "episode-toast" ? episodeToastChecks(page) : name === "ambient" ? ambientGlowChecks(page) : name === "seek" || name === "legacy" ? seekChecks(page, name === "legacy") : lifecycleCheck(page);
       result.metrics = await Promise.race([action, new Promise((_, reject) => { deadline = setTimeout(() => reject(new Error("Scenario exceeded 45 seconds")), 45000); })]);
       assert.deepEqual(pageErrors, [], "Browser script errors");
       assert.deepEqual(externalRequests, [], "Unexpected external network requests");

@@ -7,6 +7,7 @@ import { mediaHost, mediaResource, observeHls, registerHlsVersion, usePlayerDiag
 import { usePlaybackActivity } from "./usePlaybackActivity";
 import { useProxyPlaybackRecovery } from "./useProxyPlaybackRecovery";
 import { createHlsRecovery, type HlsRecovery } from "./hlsRecovery";
+import AmbientGlow from "./AmbientGlow";
 
 if (Hls.version) registerHlsVersion(Hls.version);
 
@@ -40,6 +41,8 @@ type Props = {
   /** 换源后重新套用，避免切集时音量/倍速被浏览器重置 */
   volume?: number;
   rate?: number;
+  /** Subtle color wash sampled from the current frame; requires a readable video source. */
+  ambientGlow?: boolean;
   onTime?: (t: number) => void;
   onDuration?: (d: number) => void;
   onSize?: (w: number, h: number, measurementKey: string) => boolean | void;
@@ -57,7 +60,7 @@ type Props = {
 
 /** 只负责「播」：hls.js + video 元素，控制条由外层渲染。 */
 const VideoSurface = forwardRef<VideoHandle, Props>(function VideoSurface(
-  { src, poster, autoPlay = true, active = true, fadeIn = true, videoElementRef, measurementKey = src, diagnosticContext = {}, muted = false, loop = false, fit = "contain", volume = 1, rate = 1,
+  { src, poster, autoPlay = true, active = true, fadeIn = true, videoElementRef, measurementKey = src, diagnosticContext = {}, muted = false, loop = false, fit = "contain", volume = 1, rate = 1, ambientGlow = false,
     onTime, onDuration, onSize, onPlay, onPlaying, onPause, onWaiting, onSeeked, onEnded, onError, onClearError, onClick, className = "" },
   ref,
 ) {
@@ -257,53 +260,56 @@ const VideoSurface = forwardRef<VideoHandle, Props>(function VideoSurface(
   };
 
   return (
-    <video
-      ref={(node) => {
-        videoRef.current = node;
-        if (videoElementRef) videoElementRef.current = node;
-      }}
-      poster={poster}
-      playsInline
-      preload={active ? "auto" : "metadata"}
-      muted={muted}
-      loop={loop}
-      onClick={onClick}
-      className={`w-full h-full bg-black ${fit === "cover" ? "object-cover" : "object-contain"} ${className}`}
-      style={fadeIn ? { opacity: ready ? 1 : 0, transition: "opacity .35s" } : undefined}
-      onLoadedData={(e) => {
-        const v = e.target as HTMLVideoElement;
-        setReady(true);
-        reapply(v);
-        reportSize(v);
-      }}
-      onTimeUpdate={(e) => {
-        const v = e.target as HTMLVideoElement;
-        reportSize(v);
-        onTime?.(v.currentTime);
-        // iOS 有时不触发 ended：靠近片尾自己补一次，保证自动连播（暂停态拖动不触发切集）
-        const d = v.duration;
-        if (!v.paused && activity.isActive() && d && Number.isFinite(d) && v.currentTime > d - 0.3 && !nearEndFiredRef.current) {
-          nearEndFiredRef.current = true;
-          onEnded?.();
-        }
-      }}
-      onLoadedMetadata={(e) => {
-        const v = e.target as HTMLVideoElement;
-        reapply(v);
-        onDuration?.(v.duration || 0);
-        reportSize(v);
-      }}
-      onPlay={() => { if (activity.isActive()) { onPlay?.(); onPlaying?.(); } }}
-      onPause={() => onPause?.()}
-      onWaiting={() => onWaiting?.()}
-      onSeeked={() => onSeeked?.()}
-      onPlaying={(e) => {
-        reportSize(e.target as HTMLVideoElement);
-        if (activity.isActive()) onPlaying?.();
-      }}
-      onEnded={() => { if (activity.isActive()) onEnded?.(); }}
-      onError={handleVideoError}
-    />
+    <div className="relative isolate h-full w-full">
+      {ambientGlow && <AmbientGlow videoRef={videoRef} active={active} />}
+      <video
+        ref={(node) => {
+          videoRef.current = node;
+          if (videoElementRef) videoElementRef.current = node;
+        }}
+        poster={poster}
+        playsInline
+        preload={active ? "auto" : "metadata"}
+        muted={muted}
+        loop={loop}
+        onClick={onClick}
+        className={`relative z-[1] w-full h-full ${ambientGlow ? "bg-transparent" : "bg-black"} ${fit === "cover" ? "object-cover" : "object-contain"} ${className}`}
+        style={fadeIn ? { opacity: ready ? 1 : 0, transition: "opacity .35s" } : undefined}
+        onLoadedData={(e) => {
+          const v = e.target as HTMLVideoElement;
+          setReady(true);
+          reapply(v);
+          reportSize(v);
+        }}
+        onTimeUpdate={(e) => {
+          const v = e.target as HTMLVideoElement;
+          reportSize(v);
+          onTime?.(v.currentTime);
+          // iOS 有时不触发 ended：靠近片尾自己补一次，保证自动连播（暂停态拖动不触发切集）
+          const d = v.duration;
+          if (!v.paused && activity.isActive() && d && Number.isFinite(d) && v.currentTime > d - 0.3 && !nearEndFiredRef.current) {
+            nearEndFiredRef.current = true;
+            onEnded?.();
+          }
+        }}
+        onLoadedMetadata={(e) => {
+          const v = e.target as HTMLVideoElement;
+          reapply(v);
+          onDuration?.(v.duration || 0);
+          reportSize(v);
+        }}
+        onPlay={() => { if (activity.isActive()) { onPlay?.(); onPlaying?.(); } }}
+        onPause={() => onPause?.()}
+        onWaiting={() => onWaiting?.()}
+        onSeeked={() => onSeeked?.()}
+        onPlaying={(e) => {
+          reportSize(e.target as HTMLVideoElement);
+          if (activity.isActive()) onPlaying?.();
+        }}
+        onEnded={() => { if (activity.isActive()) onEnded?.(); }}
+        onError={handleVideoError}
+      />
+    </div>
   );
 });
 

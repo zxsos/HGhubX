@@ -55,6 +55,8 @@ const portraitFitTest = new URLSearchParams(location.search).has("portrait-fit")
 // 2.2.0 反馈回归：多集详情 + 下一集地址延迟解析，制造切集过渡期窗口。
 // 延迟闸门由测试脚本在页面初始化时注入（window.__playGate）， harness 只消费。
 const swipeEpTest = new URLSearchParams(location.search).has("swipe-ep");
+// Preview fixture: ambient glow is a player prop, so opt in without changing the store.
+const ambientGlow = new URLSearchParams(location.search).get("ambient") === "on";
 if (diagnosticTest) {
   // Test-only handle: exercise the real engine's public API without rewriting production modules.
   const attach = Hls.prototype.attachMedia;
@@ -119,9 +121,9 @@ function Fixture() {
       ? { position: "relative", width: window.innerWidth, height: window.innerHeight }
       : { position: "relative", width: 900, height: 540 }}>
       {mounted && (legacyTest
-        ? <Player src="https://media.fixture.invalid/list.m3u8" autoPlay active={active} className="w-full h-full" diagnosticContext={{ video_id: 991, active }} />
+        ? <Player src="https://media.fixture.invalid/list.m3u8" autoPlay active={active} ambientGlow={ambientGlow} className="w-full h-full" diagnosticContext={{ video_id: 991, active }} />
         : delayedMount
-          ? <VideoSurface src="https://media.fixture.invalid/list.m3u8" autoPlay active={active} className="w-full h-full" diagnosticContext={{ video_id: 991, active }} />
+          ? <VideoSurface src="https://media.fixture.invalid/list.m3u8" autoPlay active={active} ambientGlow={ambientGlow} className="w-full h-full" diagnosticContext={{ video_id: 991, active }} />
           : <Feed videoIds={swipeEpTest ? [991, 992] : [991]} mode="home" active={active} bottomInset={0} />)}
     </div>
     <button onClick={() => setActive((v) => !v)}>切换播放页激活状态</button>

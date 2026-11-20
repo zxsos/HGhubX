@@ -16,7 +16,7 @@ const state = {
   muteOnStartup: false, swipeEp: false, preferHevc: true,
 };
 // 迁移会为新字段补默认值（#146-3 全屏闲置隐藏秒数、#180-1 启动页）：旧种子不带这些字段，落盘应补齐。
-const migrated = { ...state, fsIdleSecs: 3, startupTab: "home" };
+const migrated = { ...state, fsIdleSecs: 3, startupTab: "home", ambientGlow: true };
 const oldData = {
   hghub_app_v1: JSON.stringify(state), hghub_swipe_ep_v2: "1", hghub_theme: "light",
 };
