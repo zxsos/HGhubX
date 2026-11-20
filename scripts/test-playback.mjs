@@ -444,8 +444,33 @@ async function seekChecks(page, legacy) {
   assert(rejected, "Failed persistence must reject");
   await clickProgress(page, .3);
   assert.equal((await getLogs(page)).length, count, "Failed persistence must keep logging disabled");
+  if (!legacy) {
+    // Desktop swipeEp regression: wheel scrolling over the feed player must switch episodes
+    // when swipeEp is enabled instead of scrolling boxRef to the next drama, and bottom-bar
+    // Next must follow swipeEp when toggled off.
+    await loadPlayer(page, false, "&swipe-ep=1");
+    const activeMeta = page.locator("section:not([inert]) .desktop-video-meta");
+    const epBadge = activeMeta.getByText(/^第 \d+\/3 集$/);
+    await epBadge.waitFor();
+    assert.equal(await epBadge.innerText(), "第 1/3 集");
+    const swipeBtn = page.getByRole("button", { name: "上下划切集", exact: true });
+    assert.equal(await swipeBtn.getAttribute("aria-pressed"), "true");
+    const rootBox = await page.locator(".player-root").boundingBox();
+    await page.mouse.move(rootBox.x + rootBox.width / 2, rootBox.y + rootBox.height / 2);
+    await page.mouse.wheel(0, 120);
+    await page.waitForFunction(() => document.querySelector("section:not([inert]) .desktop-video-meta")?.textContent?.includes("第 2/3 集"));
+    assert.equal(await activeMeta.locator("p").first().innerText(), "Seek fixture");
+    await page.getByText("第 2集 / 3", { exact: true }).waitFor();
+    await page.waitForTimeout(300);
+    await page.mouse.wheel(0, -120);
+    await page.waitForFunction(() => document.querySelector("section:not([inert]) .desktop-video-meta")?.textContent?.includes("第 1/3 集"));
+    await swipeBtn.click();
+    await page.getByText("上下划切集已关闭", { exact: true }).waitFor();
+    await page.getByRole("button", { name: "下一部 ↓", exact: true }).click();
+    await page.waitForFunction(() => document.querySelector("section:not([inert]) .desktop-video-meta")?.textContent?.includes("Other fixture"));
+  }
   return { click_ms: logs.find(e => e.event === "seek.resumed" && e.data.seek === first.data.seek)?.data.elapsed_ms, drag_requests: drags.length,
-    ...(!legacy ? { speed_menu_keyboard: { playing_preserved: true, paused_preserved: true, activation: ["Space", "Enter"], navigation: ["ArrowUp", "ArrowDown", "Home", "End"], exit: ["Escape", "Tab"], focus_restored: true } } : {}) };
+    ...(!legacy ? { desktop_swipe_ep_wheel: true, speed_menu_keyboard: { playing_preserved: true, paused_preserved: true, activation: ["Space", "Enter"], navigation: ["ArrowUp", "ArrowDown", "Home", "End"], exit: ["Escape", "Tab"], focus_restored: true } } : {}) };
 }
 async function lifecyclePlayerCheck(page, legacy) {
   let release, held, holdDeadline;
