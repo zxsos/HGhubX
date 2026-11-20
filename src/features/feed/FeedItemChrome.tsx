@@ -48,8 +48,6 @@ type Props = {
   capsuleOn: boolean;
   zoom: { s: number; x: number; y: number; g: boolean };
   setZoom: Dispatch<SetStateAction<{ s: number; x: number; y: number; g: boolean }>>;
-  portraitFit: "contain" | "cover";
-  setPortraitFit: Dispatch<SetStateAction<"contain" | "cover">>;
   liked: boolean;
   collected: boolean;
   likePending: boolean;
@@ -58,6 +56,7 @@ type Props = {
   likeCount: number;
   collectCount: number;
   paused: boolean;
+  onTogglePlay: () => void;
   waiting: boolean;
   err: string;
   scrub: { pct: number; target: number } | null;
@@ -89,9 +88,9 @@ type Props = {
 export default function FeedItemChrome({
   isActive, isDesktop, fs, clean, rotated, mode, kind, title, index, effectiveLength, bottomInset,
   curEp, duration, meta, post, hevcUrl, preferHevc, setPreferHevc,
-  landscapeVideo, capsuleOn, zoom, setZoom, portraitFit, setPortraitFit,
+  landscapeVideo, capsuleOn, zoom, setZoom,
   liked, collected, likePending, collectPending, heartBurst, likeCount, collectCount,
-  paused, waiting, err, scrub, barRef, barPct, playbackClock,
+  paused, onTogglePlay, waiting, err, scrub, barRef, barPct, playbackClock,
   onBack, enterFs, stepDir, canStep, onLike, onFav, setPanel, openTag, openTagMenu,
   muted, onToggleMuted, swipeEnabled, swipeEp, onToggleSwipe, onLock,
   onBarDown, onBarMove, onBarUp, onRetryStream, toast,
@@ -141,49 +140,21 @@ export default function FeedItemChrome({
         </Button>
       )}
 
-      {/* 竖屏下的快捷操作（#19）：
-          横版视频 → 保持原样，居中横排一条（画面上下有黑边，居中不压主体）；
-          竖版视频 → 缩放还原胶囊锚定在顶部安全区下方，兼容小屏与分屏模式。
-          显隐用 opacity + 轻微位移过渡（不卸载），净屏/全屏时慢慢淡出。 */}
+      {/* Pinch-zoom reset stays available; fill and rotate shortcuts are intentionally removed
+          because fill lives in playback settings and fullscreen has its own bottom-right control. */}
       {!isDesktop && (
-        <div
-          className={landscapeVideo
-            ? "absolute z-30 w-max whitespace-nowrap"
-            : "absolute z-30"}
-          aria-hidden={!(isActive && capsuleOn)}
+        <div className="absolute z-30" aria-hidden={!(isActive && capsuleOn)}
           style={{
-            left: landscapeVideo ? "50%" : undefined,
-            right: landscapeVideo ? undefined : "calc(var(--sar, 0px) + 12px)",
-            maxWidth: landscapeVideo ? "calc(100% - var(--sal, 0px) - var(--sar, 0px) - 32px)" : undefined,
-            top: landscapeVideo ? "64%" : "calc(var(--sat, 0px) + 56px)",
-            transform: landscapeVideo
-              ? `translate(-50%, ${isActive && capsuleOn ? 0 : 10}px)`
-              : `translateY(${isActive && capsuleOn ? 0 : -6}px)`,
+            right: "calc(var(--sar, 0px) + 12px)",
+            top: "calc(var(--sat, 0px) + 56px)",
+            transform: `translateY(${isActive && capsuleOn ? 0 : -6}px)`,
             opacity: isActive && capsuleOn ? 1 : 0,
             pointerEvents: isActive && capsuleOn ? "auto" : "none",
             transition: "opacity .38s cubic-bezier(.4,0,.2,1), transform .38s cubic-bezier(.4,0,.2,1)",
           }}>
-          <div className={landscapeVideo
-            ? "inline-flex items-center gap-0.5 min-h-8 px-1 rounded-full backdrop-blur-xl elev-2 whitespace-nowrap"
-            : "flex flex-col items-stretch gap-1 p-1 rounded-[18px] backdrop-blur-xl elev-2"}
+          <div className="flex flex-col items-stretch gap-1 p-1 rounded-[18px] backdrop-blur-xl elev-2"
             style={{ background: "rgba(12,15,22,.58)", boxShadow: "inset 0 0 0 1px rgba(255,255,255,.09)" }}>
-            {landscapeVideo && (
-              <>
-                <Button type="button" onClick={() => {
-                  if (zoom.s > 1.05) { setZoom({ s: 1, x: 0, y: 0, g: false }); setPortraitFit("contain"); }
-                  else setPortraitFit((f) => (f === "contain" ? "cover" : "contain"));
-                }} className="whitespace-nowrap flex items-center justify-center gap-1 min-h-0 h-[26px] px-3 rounded-full text-[12px] font-semibold pressable transition-colors duration-150"
-                  style={{ color: "rgba(255,255,255,.9)" }}>
-                  {zoom.s > 1.05 ? `还原 ${zoom.s.toFixed(1)}x` : portraitFit === "contain" ? "铺满" : "适应"}
-                </Button>
-                <Button type="button" onClick={() => enterFs(true)}
-                  className="whitespace-nowrap flex items-center justify-center gap-1 min-h-0 h-[26px] px-3 rounded-full text-[12px] font-semibold pressable transition-colors duration-150"
-                  style={{ color: "rgba(255,255,255,.9)" }}>
-                  <IExpand size={13} /><span>横屏</span>
-                </Button>
-              </>
-            )}
-            {!landscapeVideo && zoom.s > 1.05 && (
+            {zoom.s > 1.05 && (
               <Button type="button" onClick={() => setZoom({ s: 1, x: 0, y: 0, g: false })}
                 className="whitespace-nowrap flex items-center justify-center gap-1 min-h-0 h-[26px] px-3 rounded-full text-[12px] font-semibold pressable transition-colors duration-150"
                 style={{ color: "rgba(255,255,255,.9)" }}>
@@ -368,10 +339,11 @@ export default function FeedItemChrome({
       {/* 暂停 / 缓冲 */}
       {isActive && paused && !err && !scrubbing && (
         <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
-          <span className="w-[66px] h-[66px] rounded-full flex items-center justify-center backdrop-blur-md"
+          <Button type="button" aria-label="播放" onClick={onTogglePlay}
+            className="w-[66px] h-[66px] rounded-full flex items-center justify-center backdrop-blur-md pointer-events-auto pressable"
             style={{ background: "rgba(0,0,0,.55)", boxShadow: "inset 0 0 0 1px rgba(255,255,255,.12)" }}>
             <IPlayF size={28} className="hg-ink ml-0.5" />
-          </span>
+          </Button>
         </div>
       )}
       {isActive && waiting && !err && !paused && (

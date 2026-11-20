@@ -1,7 +1,8 @@
 name: CI/CD
 
-# 统一工作流：日常 PR/push 跑全量校验（前端 + Rust + Smoke + 播放/TV 诊断），
-# 打 v* tag 或手动选择 mode=package 时按平台出包并发布 GitHub Release，每次触发仅产生一条工作流记录。
+# 标准版统一工作流：日常 PR/push 跑标准版校验（前端 + Rust + Smoke + 播放诊断），
+# 打 v* tag 或手动选择 mode=package 时按平台出包并发布标准版 GitHub Release。
+# TV 版独立校验、独立版本号、打包与 tv-v* 发布见 .github/workflows/tv.yml。
 on:
   pull_request:
   push:
@@ -10,15 +11,15 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "运行模式：ci 跑全量校验；playback 只跑播放/TV 诊断；package 打安装包（配合 tag 发版）"
+        description: "运行模式：ci 跑全量校验；playback 只跑播放诊断；package 打安装包（配合 tag 发版）"
         type: choice
         default: ci
         options: [ci, playback, package]
       platforms:
-        description: "打包范围（仅 mode=package 生效）：all 全平台（含 TV），或指定单一平台"
+        description: "打包范围（仅 mode=package 生效）：all 标准版全平台，或指定单一平台"
         type: choice
         default: all
-        options: [all, android-arm64, android, android-tv, linux, windows, macos, ios]
+        options: [all, android-arm64, android, linux, windows, macos, ios]
       quick:
         description: "快速编译（仅 mode=package 生效）：thin LTO + 4 个 codegen 单元，快一倍"
         type: boolean
@@ -71,10 +72,8 @@ jobs:
         run: node scripts/check-version-sync.mjs
       - name: Documentation links
         run: node scripts/check-doc-links.mjs
-      - name: Build frontend (standard & TV)
-        run: |
-          VITE_APP_EDITION=tv pnpm build
-          pnpm build
+      - name: Build frontend
+        run: pnpm build
       - name: Size budgets
         run: node scripts/check-size-budgets.mjs
 
@@ -182,7 +181,7 @@ jobs:
       matrix: >-
         ${{
           (inputs.scenarios == '' || inputs.scenarios == 'all') &&
-          fromJSON('{"include":[{"shard":"core","scenarios":"seek,legacy,lifecycle,gesture,proxy,portrait-fit,post-flicker"},{"shard":"extended","scenarios":"ios-native,recovery,review,tv"}]}') ||
+          fromJSON('{"include":[{"shard":"core","scenarios":"seek,legacy,lifecycle,gesture,proxy,portrait-fit,post-flicker"},{"shard":"extended","scenarios":"ios-native,recovery,review"}]}') ||
           fromJSON(format('{{"include":[{{"shard":"custom","scenarios":{0}}}]}}', toJSON(inputs.scenarios)))
         }}
     steps:
@@ -195,14 +194,37 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Cache FFmpeg .deb packages
+        id: ffmpeg-cache
+        uses: actions/cache@v6
+        with:
+          path: ~/apt-ffmpeg-debs
+          key: apt-ffmpeg-ubuntu24-v1
       - name: Resolve pre-installed FFmpeg & Chrome
         run: |
-          if ! command -v ffmpeg >/dev/null 2>&1; then
+          install_ffmpeg_from_mirror() {
+            mkdir -p ~/apt-ffmpeg-debs
             sudo find /etc/apt/sources.list.d -maxdepth 1 -type f ! -name 'ubuntu.sources' -delete
             if [ -f /etc/apt/sources.list.d/ubuntu.sources ]; then
               sudo sed -i -E 's|^URIs:.*|URIs: https://mirrors.edge.kernel.org/ubuntu/|g' /etc/apt/sources.list.d/ubuntu.sources
             fi
-            sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+            sudo apt-get -o Acquire::ForceIPv4=true -o Acquire::Retries=3 -o Acquire::http::Timeout=15 -o Acquire::https::Timeout=15 update
+            sudo apt-get -o Dir::Cache::archives="$HOME/apt-ffmpeg-debs" -o Acquire::ForceIPv4=true -o Acquire::Retries=3 -o Acquire::http::Timeout=15 -o Acquire::https::Timeout=15 \
+              install -y --no-install-recommends ffmpeg
+            sudo rm -rf ~/apt-ffmpeg-debs/lock ~/apt-ffmpeg-debs/partial 2>/dev/null || true
+            sudo chown -R "$USER:$USER" ~/apt-ffmpeg-debs
+          }
+          if ! command -v ffmpeg >/dev/null 2>&1; then
+            if [ "${{ steps.ffmpeg-cache.outputs.cache-hit }}" = "true" ] && compgen -G "$HOME/apt-ffmpeg-debs/*.deb" >/dev/null; then
+              echo "Installing FFmpeg from cached .deb packages..."
+              if ! (sudo dpkg --unpack ~/apt-ffmpeg-debs/*.deb && sudo dpkg --configure -a); then
+                sudo apt-get -f install -y || true
+                rm -rf ~/apt-ffmpeg-debs/*
+                install_ffmpeg_from_mirror
+              fi
+            else
+              install_ffmpeg_from_mirror
+            fi
           fi
           if [ -x /usr/bin/google-chrome ]; then
             BROWSER="/usr/bin/google-chrome"
@@ -294,22 +316,13 @@ jobs:
           if-no-files-found: error
 
   android:
-    name: Android ${{ matrix.edition == 'tv' && 'TV' || 'standard' }} (split per ABI)
+    name: Android (split per ABI)
     runs-on: ubuntu-latest
     timeout-minutes: 60
     if: >-
       startsWith(github.ref, 'refs/tags/v') ||
       (github.event_name == 'workflow_dispatch' && inputs.mode == 'package' &&
-       (inputs.platforms == 'all' || inputs.platforms == 'android' || inputs.platforms == 'android-arm64' || inputs.platforms == 'android-tv'))
-    strategy:
-      fail-fast: false
-      matrix:
-        edition: >-
-          ${{
-            (github.event_name == 'workflow_dispatch' && inputs.platforms == 'android-tv') && fromJSON('["tv"]') ||
-            (github.event_name == 'workflow_dispatch' && (inputs.platforms == 'android' || inputs.platforms == 'android-arm64')) && fromJSON('["standard"]') ||
-            fromJSON('["standard", "tv"]')
-          }}
+       (inputs.platforms == 'all' || inputs.platforms == 'android' || inputs.platforms == 'android-arm64'))
     env:
       CARGO_PROFILE_RELEASE_LTO: ${{ inputs.quick && 'thin' || 'true' }}
       CARGO_PROFILE_RELEASE_CODEGEN_UNITS: ${{ inputs.quick && '4' || '1' }}
@@ -362,11 +375,8 @@ jobs:
         timeout-minutes: 8
         with:
           workspaces: src-tauri -> target
-          key: android-${{ matrix.edition }}
+          key: android-standard
       - run: pnpm install --frozen-lockfile
-      - name: 选择 Android TV 配置
-        if: matrix.edition == 'tv'
-        run: cp src-tauri/tauri.tv.conf.json src-tauri/tauri.android.conf.json
       - name: 生成 Android 工程
         run: pnpm tauri android init --ci
       - name: 编译 APK（按 ABI 分包）
@@ -392,7 +402,7 @@ jobs:
           if [ -z "${KEYSTORE_BASE64:-}" ]; then
             echo "::error::缺少 ANDROID_KEY_BASE64 secret，无法签名"; exit 1
           fi
-          if [ "${{ matrix.edition }}" = "tv" ]; then PREFIX="HGhubX-TV"; else PREFIX="HGhubX"; fi
+          PREFIX="HGhubX"
           KS="$RUNNER_TEMP/release.keystore"
           echo "$KEYSTORE_BASE64" | base64 -d > "$KS"
           BT="$(ls "$ANDROID_SDK_ROOT/build-tools" | sort -V | tail -1)"
@@ -417,7 +427,7 @@ jobs:
           ls -lh artifacts
       - uses: actions/upload-artifact@v7
         with:
-          name: ${{ matrix.edition == 'tv' && 'android-tv' || 'android' }}
+          name: android
           path: artifacts/*
           if-no-files-found: error
 

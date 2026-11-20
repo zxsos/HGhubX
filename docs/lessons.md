@@ -38,6 +38,7 @@
 | 2026-11-20 | 批量取消收藏跨账号继续执行 | 第一项取消收藏请求等待期间切换账号，旧批次可能对新账号继续发送后续项目并显示旧批次结果 | 批量循环只在逐项 API 内校验账号；API 每次从当前状态取身份，队列本身没有锁定初始账号代次，且线路/代理事件的 React 重挂载异步发生 | 批量开始时捕获账号代次与动作修订号，每项前后校验；账号、线路/代理变化或卸载后停止未发送项并抑制旧反馈 | `scripts/test-account-sync-empty-state.mjs` 的批量取消账号切换场景 |
 | 2026-11-20 | 桌面全屏切到别的剧（#180） | 窗口化、非第一部时点全屏放大按钮会切到其它剧，退出又切回 | 桌面原生/回退全屏只走 `fullscreen`，不设置 `store.fs`；`onScroll` 与重锚 effect 只认 `store.fs`，全屏改变容器高度后按旧 `scrollTop` 算出别的 index | 进入全屏前按当前条目重锚并清掉待定滚动切换；`onScroll` 与重锚 effect 同时认 `fullscreen`，全屏期间不处理滚动 | `src/features/feed/useFeedViewport.ts`；常驻回归待核实 |
 | 2026-11-20 | 桌面闲置/锁定不隐藏左上角与指针（#180） | 控件闲置隐藏后左上角标题栏仍显示，锁定时按钮隐藏但文字留下，鼠标指针不隐藏 | `.desktop-context-header` 不在 `is-idle`/`is-locked` 的隐藏名单；锁定只隐藏 `[inert] button`，标题文字不是按钮；无 `cursor: none` | 闲置与锁定名单补上 `.desktop-context-header`；闲置时媒体容器 `cursor: none`，移动鼠标由 `wake()` 恢复 | `src/index.css`；常驻回归待核实 |
+| 2026-11-20 | 未授权合并到 main（#180） | issue #180 的两个修复 PR 在 CI 全绿后被 agent 直接 squash 合入 main，维护者并未授权本次合并 | 把「修完走 Actions 验证提 PR」理解成包含合并；变更协议只约束了 tag/发布，没有约束合并 main | 合并 main 必须每次先获维护者明确授权；未授权只提 PR、跑 CI、汇报，停在待合并状态 | `AGENTS.md` 变更协议第 7 条；#183、#185 |
 
 新回归的追加方式：
 

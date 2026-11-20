@@ -1,0 +1,342 @@
+name: TV
+
+# TV 版独立子项目工作流（与标准版 ci.yml 完全解耦）：
+# - 日常验收：PR/推送 main 且 TV 专属或共享依赖路径变化时，校验 TV 版本、构建 TV 前端并跑 TV 验收；
+# - 独立打包与发布：推送 tv-v* tag 或手动 mode=package 时按独立版本号打包并发布 TV GitHub Release（--latest=false，不抢占仓库 Latest 徽章）。
+on:
+  pull_request:
+    paths:
+      - "src/tv/**"
+      - "src/shared/**"
+      - "src/features/playback/**"
+      - "src/app/startup/**"
+      - "src/editionEntry.ts"
+      - "src/edition.ts"
+      - "src/legacyRuntime.ts"
+      - "src/styles/launch.css"
+      - "src/styles/usage-agreement.css"
+      - "src/styles/legacy-webview.css"
+      - "index.html"
+      - "vite.config.ts"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "tsconfig*.json"
+      - "scripts/legacy-css.ts"
+      - "scripts/test-tv-remote.mjs"
+      - "scripts/test-playback.mjs"
+      - "scripts/build-android-tv.mjs"
+      - "scripts/patch-android-tv.mjs"
+      - "scripts/patch-android-splash.mjs"
+      - "scripts/sync-android-icons.mjs"
+      - "scripts/set-version.mjs"
+      - "scripts/check-version-sync.mjs"
+      - "tests/tv-*"
+      - "src-tauri/tauri.tv.conf.json"
+      - "src-tauri/tv/**"
+      - "src-tauri/src/**"
+      - "src-tauri/Cargo.*"
+      - ".github/workflows/tv.yml"
+  push:
+    branches: [main]
+    paths:
+      - "src/tv/**"
+      - "src/shared/**"
+      - "src/features/playback/**"
+      - "src/app/startup/**"
+      - "src/editionEntry.ts"
+      - "src/edition.ts"
+      - "src/legacyRuntime.ts"
+      - "src/styles/launch.css"
+      - "src/styles/usage-agreement.css"
+      - "src/styles/legacy-webview.css"
+      - "index.html"
+      - "vite.config.ts"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "tsconfig*.json"
+      - "scripts/legacy-css.ts"
+      - "scripts/test-tv-remote.mjs"
+      - "scripts/test-playback.mjs"
+      - "scripts/build-android-tv.mjs"
+      - "scripts/patch-android-tv.mjs"
+      - "scripts/patch-android-splash.mjs"
+      - "scripts/sync-android-icons.mjs"
+      - "scripts/set-version.mjs"
+      - "scripts/check-version-sync.mjs"
+      - "tests/tv-*"
+      - "src-tauri/tauri.tv.conf.json"
+      - "src-tauri/tv/**"
+      - "src-tauri/src/**"
+      - "src-tauri/Cargo.*"
+      - ".github/workflows/tv.yml"
+    tags: ["tv-v*"]
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "运行模式：acceptance 跑 TV 构建与验收；package 打包 TV APK（配合 tag 与 quick=false 发布独立 Release）"
+        type: choice
+        default: acceptance
+        options: [acceptance, package]
+      quick:
+        description: "快速编译（仅 mode=package 生效）：thin LTO + 4 个 codegen 单元，不编 x86_64"
+        type: boolean
+        default: true
+      tag:
+        description: "发版 tag（仅 mode=package 生效，如 tv-v2.2.4）：配合 quick=false 发布独立 TV Release（--latest=false）；留空只出产物"
+        type: string
+        default: ""
+      prerelease:
+        description: "标记为 Pre-release（仅发布 Release 时生效）"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tv-${{ github.ref }}-${{ github.event_name }}-${{ (startsWith(github.ref, 'refs/tags/tv-v') || github.event_name == 'workflow_dispatch') && github.run_id || 'branch' }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/tv-v') && (github.event_name != 'workflow_dispatch' || inputs.tag == '') }}
+
+env:
+  CI: "true"
+
+jobs:
+  acceptance:
+    name: TV build & acceptance
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    if: >-
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/tv-v')) ||
+      (github.event_name == 'workflow_dispatch' && inputs.mode == 'acceptance')
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: TV version fields
+        run: node scripts/check-version-sync.mjs --target tv
+      - name: Build TV frontend
+        run: VITE_APP_EDITION=tv pnpm build
+      - name: Cache FFmpeg .deb packages
+        id: ffmpeg-cache
+        uses: actions/cache@v6
+        with:
+          path: ~/apt-ffmpeg-debs
+          key: apt-ffmpeg-ubuntu24-v1
+      - name: Resolve pre-installed FFmpeg & Chrome
+        run: |
+          install_ffmpeg_from_mirror() {
+            mkdir -p ~/apt-ffmpeg-debs
+            sudo find /etc/apt/sources.list.d -maxdepth 1 -type f ! -name 'ubuntu.sources' -delete
+            if [ -f /etc/apt/sources.list.d/ubuntu.sources ]; then
+              sudo sed -i -E 's|^URIs:.*|URIs: https://mirrors.edge.kernel.org/ubuntu/|g' /etc/apt/sources.list.d/ubuntu.sources
+            fi
+            sudo apt-get -o Acquire::ForceIPv4=true -o Acquire::Retries=3 -o Acquire::http::Timeout=15 -o Acquire::https::Timeout=15 update
+            sudo apt-get -o Dir::Cache::archives="$HOME/apt-ffmpeg-debs" -o Acquire::ForceIPv4=true -o Acquire::Retries=3 -o Acquire::http::Timeout=15 -o Acquire::https::Timeout=15 \
+              install -y --no-install-recommends ffmpeg
+            sudo rm -rf ~/apt-ffmpeg-debs/lock ~/apt-ffmpeg-debs/partial 2>/dev/null || true
+            sudo chown -R "$USER:$USER" ~/apt-ffmpeg-debs
+          }
+          if ! command -v ffmpeg >/dev/null 2>&1; then
+            if [ "${{ steps.ffmpeg-cache.outputs.cache-hit }}" = "true" ] && compgen -G "$HOME/apt-ffmpeg-debs/*.deb" >/dev/null; then
+              echo "Installing FFmpeg from cached .deb packages..."
+              if ! (sudo dpkg --unpack ~/apt-ffmpeg-debs/*.deb && sudo dpkg --configure -a); then
+                sudo apt-get -f install -y || true
+                rm -rf ~/apt-ffmpeg-debs/*
+                install_ffmpeg_from_mirror
+              fi
+            else
+              install_ffmpeg_from_mirror
+            fi
+          fi
+          if [ -x /usr/bin/google-chrome ]; then
+            BROWSER="/usr/bin/google-chrome"
+          else
+            pnpm exec playwright-core install --with-deps chromium
+            BROWSER="$(node --input-type=module -e "import { chromium } from 'playwright-core'; console.log(chromium.executablePath())")"
+          fi
+          echo "Using browser: $BROWSER, ffmpeg: $(command -v ffmpeg)"
+          echo "BROWSER_EXECUTABLE=$BROWSER" >> "$GITHUB_ENV"
+      - name: Run TV acceptance
+        run: node scripts/test-tv-remote.mjs
+      - name: Upload diagnostics even when a check fails
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: tv-acceptance-diagnostics
+          path: test-results/tv-remote/
+          retention-days: 7
+          if-no-files-found: warn
+
+  package:
+    name: Android TV (split per ABI)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    if: >-
+      startsWith(github.ref, 'refs/tags/tv-v') ||
+      (github.event_name == 'workflow_dispatch' && inputs.mode == 'package')
+    env:
+      CARGO_PROFILE_RELEASE_LTO: ${{ inputs.quick && 'thin' || 'true' }}
+      CARGO_PROFILE_RELEASE_CODEGEN_UNITS: ${{ inputs.quick && '4' || '1' }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: TV 版本号对齐 tag
+        id: ver
+        shell: bash
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/tv-v* ]]; then
+            V="${GITHUB_REF_NAME#tv-v}"
+          elif [[ -n "$INPUT_TAG" ]]; then
+            V="${INPUT_TAG#tv-v}"
+            V="${V#v}"
+          else
+            V="$(node -p "require('./src-tauri/tauri.tv.conf.json').version")"
+          fi
+          node scripts/set-version.mjs --target tv "$V"
+          CODE="$(node -p "require('./src-tauri/tauri.tv.conf.json').bundle.android.versionCode")"
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "versionCode=$CODE" >> "$GITHUB_OUTPUT"
+          echo "HGHUBX_APP_VERSION=$V" >> "$GITHUB_ENV"
+          echo "versionName=$V  versionCode=$CODE"
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: 准备 Android SDK / NDK
+        run: |
+          SDK="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+          SDKM="$SDK/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKM" --licenses > /dev/null 2>&1 || true
+          "$SDKM" --install "platform-tools" "platforms;android-36" "build-tools;36.0.0" "ndk;28.2.13676358"
+          echo "NDK_HOME=$SDK/ndk/28.2.13676358" >> "$GITHUB_ENV"
+          ls "$SDK/ndk"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
+      - uses: swatinem/rust-cache@v2.9.3
+        continue-on-error: true
+        timeout-minutes: 8
+        with:
+          workspaces: src-tauri -> target
+          key: android-tv
+      - run: pnpm install --frozen-lockfile
+      - name: 选择 Android TV 配置
+        run: cp src-tauri/tauri.tv.conf.json src-tauri/tauri.android.conf.json
+      - name: 生成 Android 工程
+        run: pnpm tauri android init --ci
+      - name: 编译 APK（按 ABI 分包）
+        run: |
+          if [ "${{ inputs.quick }}" = "true" ]; then
+            TARGETS="aarch64 armv7"
+          else
+            TARGETS="aarch64 armv7 x86_64"
+          fi
+          echo "targets: $TARGETS"
+          pnpm tauri android build --apk --split-per-abi --target $TARGETS
+      - name: 签名 APK
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEY_BASE64 }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          set -euo pipefail
+          if [ -z "${KEYSTORE_BASE64:-}" ]; then
+            echo "::error::缺少 ANDROID_KEY_BASE64 secret，无法签名"; exit 1
+          fi
+          PREFIX="HGhubX-TV"
+          KS="$RUNNER_TEMP/release.keystore"
+          echo "$KEYSTORE_BASE64" | base64 -d > "$KS"
+          BT="$(ls "$ANDROID_SDK_ROOT/build-tools" | sort -V | tail -1)"
+          APKSIGNER="$ANDROID_SDK_ROOT/build-tools/$BT/apksigner"
+          mkdir -p artifacts
+          found=0
+          for f in $(find src-tauri/gen/android/app/build/outputs/apk -name '*-release*.apk'); do
+            abi="$(basename "$(dirname "$(dirname "$f")")")"
+            out="artifacts/${PREFIX}_${VERSION}_${abi}.apk"
+            "$APKSIGNER" sign \
+              --ks "$KS" --ks-key-alias "$KEY_ALIAS" \
+              --ks-pass "pass:$STORE_PASSWORD" --key-pass "pass:$KEY_PASSWORD" \
+              --v4-signing-enabled false \
+              --out "$out" "$f"
+            "$APKSIGNER" verify --print-certs "$out" | head -3
+            found=$((found+1))
+          done
+          rm -f "$KS"
+          if [ "$found" -eq 0 ]; then echo "::error::没有找到 release APK"; exit 1; fi
+          AAPT2="$(ls "$ANDROID_SDK_ROOT"/build-tools/*/aapt2 | sort -V | tail -1)"
+          for a in artifacts/*.apk; do "$AAPT2" dump badging "$a" | grep -m1 "^package:"; done
+          ls -lh artifacts
+      - uses: actions/upload-artifact@v7
+        with:
+          name: android-tv
+          path: artifacts/*
+          if-no-files-found: error
+
+  release:
+    name: Publish TV GitHub Release
+    needs: [package]
+    if: >-
+      !cancelled() &&
+      needs.package.result == 'success' &&
+      (startsWith(github.ref, 'refs/tags/tv-v') ||
+       (github.event_name == 'workflow_dispatch' && inputs.mode == 'package' && inputs.tag != '' && !inputs.quick))
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+      - uses: actions/download-artifact@v8
+        with:
+          name: android-tv
+          path: artifacts
+      - name: 列出待发布 TV 产物
+        run: ls -lh artifacts
+      - name: 创建或更新 TV GitHub Release（不抢占 Latest）
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_TAG: ${{ inputs.tag }}
+          PRERELEASE: ${{ inputs.prerelease }}
+        run: |
+          set -euo pipefail
+          TAG="${INPUT_TAG:-$GITHUB_REF_NAME}"
+          if gh release view "$TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $TAG 已存在，覆盖上传 TV 产物"
+            gh release upload "$TAG" artifacts/* --clobber -R "$GITHUB_REPOSITORY"
+            exit 0
+          fi
+          NOTES="docs/release-notes/tv/${TAG}.md"
+          EXTRA=(--latest=false)
+          if [ -f "$NOTES" ]; then
+            echo "使用 $NOTES"
+            EXTRA+=(--notes-file "$NOTES")
+          else
+            echo "没有 $NOTES，回退自动生成的说明"
+            EXTRA+=(--generate-notes)
+          fi
+          if [ "$PRERELEASE" = "true" ] || [[ "${TAG#tv-v}" == *-* ]]; then
+            EXTRA+=(--prerelease)
+          fi
+          gh release create "$TAG" artifacts/* --title "HGhubX TV ${TAG}" "${EXTRA[@]}" -R "$GITHUB_REPOSITORY"

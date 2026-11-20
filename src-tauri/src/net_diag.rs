@@ -551,7 +551,9 @@ pub async fn diagnose() -> Value {
         "runtime": {
             "os": std::env::consts::OS,
             "arch": std::env::consts::ARCH,
-            "ver": env!("CARGO_PKG_VERSION"),
+            "ver": option_env!("HGHUBX_APP_VERSION")
+                .filter(|v| !v.is_empty())
+                .unwrap_or(env!("CARGO_PKG_VERSION")),
         },
     })
 }

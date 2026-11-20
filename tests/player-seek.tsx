@@ -128,6 +128,7 @@ function Fixture() {
     <button onClick={() => setActive((v) => !v)}>切换播放页激活状态</button>
     {diagnosticTest && <button onClick={() => setSettings(v => !v)}>诊断设置</button>}
     {settings && <div style={{ position: "relative", width: 900, height: 700 }}><Settings onBack={() => setSettings(false)} wide /></div>}
+    <ToastHost />
   </AppProvider>;
 }
 createRoot(document.querySelector("#root")!).render(<Fixture />);

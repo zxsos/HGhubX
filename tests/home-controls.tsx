@@ -80,9 +80,8 @@ function Probe() {
       index={0} effectiveLength={1} bottomInset={0} curEp={1} duration={120} meta={meta} hevcUrl="hevc.mp4"
       preferHevc={preferHevc} setPreferHevc={setPreferHevc}
       landscapeVideo={false} capsuleOn={false} zoom={{ s: 1, x: 0, y: 0, g: false }} setZoom={() => {}}
-      portraitFit={portraitFit} setPortraitFit={setPortraitFit}
       liked={false} collected={false} likePending={false} collectPending={false} heartBurst={0}
-      likeCount={120} collectCount={36} paused={false} waiting={false} err="" scrub={null}
+      likeCount={120} collectCount={36} paused={false} onTogglePlay={() => {}} waiting={false} err="" scrub={null}
       barRef={{ current: null }} barPct={null} playbackClock={clock}
       onBack={() => {}} enterFs={landscape => { setFullscreen(landscape); setFsPreview(true); }} stepDir={() => {}} canStep={() => false}
       onLike={async () => {}} onFav={async () => {}} setPanel={setPanel}

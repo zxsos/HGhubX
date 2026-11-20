@@ -259,7 +259,8 @@ export function useFeedTouchGestures({
         if (fs && kind === "video") {
           const result = resolveFullscreenEpisodeSwipe(ep, total, dy);
           if (result && "message" in result) {
-            toast(result.message, "info");
+            /* Reuse the episode toast slot so repeated boundary swipes replace instead of stack. */
+            toast(result.message, "info", "episode");
             return;
           }
           if (result) {

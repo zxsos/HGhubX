@@ -121,6 +121,55 @@ try {
   await dialog.waitFor({ state: "detached" });
   assert.equal(await searchButton.evaluate(element => element === document.activeElement), true, "Closing search restores focus to its trigger");
   report.checks.push("Escape closes only the search and restores focus");
+
+  // Long-press history deletion: the clear action stays visible, a held term
+  // reveals per-term delete controls, and a single tap on the armed term removes
+  // it immediately without a separate done confirmation.
+  await searchButton.click();
+  await dialog.waitFor();
+  await field.fill("星河");
+  await field.press("Enter");
+  await page.getByRole("button").filter({ hasText: "星河旅人" }).first().waitFor();
+  await dialog.getByRole("button", { name: "退出搜索", exact: true }).click();
+  await dialog.waitFor({ state: "detached" });
+  await searchButton.click();
+  await dialog.waitFor();
+  const history = dialog.getByRole("region", { name: "搜索历史", exact: true });
+  await history.waitFor();
+  assert.equal(await history.getByRole("button", { name: "清空", exact: true }).count(), 1,
+    "Clear all remains the only header action");
+  assert.equal(await history.getByRole("button", { name: "完成", exact: true }).count(), 0,
+    "Done is hidden before the long press");
+  const held = history.getByRole("button", { name: "都市", exact: true });
+  const box = await held.boundingBox();
+  assert.ok(box, "History term is visible");
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.waitForTimeout(560);
+  await page.mouse.up();
+  await history.getByRole("button", { name: "删除搜索历史 星河", exact: true }).waitFor();
+  assert.equal(await history.getByRole("button", { name: "完成", exact: true }).count(), 1,
+    "Long press exposes done to leave batch deletion");
+  assert.equal(await history.getByText("都市", { exact: true }).count(), 1, "Releasing a long press must not delete the held term");
+  assert.equal(await history.getByText("星河", { exact: true }).count(), 1, "Long press keeps the other term");
+  await history.getByRole("button", { name: "删除搜索历史 星河", exact: true }).click();
+  assert.equal(await history.getByText("星河", { exact: true }).count(), 0, "A single tap on an armed term removes it");
+  assert.equal(await history.getByRole("button", { name: "删除搜索历史 都市", exact: true }).count(), 1,
+    "Batch deletion stays active for the remaining terms");
+  assert.equal(await history.getByRole("button", { name: "完成", exact: true }).count(), 1,
+    "Done remains available after removing one term");
+  await history.screenshot({ path: fileURLToPath(new URL("history-after-delete.png", output)), animations: "disabled" });
+  await history.getByRole("button", { name: "完成", exact: true }).click();
+  assert.equal(await history.getByRole("button", { name: "删除搜索历史 都市", exact: true }).count(), 0,
+    "Done exits batch deletion");
+  assert.equal(await history.getByRole("button", { name: "清空", exact: true }).count(), 1,
+    "Clear all remains after done");
+  await history.screenshot({ path: fileURLToPath(new URL("history-done.png", output)), animations: "disabled" });
+  await history.getByRole("button", { name: "清空", exact: true }).click();
+  await history.waitFor({ state: "detached" });
+  assert.equal(await dialog.getByRole("region", { name: "搜索历史", exact: true }).count(), 0,
+    "Clear all removes the history section");
+  report.checks.push("search history long press batches term deletion until done");
   report.passed = true;
   await page.screenshot({ path: fileURLToPath(new URL("final.png", output)), animations: "disabled" });
 } catch (error) {

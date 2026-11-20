@@ -164,10 +164,14 @@ export default function Feed({
     setControlsLocked(true);
     toast("已锁定屏幕", "info", "screen-lock");
   };
+  const togglePlayback = useCallback(() => {
+    videoRef.current?.toggle();
+  }, []);
+
   const toggleSwipeEp = () => {
     const next = !swipeEp;
     setSwipeEp(next);
-    toast(next ? "上下划切集已开启" : "上下划切集已关闭", "info");
+    toast(next ? "上下划切集已开启" : "上下划切集已关闭", "info", "swipe-toggle");
   };
 
   useEffect(() => { setTagMenu(false); setTagSelection([]); }, [curId, store.lineEpoch, accountScope]);
@@ -337,8 +341,8 @@ export default function Feed({
 
   /* 倍速：中心小方块打开偏好，右上长按 2x 起、左右滑换挡，左下 0.5x。 */
   const effRate = holdSpeed || speedLock || (holdSlow ? 0.5 : rate);
-  /* 竖屏快捷胶囊的显隐：不卸载、只改 opacity，这样淡入淡出都能过渡（#19） */
-  const capsuleOn = !fs && !clean && !isDesktop && (landscapeVideo || zoom.s > 1.05);
+  /* The pinch-zoom reset capsule fades in place without unmounting (issue #19). */
+  const capsuleOn = !fs && !clean && !isDesktop && zoom.s > 1.05;
 
   /* 若用户在视频首帧宽高解析出来前已点进全屏，解析出横屏后自动补发横屏方向请求 */
   useEffect(() => {
@@ -673,10 +677,9 @@ export default function Feed({
                   curEp={curEp} duration={duration} meta={meta} post={post} hevcUrl={hevcUrl}
                   preferHevc={preferHevc} setPreferHevc={setPreferHevc}
                   landscapeVideo={landscapeVideo} capsuleOn={capsuleOn} zoom={zoom} setZoom={setZoom}
-                  portraitFit={portraitFit} setPortraitFit={setPortraitFit}
                   liked={liked} collected={collected} likePending={likePending} collectPending={collectPending}
                   heartBurst={heartBurst} likeCount={likeCount} collectCount={collectCount}
-                  paused={paused} waiting={waiting} err={err} scrub={scrub} barRef={barRef} barPct={barPct}
+                  paused={paused} onTogglePlay={togglePlayback} waiting={waiting} err={err} scrub={scrub} barRef={barRef} barPct={barPct}
                   playbackClock={playbackClock} onBack={onBack} enterFs={enterFs} stepDir={stepDir} canStep={canStep}
                   onLike={onLike} onFav={onFav} setPanel={setPanel} openTag={openTag} openTagMenu={openTagMenu}
                   muted={muted} onToggleMuted={() => setMuted(value => !value)}

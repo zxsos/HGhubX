@@ -209,7 +209,7 @@ type Store = {
   fsIdleSecs: number; setFsIdleSecs: (s: number) => void;
   startupTab: Tab; setStartupTab: (t: Tab) => void;
   volume: number; setVolume: (v: number) => void;
-  searchHist: string[]; addSearch: (q: string) => void; clearSearchHist: () => void;
+  searchHist: string[]; addSearch: (q: string) => void; removeSearch: (q: string) => void; clearSearchHist: () => void;
   strictSecurity: boolean; strictSecurityReady: boolean; securityPending: boolean; cliRelaxed: boolean; setStrictSecurity: (on: boolean) => Promise<void>;
   toasts: Toast[]; toast: (msg: string, icon?: Toast["icon"], tag?: string) => void;
   /** 线路切换计数：变了就让列表页重挂载，重新拉一遍数据 */
@@ -452,6 +452,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (!t) return;
     setP((s) => ({ ...s, searchHist: [t, ...s.searchHist.filter((x) => x !== t)].slice(0, 12) }));
   }, []);
+  const removeSearch = useCallback((q: string) => {
+    const t = q.trim();
+    if (!t) return;
+    setP((s) => ({ ...s, searchHist: s.searchHist.filter((x) => x !== t) }));
+  }, []);
   const clearSearchHist = useCallback(() => setP((s) => ({ ...s, searchHist: [] })), []);
 
   const logout = useCallback(async () => {
@@ -526,12 +531,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     preferHevc: p.preferHevc, setPreferHevc,
     fsIdleSecs: p.fsIdleSecs, setFsIdleSecs,
     startupTab: p.startupTab, setStartupTab,
-    searchHist: p.searchHist, addSearch, clearSearchHist,
+    searchHist: p.searchHist, addSearch, removeSearch, clearSearchHist,
     strictSecurity, strictSecurityReady, securityPending, cliRelaxed, setStrictSecurity,
     get toasts() { return toastList; }, toast, lineEpoch,
   }), [theme, themePreference, setTheme, tab, setTab, stack, push, openRootPage, pop, user, loginOpen, logout,
     p, account,
-    setMuted, setMuteOnStartup, setSwipeEp, setPreferHevc, setFsIdleSecs, setStartupTab, setVolume, addSearch, clearSearchHist, strictSecurity, strictSecurityReady, securityPending, cliRelaxed, setStrictSecurity,
+    setMuted, setMuteOnStartup, setSwipeEp, setPreferHevc, setFsIdleSecs, setStartupTab, setVolume, addSearch, removeSearch, clearSearchHist, strictSecurity, strictSecurityReady, securityPending, cliRelaxed, setStrictSecurity,
     toast, lineEpoch, theater, setTheater, fs, setFs, clean, setClean, locked, setLocked]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

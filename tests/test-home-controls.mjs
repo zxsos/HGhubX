@@ -164,11 +164,11 @@ try {
   await page.waitForTimeout(150);
   const fullscreenSwipes = await page.evaluate(() => {
     const fn = window.homeControlsProbe.fullscreenEpisodeSwipe;
-    return { up: fn(50, 109, -90), down: fn(50, 109, 90), first: fn(1, 109, -90), last: fn(109, 109, 90) };
+    return { up: fn(50, 109, -90), down: fn(50, 109, 90), first: fn(1, 109, 90), last: fn(109, 109, -90) };
   });
   assert.deepEqual(fullscreenSwipes, {
-    up: { target: 49 },
-    down: { target: 51 },
+    up: { target: 51 },
+    down: { target: 49 },
     first: { message: "当前已是第一集" },
     last: { message: "当前已是最后一集" },
   });

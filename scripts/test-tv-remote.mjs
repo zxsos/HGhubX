@@ -1,4 +1,4 @@
-// Executed by the existing GitHub Actions playback workflow with scenarios=tv.
+// Executed by `.github/workflows/tv.yml` (and locally via `pnpm test:playback --scenarios tv`).
 // Real TV bootstrap/components/Worker/IndexedDB. All IPC/media remain fixtures.
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";

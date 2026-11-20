@@ -26,8 +26,9 @@ make check
 
 - `pnpm build` 分别按 `tsconfig.json`、`tsconfig.node.json` 和 `tsconfig.tests.json` 执行三次 TypeScript 检查，再执行 Vite 构建。
 - `pnpm test:smoke` 运行不需要 ffmpeg、真实 Tauri 宿主或上游网络的稳定浏览器用例。
-- `make check` 当前执行 `test-rust`、`test-web`、`docs`、`budget`、`release-check`；**不包含** `test:smoke`。
-- `make release-check` 检查版本字段和 Android `versionCode`；发版由 CI 执行，不在本地发布。
+- `make check` 当前执行 `test-rust`、`test-web`、`docs`、`budget`、`release-check`；**不包含** `test:smoke` 与 TV 验收。
+- `make test-tv` 检查 TV 独立版本字段（`src-tauri/tauri.tv.conf.json`）并执行 `VITE_APP_EDITION=tv pnpm build`；完整 TV 验收用 `node scripts/test-tv-remote.mjs`。
+- `make release-check` 同时检查标准版与 TV 版版本字段及 Android `versionCode`；发版由 CI（标准版 `v*` / TV 版 `tv-v*`）执行，不在本地发布。
 - 完整播放回归用 `pnpm test:playback`；它需要 FFmpeg 和 Chromium，属于手动诊断而非 PR smoke。
 
 CI 是验证记录。命令写了不等于已经运行；报告里必须写清命令、输入、字面结果和退出状态。
@@ -106,6 +107,9 @@ CI 是验证记录。命令写了不等于已经运行；报告里必须写清�
 4. 回归补一行 `docs/lessons.md`，并指向实际测试或代码路径；不要编造 issue/PR 编号。
 5. 运行与改动风险匹配的命令，记录字面输出和退出状态；不把“看过代码”写成“测试通过”。
 6. 一个 PR 只解决一个目标。发版、签名和 Release 由维护者/CI 执行，agent 不自行 tag 或发布。
+7. **合并到 `main` 必须先获得维护者明确授权。** 授权按次生效：每次合并前单独确认，
+   不得从历史授权、CI 全绿、「修完提 PR」或类似表述推断。未获授权时只建分支、提 PR、
+   跑 CI 并汇报结果，停在待合并状态；合并到其它分支同样先确认目标分支。
 
 ## 提交格式
 
@@ -180,7 +184,7 @@ Closes #N            <- 仅关联 issue 时保留
 - 条目按行为编号加粗；issue 编号可引（issue 不随提交删除），不引 commit sha 作为说明来源。
 - 无内容的段整段省略，不留空标题；不写未运行过的验证。
 - 发布由维护者/CI 执行；agent 只起草正文，不 tag、不 publish。
-- 模板文件为 `docs/release-notes/TEMPLATE.md`；正式正文写 `docs/release-notes/<tag>.md`，release job 读它作正文。
+- 模板文件为 `docs/release-notes/TEMPLATE.md`（标准版）与 `docs/release-notes/tv/TEMPLATE.md`（TV 版）；正式正文分别写 `docs/release-notes/<tag>.md` 与 `docs/release-notes/tv/<tag>.md`，各自 release job 读它作正文。
 
 ## 其他文字（docs / lessons / UI 文案 / issue）
 

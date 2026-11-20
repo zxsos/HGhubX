@@ -92,7 +92,7 @@ type Props = {
   openTagMenu: (selected?: string[]) => void;
   closePanels: () => void;
   pushPage: (page: PageInput) => void;
-  toast: (msg: string, icon?: Toast["icon"]) => void;
+  toast: (msg: string, icon?: Toast["icon"], tag?: string) => void;
 };
 
 export function FeedPlayerShellChrome({
@@ -136,7 +136,7 @@ export function FeedPlayerShellChrome({
           nextDisabled={!episodes.some((e) => e.ep_num === curEp + 1) && index >= effectiveLength - 1}
           nextTitle={episodes.some((e) => e.ep_num === curEp + 1) ? (swipeEp ? "下一集 ↓" : "下一集") : "下一部 ↓"}
           swipeEp={swipeEp}
-          onToggleSwipe={() => { setSwipeEp(!swipeEp); toast(swipeEp ? "上下划切集已关闭" : "上下划切集已开启"); }}
+          onToggleSwipe={() => { const next = !swipeEp; setSwipeEp(next); toast(next ? "上下划切集已开启" : "上下划切集已关闭", "info", "swipe-toggle"); }}
           onToggle={() => videoRef.current?.toggle()}
           onSeek={(t, source) => { videoRef.current?.seek(t, source); playbackClock.publish(t); }}
           onSeekInteraction={(phase, input, target, pointerTarget) => videoRef.current?.trace(`seek.input.${phase}`, { input, target, pointer_target: pointerTarget })}

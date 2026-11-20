@@ -63,8 +63,12 @@ export function ToastHost() {
   const toasts = useToasts();
   const [fsHost, setFsHost] = useState<Element | null>(() => getFullscreenElement());
   useEffect(() => onFullscreenChange(() => setFsHost(getFullscreenElement())), []);
+  /* The CSS-rotated landscape stage is itself a rotated coordinate system. Portalling
+     the host into it keeps episode hints at the bottom of the video, not the viewport. */
+  const rotatedHost = fsHost ? null : document.querySelector(".player-root.fs-landscape");
+  const host = fsHost || rotatedHost;
   const content = (
-    <div role="status" aria-live="polite" aria-atomic="true" className="ios-toast-host absolute inset-x-0 z-[300] flex flex-col items-center gap-2 pointer-events-none px-6" style={{ bottom: "calc(var(--sab, 0px) + 96px)" }}>
+    <div role="status" aria-live="polite" aria-atomic="true" className="ios-toast-host absolute inset-x-0 z-[300] flex flex-col items-center gap-2 pointer-events-none px-6" style={{ bottom: rotatedHost ? "96px" : "calc(var(--sab, 0px) + 96px)" }}>
       {toasts.map((t) =>
         t.line ? (
           <div
@@ -115,7 +119,7 @@ export function ToastHost() {
       )}
     </div>
   );
-  return fsHost ? createPortal(content, fsHost) : content;
+  return host ? createPortal(content, host) : content;
 }
 
 /* ——— 图片（骨架 + 渐显，自动走本地解密协议） ——— */

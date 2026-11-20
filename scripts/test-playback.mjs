@@ -174,6 +174,14 @@ async function gestureChecks(page) {
     }));
   });
   const clean = () => page.locator('.player-root').getAttribute('data-clean');
+  // Regression: after a double-tap pause, a single click on the center play icon resumes playback.
+  await tap(); await tap();
+  await page.waitForFunction(() => document.querySelector("video").paused);
+  const centerPlay = page.getByRole("button", { name: "播放", exact: true });
+  await centerPlay.waitFor();
+  await centerPlay.click();
+  await page.waitForFunction(() => !document.querySelector("video").paused);
+  assert.equal(await clean(), 'false', 'Center play icon must resume playback without another double tap');
   const start = Date.now();
   await tap();
   await page.waitForFunction(() => document.querySelector('.player-root')?.dataset.clean === 'true');
@@ -224,7 +232,15 @@ async function gestureChecks(page) {
   await page.waitForFunction(() => window.playerSeekFixture.logs.some(e => e.event === 'play.resolve' && e.data.video_id === 991 && e.data.episode === 3));
   assert.equal(await page.evaluate(() => window.playerSeekFixture.logs.some(e => e.event === 'play.resolve' && e.data.video_id === 992)), false,
     'Fast episode swipes must stay on the same video');
-  return { singleTapMs, bottomOnlyScrub: true, fastSwipeEpisodes: [2, 3], sameVideo: true };
+  const swipeToggle = page.locator('button.mobile-playback-quick[aria-label*="上下划切集"]').first();
+  for (let i = 0; i < 3; i++) {
+    await swipeToggle.click();
+    await page.waitForTimeout(80);
+  }
+  await page.waitForFunction(() => document.querySelectorAll(".a-toast").length === 1);
+  assert.equal(await page.locator(".a-toast").count(), 1, "Rapid swipe-toggle taps must keep one toast card");
+  assert.match(await page.locator(".a-toast").innerText(), /上下划切集/);
+  return { singleTapMs, bottomOnlyScrub: true, fastSwipeEpisodes: [2, 3], sameVideo: true, swipeToggleToastCards: 1 };
 }
 
 // issue #142 回归：手机竖屏视口 + 真实竖屏源（360x640，高>宽）。
@@ -271,6 +287,10 @@ async function portraitFitChecks(page) {
   });
   await afterCommit();
   assert.equal(await objectFit(), "contain", "Landscape video in a portrait viewport must default to contain");
+  assert.equal(await page.getByRole("button", { name: "铺满", exact: true }).count(), 0, "Floating fill control must be removed");
+  assert.equal(await page.getByRole("button", { name: "横屏", exact: true }).count(), 0, "Floating rotate control must be removed");
+  await page.getByRole("button", { name: "更多播放设置" }).click();
+  await page.getByRole("dialog", { name: "播放设置" }).waitFor();
   await page.getByRole("button", { name: "铺满", exact: true }).click();
   await page.waitForFunction(() => getComputedStyle(document.querySelector("video")).objectFit === "cover");
   await page.getByRole("button", { name: "适应", exact: true }).click();
@@ -334,7 +354,7 @@ async function portraitFitChecks(page) {
   assert.equal(await page.locator(".a-toast").count(), 1, "Unlocking must replace the hint instead of stacking");
   assert.equal(await page.getByRole("button", { name: "锁定屏幕", exact: true }).count(), 0, "Unlock exits clean mode and hides the lock icon");
   return { viewport: "390x844", portrait_source: "360x640", portrait_object_fit: portrait.objectFit,
-    landscape_default_fit: "contain", landscape_toggle: ["contain", "cover", "contain"] };
+    landscape_default_fit: "contain", landscape_toggle: ["contain", "cover", "contain"], floating_fit_rotate: 0 };
 }
 
 async function seekChecks(page, legacy) {

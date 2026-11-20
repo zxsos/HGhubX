@@ -9,6 +9,7 @@ import { FilteredContent } from "../../shared/ui/FilteredContent";
 import { Empty } from "../../shared/ui/ui";
 import { IBack, IClose, ISearch } from "../../shared/ui/icons";
 import { useSearchResults } from "./useSearchResults";
+import { SearchHistory } from "./SearchHistory";
 import { useDialogFocusTrap } from "../../shared/ui/ios/dialogFocus";
 import { registerOverlayBack } from "../../shared/lib/back";
 
@@ -22,7 +23,7 @@ export function InplaceSearch({ kind, postLabel = "吃瓜帖", scope, onOpenVide
   onClose: () => void;
   wide?: boolean;
 }) {
-  const { searchHist, addSearch, clearSearchHist } = useStore();
+  const { searchHist, addSearch, removeSearch, clearSearchHist } = useStore();
   const [q, setQ] = useState("");
   const [submitted, setSubmitted] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
@@ -81,15 +82,7 @@ export function InplaceSearch({ kind, postLabel = "吃瓜帖", scope, onOpenVide
         {!submitted ? (
           !scope && searchHist.length > 0 ? (
             <div className="mt-1 a-rise">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-[14px] font-bold text-on">搜索历史</span>
-                <Button onClick={clearSearchHist} className="-mr-2 px-2 inline-flex items-center justify-end text-[12px] text-dim pressable">清空</Button>
-              </div>
-              <div className="flex flex-wrap gap-2 mt-2.5">
-                {searchHist.map((h) => (
-                  <Button key={h} onClick={() => submit(h)} className="ios-filter-pill text-on/85">{h}</Button>
-                ))}
-              </div>
+              <SearchHistory items={searchHist} onPick={submit} onRemove={removeSearch} onClear={clearSearchHist} />
             </div>
           ) : null
         ) : <>

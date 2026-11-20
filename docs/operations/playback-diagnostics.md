@@ -108,7 +108,6 @@ pnpm test:playback --scenarios seek,legacy
 
 其他参数：`--media-dir DIR` 复用已有 `list.m3u8` 与 `seg*.ts`；`--browser-executable PATH` 使用已安装的匹配版本 Chromium；`--output NEW_DIR` 指定新的产物目录。`FFMPEG_PATH` 可指定 FFmpeg 可执行文件。命令拒绝覆盖已经存在的输出目录。
 
-仓库附带手动触发的 GitHub Actions 工作流 **Playback diagnostics**。工作流输入默认为
-`seek,legacy,lifecycle,gesture,proxy`；需要其余场景（`portrait-fit,ios-native,recovery,review,tv`）时显式填写。它会在检查失败时仍上传日志、截图与追踪，保留 7 天；不会随推送自动运行。
+仓库在 `.github/workflows/ci.yml` 中提供手动触发的 `mode=playback` 播放诊断，默认运行全部标准版场景（`seek,legacy,lifecycle,gesture,proxy,portrait-fit,ios-native,recovery,review,post-flicker`），也可通过 `scenarios` 输入指定子集；TV 版验收由独立工作流 `.github/workflows/tv.yml`（`mode=acceptance`）执行。两者的检查任务在失败时仍会上传日志、截图与追踪，保留 7 天。
 
 **覆盖边界：** 这些测试使用真实 React 控件、video、hls.js 与本地 HTTP 分片，但业务 API 和 Tauri 日志 IPC 使用替身。它们不执行真实 Rust 媒体代理，不验证真实 CDN、代理/TUN、Tauri 的 CSP/Origin/DNS 策略，也不能证明 macOS 27 的 ManagedMediaSource 问题已复现或修复。Rust 日志持久化/轮转/脱敏由 Rust 回归覆盖，执行结果以对应 GitHub Actions 记录为准；macOS 特有问题使用实机 `playback.log` 确认。
