@@ -6,9 +6,12 @@ import { fileURLToPath } from "node:url";
 import { legacyCss } from "./scripts/legacy-css";
 
 const host = process.env.TAURI_DEV_HOST;
-const { version } = JSON.parse(
+const { version: standardVersion } = JSON.parse(
   readFileSync(new URL("./package.json", import.meta.url), "utf8"),
 ) as { version: string };
+const { version: tvVersion } = JSON.parse(
+  readFileSync(new URL("./src-tauri/tauri.tv.conf.json", import.meta.url), "utf8"),
+) as { version?: string };
 
 export default defineConfig(({ mode }) => {
   // Android TV 构建期指定 VITE_APP_EDITION=tv（scripts/build-android-tv.mjs 注入）；
@@ -16,6 +19,7 @@ export default defineConfig(({ mode }) => {
   const edition =
     process.env.VITE_APP_EDITION ||
     loadEnv(mode, process.cwd(), "VITE_").VITE_APP_EDITION;
+  const appVersion = edition === "tv" ? (tvVersion || standardVersion) : standardVersion;
   return {
     resolve: {
       alias: {
@@ -30,9 +34,9 @@ export default defineConfig(({ mode }) => {
     // optimize:false 让 Tailwind 不做本地 lightningcss 优化，兼容性变换统一交给 legacyCss。
     plugins: [react(), tailwindcss({ optimize: false }), legacyCss()],
     clearScreen: false,
-    // 版本号只维护 package.json（CI 会按 tag 改写它），界面里的版本由这里注入，避免写死后漂移
+    // 标准版版本号读 package.json，TV 版读 src-tauri/tauri.tv.conf.json，避免界面与打包版本漂移
     define: {
-      __APP_VERSION__: JSON.stringify(version),
+      __APP_VERSION__: JSON.stringify(appVersion),
     },
     server: {
       port: 1420,

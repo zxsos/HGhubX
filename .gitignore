@@ -8,6 +8,8 @@ dist-ssr/
 test-results/
 src-tauri/target/
 src-tauri/gen/
+# Android TV 临时覆盖配置（由 build-android-tv.mjs / tv.yml 生成）
+src-tauri/tauri.android.conf.json
 *.local
 
 # 编辑器 / 系统

@@ -169,9 +169,15 @@ impl Journal {
             .map_err(|_| "无法保存日志开关")?;
         self.enabled = on;
         self.error = None;
-        if let Err(e) = self.append("diagnostics.toggle", json!({"enabled": on, "version": env!("CARGO_PKG_VERSION"), "os": std::env::consts::OS}), MAX_FILE) { self.error = Some(e); }
+        if let Err(e) = self.append("diagnostics.toggle", json!({"enabled": on, "version": app_version(), "os": std::env::consts::OS}), MAX_FILE) { self.error = Some(e); }
         Ok(())
     }
+}
+
+fn app_version() -> &'static str {
+    option_env!("HGHUBX_APP_VERSION")
+        .filter(|v| !v.is_empty())
+        .unwrap_or(env!("CARGO_PKG_VERSION"))
 }
 
 pub fn bind(dir: &Path) {
@@ -186,7 +192,7 @@ pub fn bind(dir: &Path) {
         if log.enabled {
             if let Err(e) = log.append(
                 "process.start",
-                json!({"version": env!("CARGO_PKG_VERSION"), "os": std::env::consts::OS}),
+                json!({"version": app_version(), "os": std::env::consts::OS}),
                 MAX_FILE,
             ) {
                 log.error = Some(e);
@@ -360,7 +366,7 @@ fn env_line(host: &str) -> Result<String, String> {
         "event": "diagnostics.env",
         "strict": crate::network_policy::strict_security(),
         "data": {
-            "version": env!("CARGO_PKG_VERSION"),
+            "version": app_version(),
             "os": std::env::consts::OS,
             "arch": std::env::consts::ARCH,
             "line": host,
