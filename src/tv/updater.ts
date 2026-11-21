@@ -237,3 +237,4 @@ export function resetCachedTvUpdate(): void {
 }
 
 export const useTvUpdater = () => useSyncExternalStore(subscribe, () => state);
+export const useTvHasUpdate = () => useSyncExternalStore(subscribe, () => Boolean(state.info?.has_update));

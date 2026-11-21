@@ -8,7 +8,7 @@ import { rememberFocus, restoreFocus, useRemoteScope } from "./remote";
 import { indexMetadata, setCatalogPaused } from "./search/catalog";
 import { saveContent } from "./library";
 import { setPlaybackPreferences, usePlaybackPreferences } from "./preferences";
-import { bootCheckTvUpdate, useTvUpdater } from "./updater";
+import { bootCheckTvUpdate, useTvHasUpdate } from "./updater";
 import HomePage from "./HomePage";
 import BrowsePage from "./BrowsePage";
 import SearchPage from "./SearchPage";
@@ -21,8 +21,7 @@ type Tab = "home"|"browse"|"search"|"library"|"settings";
 type Route = {kind:"detail";content:TvContent}|{kind:"player";content:TvContent;part:string;seconds:number};
 const nav = [{id:"home",label:"首页",Icon:IHome},{id:"browse",label:"浏览",Icon:IGrid},{id:"search",label:"搜索",Icon:ISearch},{id:"library",label:"片库",Icon:IStar},{id:"settings",label:"设置",Icon:ISettings}] as const;
 export default function TvApp(){
-  const tv=useTv(),prefs=useContentPreferences(),playback=usePlaybackPreferences(),updater=useTvUpdater();
-  const hasUpdate=Boolean(updater.info?.has_update);
+  const tv=useTv(),prefs=useContentPreferences(),playback=usePlaybackPreferences(),hasUpdate=useTvHasUpdate();
   const [tab,setTab]=useState<Tab>("home"),[visited,setVisited]=useState<Tab[]>(["home"]),[stack,setStack]=useState<Route[]>([]);
   const current=stack[stack.length-1],playing=current?.kind==="player";
   const page=current?`${current.kind}:${contentKey(current.content)}`:tab;
