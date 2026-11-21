@@ -8,6 +8,7 @@ import { usePlaybackActivity } from "./usePlaybackActivity";
 import { useProxyPlaybackRecovery } from "./useProxyPlaybackRecovery";
 import { createHlsRecovery, type HlsRecovery } from "./hlsRecovery";
 import AmbientGlow from "./AmbientGlow";
+import SuperResolutionCanvas, { superResolutionRequested } from "./SuperResolutionCanvas";
 import { setBalanceVolume } from "./balanceVolume";
 import { tr } from "../../shared/i18n";
 
@@ -78,6 +79,7 @@ const VideoSurface = forwardRef<VideoHandle, Props>(function VideoSurface(
   const measurementRef = useRef({ key: measurementKey, onSize });
   measurementRef.current = { key: measurementKey, onSize };
   const [ready, setReady] = useState(false);
+  const superResolution = superResolutionRequested();
   const { trace, requestSeek } = usePlayerDiagnostics(videoRef, hlsRef, { ...diagnosticContext, active, resource: mediaResource(src) });
   const activity = usePlaybackActivity(videoRef, hlsRef, { active, autoPlay, src, trace });
   const proxyRecovery = useProxyPlaybackRecovery(videoRef, src, activity, trace);
@@ -273,6 +275,9 @@ const VideoSurface = forwardRef<VideoHandle, Props>(function VideoSurface(
   return (
     <div className="relative isolate h-full w-full">
       {ambientGlow && <AmbientGlow videoRef={videoRef} active={active} />}
+      {superResolution && active && (
+        <SuperResolutionCanvas videoRef={videoRef} fit={fit} active={active} />
+      )}
       <video
         ref={(node) => {
           videoRef.current = node;

@@ -16,7 +16,7 @@ const scriptScenarios = {
   tv: { script: "test-tv-remote.mjs", timeout: 480000, metrics: { transport: "mock Tauri IPC; actual TV bootstrap, worker, library and player" } },
   "post-flicker": { script: "test-post-flicker.mjs", timeout: 240000, metrics: { transport: "mock Tauri IPC; real PostDetail/AppProvider/Player; local HLS fixture" } },
 };
-const ALL_SCENARIOS = ["seek", "legacy", "lifecycle", "gesture", "proxy", "portrait-fit", "episode-toast", "ambient", "balance-volume", "ios-native", "recovery", "review", "tv", "post-flicker"];
+const ALL_SCENARIOS = ["seek", "legacy", "lifecycle", "gesture", "proxy", "portrait-fit", "episode-toast", "ambient", "balance-volume", "super-resolution", "ios-native", "recovery", "review", "tv", "post-flicker"];
 const { values: args } = parseArgs({ options: {
   "media-dir": { type: "string" }, output: { type: "string" }, "browser-executable": { type: "string" },
   scenarios: { type: "string", default: "seek,legacy,lifecycle,gesture,proxy,portrait-fit" }, help: { type: "boolean" },
@@ -425,8 +425,77 @@ async function episodeToastChecks(page) {
   return { deferredWhileLoading: true, boundaryReplaces: true, rotatedBottom: true, noPortraitEpisodeBadge: true, host: "rotated-stage", text: (await lastToast.innerText()).trim(), box: lastBox };
 }
 
-// Ambient glow is a sampled color wash behind the video. It must follow the
-// live setting, render on a readable source, and leave no layer when disabled.
+// Super resolution is a hidden WebGL2 overlay. It must upscale a low-res
+// source, keep the native video as fallback, and leave no canvas when disabled.
+
+async function superResolutionChecks(page, dir) {
+  // The fixture is a 320x180 HLS stream. The mobile portrait viewport must
+  // still upscale it into the overlay instead of silently falling back.
+  await page.addInitScript(() => localStorage.setItem("hghubx_mobile_hold_guide_v1", "1"));
+  await loadPlayer(page, false, "&sr=1");
+  const guideDone = page.locator(".mobile-hold-guide-done").first();
+  if (await guideDone.count()) {
+    await guideDone.click({ timeout: 5000 }).catch(() => {});
+  }
+  await page.evaluate(async () => {
+    const video = document.querySelector("video");
+    video.playbackRate = 1;
+    await video.play().catch(() => {});
+  });
+  await page.waitForFunction(() => Number(document.querySelector(".hg-super-resolution-canvas")?.dataset.frames || 0) > 0);
+  const on = await page.locator(".hg-super-resolution-canvas").evaluate(canvas => ({
+    width: canvas.width,
+    height: canvas.height,
+    frames: Number(canvas.dataset.frames),
+    scale: canvas.dataset.scale,
+    cpuMs: Number(canvas.dataset.cpuMs),
+    active: canvas.closest(".hg-super-resolution")?.style.display,
+  }));
+  const source = await page.locator("video").evaluate(video => ({ width: video.videoWidth, height: video.videoHeight }));
+  assert.ok(on.width > source.width && on.height > source.height, `Super resolution must upscale: ${JSON.stringify({ source, on })}`);
+  assert.ok(on.frames > 0, "Super resolution must draw real video frames");
+  assert.equal(on.active, "block", "Super resolution canvas must be visible when active");
+  const fpsStarted = Date.now();
+  const framesStarted = on.frames;
+  await page.waitForTimeout(1500);
+  const framesAfter = await page.locator(".hg-super-resolution-canvas").evaluate(canvas => Number(canvas.dataset.frames));
+  const fps = Math.round(((framesAfter - framesStarted) * 1000) / (Date.now() - fpsStarted) * 10) / 10;
+  await page.evaluate(() => {
+    const video = document.querySelector("video");
+    video.pause();
+    video.currentTime = Number.isFinite(video.duration) ? Math.min(6, video.duration * 0.5) : 6;
+  });
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: join(dir, "super-resolution-on.png") });
+  await page.evaluate(() => { document.querySelector("video").style.visibility = "hidden"; });
+  await page.waitForTimeout(150);
+  await page.screenshot({ path: join(dir, "super-resolution-canvas-only.png") });
+  await page.evaluate(() => { document.querySelector("video").style.visibility = ""; });
+
+  await loadPlayer(page);
+  await page.evaluate(() => {
+    const video = document.querySelector("video");
+    video.pause();
+    video.currentTime = Number.isFinite(video.duration) ? Math.min(6, video.duration * 0.5) : 6;
+  });
+  await page.waitForTimeout(500);
+  assert.equal(await page.locator(".hg-super-resolution-canvas").count(), 0, "The hidden switch must leave native video untouched when off");
+  await page.screenshot({ path: join(dir, "super-resolution-off.png") });
+
+  await page.addInitScript(() => {
+    const getContext = HTMLCanvasElement.prototype.getContext;
+    HTMLCanvasElement.prototype.getContext = function (type, ...args) {
+      if (type === "webgl2") return null;
+      return getContext.call(this, type, ...args);
+    };
+  });
+  await loadPlayer(page, false, "&sr=1");
+  await page.waitForTimeout(500);
+  assert.equal(await page.locator(".hg-super-resolution-canvas").count(), 0, "Super resolution must fall back when WebGL2 is unavailable");
+  await page.screenshot({ path: join(dir, "super-resolution-fallback.png") });
+  return { source, on, fps, fallback: true, cpu_ms: on.cpuMs };
+}
+
 async function ambientGlowChecks(page) {
   await page.addInitScript(() => {
     window.__TAURI_INTERNALS__ = { invoke: async () => null };
@@ -1075,8 +1144,8 @@ try {
       }
       continue;
     }
-    const mobileContext = name === "gesture" || name === "portrait-fit" || name === "episode-toast" || name === "ambient" || name === "balance-volume";
-    const context = await browser.newContext({ ...(mobileContext ? {userAgent:"Mozilla/5.0 (iPhone; CPU iPhone OS 17_1_1 like Mac OS X) AppleWebKit/605.1.15 Version/17.1 Mobile/15E148 Safari/604.1",hasTouch:true} : {}), viewport: name === "portrait-fit" || name === "episode-toast" || name === "ambient" ? { width: 390, height: 844 } : { width: 1000, height: 900 } });
+    const mobileContext = name === "gesture" || name === "portrait-fit" || name === "episode-toast" || name === "ambient" || name === "balance-volume" || name === "super-resolution";
+    const context = await browser.newContext({ ...(mobileContext ? {userAgent:"Mozilla/5.0 (iPhone; CPU iPhone OS 17_1_1 like Mac OS X) AppleWebKit/605.1.15 Version/17.1 Mobile/15E148 Safari/604.1",hasTouch:true} : {}), ...(name === "super-resolution" ? { deviceScaleFactor: 2 } : {}), viewport: name === "portrait-fit" || name === "episode-toast" || name === "ambient" || name === "super-resolution" ? { width: 390, height: 844 } : { width: 1000, height: 900 } });
     await context.exposeBinding("collectPlaybackLogs", (_source, entries) => {
       for (const e of entries) jsonl(join(dir, "playback.jsonl"), { ts: e.data.at, event: `web.${e.event}`, data: e.data, transport: "browser-fixture" });
     });
@@ -1099,7 +1168,7 @@ try {
     const result = { name, status: "running", started: new Date().toISOString() }; report.cases.push(result);
     let deadline;
     try {
-      const action = name === "recovery" ? explicitRecoveryCheck(page) : name === "proxy" ? proxyRecoveryCheck(page) : name === "gesture" ? gestureChecks(page) : name === "portrait-fit" ? portraitFitChecks(page, dir) : name === "episode-toast" ? episodeToastChecks(page) : name === "ambient" ? ambientGlowChecks(page) : name === "balance-volume" ? balanceVolumeChecks(page) : name === "seek" || name === "legacy" ? seekChecks(page, name === "legacy") : lifecycleCheck(page);
+      const action = name === "recovery" ? explicitRecoveryCheck(page) : name === "proxy" ? proxyRecoveryCheck(page) : name === "gesture" ? gestureChecks(page) : name === "portrait-fit" ? portraitFitChecks(page, dir) : name === "episode-toast" ? episodeToastChecks(page) : name === "ambient" ? ambientGlowChecks(page) : name === "balance-volume" ? balanceVolumeChecks(page) : name === "super-resolution" ? superResolutionChecks(page, dir) : name === "seek" || name === "legacy" ? seekChecks(page, name === "legacy") : lifecycleCheck(page);
       result.metrics = await Promise.race([action, new Promise((_, reject) => { deadline = setTimeout(() => reject(new Error("Scenario exceeded 45 seconds")), 45000); })]);
       assert.deepEqual(pageErrors, [], "Browser script errors");
       assert.deepEqual(externalRequests, [], "Unexpected external network requests");
