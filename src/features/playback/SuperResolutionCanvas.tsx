@@ -187,6 +187,7 @@ const RCAS_SHADER = `#version 300 es
 precision highp float;
 
 uniform sampler2D uSource;
+uniform sampler2D uNative;
 uniform vec2 uOutputSize;
 uniform float uSharpness;
 uniform float uLimit;
@@ -199,6 +200,31 @@ float max3(float a, float b, float c) { return max(a, max(b, c)); }
 void main() {
   vec2 uv = gl_FragCoord.xy / uOutputSize;
   vec2 stepUv = 1.0 / uOutputSize;
+
+  // CAS samples the original video instead of the EASU output. EASU rounds
+  // hard square corners; sharpening that result makes the rounding obvious.
+  if (uMode > 0.5) {
+    vec3 nb = texture(uNative, uv + vec2(0.0, -1.0) * stepUv).rgb;
+    vec3 nd = texture(uNative, uv + vec2(-1.0, 0.0) * stepUv).rgb;
+    vec3 ne = texture(uNative, uv).rgb;
+    vec3 nf = texture(uNative, uv + vec2(1.0, 0.0) * stepUv).rgb;
+    vec3 nh = texture(uNative, uv + vec2(0.0, 1.0) * stepUv).rgb;
+
+    float nbL = nb.b * 0.5 + (nb.r * 0.5 + nb.g);
+    float ndL = nd.b * 0.5 + (nd.r * 0.5 + nd.g);
+    float neL = ne.b * 0.5 + (ne.r * 0.5 + ne.g);
+    float nfL = nf.b * 0.5 + (nf.r * 0.5 + nf.g);
+    float nhL = nh.b * 0.5 + (nh.r * 0.5 + nh.g);
+
+    float detail = neL - (nbL + ndL + nfL + nhL) * 0.25;
+    float casMin = min(min(nbL, ndL), min(nfL, nhL));
+    float casMax = max(max(nbL, ndL), max(nfL, nhL));
+    float casRange = max(casMax - casMin, 1e-4);
+    float casAmp = sqrt(clamp(min(casMin, 2.0 - casMax) / casRange, 0.0, 1.0));
+    outColor = vec4(clamp(ne + detail * (uStrength * casAmp), 0.0, 1.0), 1.0);
+    return;
+  }
+
   vec3 b = texture(uSource, uv + vec2(0.0, -1.0) * stepUv).rgb;
   vec3 d = texture(uSource, uv + vec2(-1.0, 0.0) * stepUv).rgb;
   vec3 e = texture(uSource, uv).rgb;
@@ -210,18 +236,6 @@ void main() {
   float eL = e.b * 0.5 + (e.r * 0.5 + e.g);
   float fL = f.b * 0.5 + (f.r * 0.5 + f.g);
   float hL = h.b * 0.5 + (h.r * 0.5 + h.g);
-
-  // Experimental CAS-like unsharp path for ?sr=cas. It sharpens luminance
-  // detail after EASU without changing hue; uStrength controls the halo tradeoff.
-  if (uMode > 0.5) {
-    float detail = eL - (bL + dL + fL + hL) * 0.25;
-    float casMin = min(min(bL, dL), min(fL, hL));
-    float casMax = max(max(bL, dL), max(fL, hL));
-    float casRange = max(casMax - casMin, 1e-4);
-    float casAmp = sqrt(clamp(min(casMin, 2.0 - casMax) / casRange, 0.0, 1.0));
-    outColor = vec4(clamp(e + detail * (uStrength * casAmp), 0.0, 1.0), 1.0);
-    return;
-  }
 
   float mn4R = min(min(b.r, d.r), min(f.r, h.r));
   float mn4G = min(min(b.g, d.g), min(f.g, h.g));
@@ -367,6 +381,7 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
     let easuInputLoc: WebGLUniformLocation | null = null;
     let easuOutputLoc: WebGLUniformLocation | null = null;
     let rcasSourceLoc: WebGLUniformLocation | null = null;
+    let rcasNativeLoc: WebGLUniformLocation | null = null;
     let rcasOutputLoc: WebGLUniformLocation | null = null;
     let rcasSharpLoc: WebGLUniformLocation | null = null;
     let rcasLimitLoc: WebGLUniformLocation | null = null;
@@ -472,10 +487,13 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, intermediate);
       gl.uniform1i(rcasSourceLoc, 0);
+      gl.activeTexture(gl.TEXTURE1);
+      gl.bindTexture(gl.TEXTURE_2D, videoTexture);
+      gl.uniform1i(rcasNativeLoc, 1);
       gl.uniform2f(rcasOutputLoc, width, height);
       gl.uniform1f(rcasSharpLoc, 0.0);
       gl.uniform1f(rcasLimitLoc, 0.1875);
-      gl.uniform1f(rcasStrengthLoc, variant === "cas" ? 0.45 : 1.0);
+      gl.uniform1f(rcasStrengthLoc, variant === "cas" ? 0.60 : 1.0);
       gl.uniform1f(rcasModeLoc, variant === "cas" ? 1.0 : 0.0);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
 
@@ -514,6 +532,7 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
       easuInputLoc = gl.getUniformLocation(programEasu, "uInputSize");
       easuOutputLoc = gl.getUniformLocation(programEasu, "uOutputSize");
       rcasSourceLoc = gl.getUniformLocation(programRcas, "uSource");
+      rcasNativeLoc = gl.getUniformLocation(programRcas, "uNative");
       rcasOutputLoc = gl.getUniformLocation(programRcas, "uOutputSize");
       rcasSharpLoc = gl.getUniformLocation(programRcas, "uSharpness");
       rcasLimitLoc = gl.getUniformLocation(programRcas, "uLimit");
