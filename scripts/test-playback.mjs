@@ -452,6 +452,11 @@ async function superResolutionChecks(page, dir) {
     active: canvas.closest(".hg-super-resolution")?.style.display,
   }));
   const source = await page.locator("video").evaluate(video => ({ width: video.videoWidth, height: video.videoHeight }));
+  const gpu = await page.locator(".hg-super-resolution-canvas").evaluate(canvas => {
+    const gl = canvas.getContext("webgl2");
+    const info = gl?.getExtension("WEBGL_debug_renderer_info");
+    return info ? gl?.getParameter(info.UNMASKED_RENDERER_WEBGL) : "unknown";
+  });
   assert.ok(on.width > source.width && on.height > source.height, `Super resolution must upscale: ${JSON.stringify({ source, on })}`);
   assert.ok(on.frames > 0, "Super resolution must draw real video frames");
   assert.equal(on.active, "block", "Super resolution canvas must be visible when active");
@@ -493,7 +498,7 @@ async function superResolutionChecks(page, dir) {
   await page.waitForTimeout(500);
   assert.equal(await page.locator(".hg-super-resolution-canvas").count(), 0, "Super resolution must fall back when WebGL2 is unavailable");
   await page.screenshot({ path: join(dir, "super-resolution-fallback.png") });
-  return { source, on, fps, fallback: true, cpu_ms: on.cpuMs };
+  return { source, on, fps, gpu, fallback: true, cpu_ms: on.cpuMs };
 }
 
 async function ambientGlowChecks(page) {
