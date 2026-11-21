@@ -21,10 +21,12 @@ ad-hoc 签名都不应进入仓库或本机脚本输出。
   [`tauri.tv.conf.json`](../../src-tauri/tauri.tv.conf.json)。
 - Rust 版本：[`src-tauri/Cargo.toml`](../../src-tauri/Cargo.toml) 的 `[package].version`、
   `custom-protocol` feature；[`src-tauri/Cargo.lock`](../../src-tauri/Cargo.lock) 的 `hghubx` 包。
-- CI/CD（双工作流解耦 + 测试预览合成）：
-  - 标准版：[`.github/workflows/ci.yml`](../../.github/workflows/ci.yml)，负责标准版日常校验（`frontend`、`rust`、`smoke`、`playback` 矩阵）与 `v*` 发版构建（`windows`、`android` 标准版、`macos`、`ios`、`linux`、`release`）。
-  - TV 子项目：[`.github/workflows/tv.yml`](../../.github/workflows/tv.yml)，负责 TV 版按路径过滤的构建与遥控器验收（`acceptance`）、独立版本打包（`package`）与 `tv-v*` 独立发版（`release`，`--latest=false` 不抢占仓库 `Latest` 徽章）。
-  - 测试预览：[`.github/workflows/test-preview.yml`](../../.github/workflows/test-preview.yml) 与 [`scripts/sync-test-branch.mjs`](../../scripts/sync-test-branch.mjs)，通过单一 `test` PR 标签驱动信任继承（首次打标自动合入并继承到同一作者后续新 PR，移除 `test` 标签即清空该作者历史继承），从 `main` 自动合并所有打开中、非草稿且无冲突的 `test` PR 到 `test` 分支（拦截外部 PR 修改 `.github/`），在无密钥构建运行器完成全平台（Windows、macOS、Linux、Android、Android TV、iOS）编译后，由独立干净运行器签名 APK 并滚动更新 `test-pre` Pre-release（`--latest=false`）。
+- CI 与 CD 拆分工作流（+ 测试预览合成）：
+  - 标准版 CI：[`.github/workflows/ci.yml`](../../.github/workflows/ci.yml)（名称 `CI`），负责标准版日常校验（`frontend`、`rust`、`smoke`、`playback` 矩阵），PR/推 `main` 仅运行校验，无跳过的打包任务。
+  - 标准版 CD：[`.github/workflows/release.yml`](../../.github/workflows/release.yml)（名称 `Release`），负责 `v*` 发版与手动全平台/单平台打包（`windows`、`android`、`macos`、`ios`、`linux`、`release`）。
+  - TV 版 CI：[`.github/workflows/tv.yml`](../../.github/workflows/tv.yml)（名称 `TV CI`），负责 TV 版按路径过滤的构建与遥控器验收（`acceptance`）。
+  - TV 版 CD：[`.github/workflows/tv-release.yml`](../../.github/workflows/tv-release.yml)（名称 `TV Release`），负责 `tv-v*` 与手动 TV APK 打包及独立发版（`package`、`release`，`--latest=false` 不抢占仓库 `Latest` 徽章）。
+  - 测试预览：[`.github/workflows/test-preview.yml`](../../.github/workflows/test-preview.yml)（名称 `Test Preview`）与 [`scripts/sync-test-branch.mjs`](../../scripts/sync-test-branch.mjs)，通过单一 `test` PR 标签驱动信任继承（首次打标自动合入并继承到同一作者后续新 PR，移除 `test` 标签即清空该作者历史继承），从 `main` 自动合并所有打开中、非草稿且无冲突的 `test` PR 到 `test` 分支（拦截外部 PR 修改 `.github/`），在无密钥构建运行器完成全平台（Windows、macOS、Linux、Android、Android TV、iOS）编译后，由独立干净运行器签名 APK 并滚动更新 `test-pre` Pre-release（`--latest=false`）。
 - 版本/预算门禁：[`scripts/set-version.mjs`](../../scripts/set-version.mjs)（支持 `--target standard|tv`）、
   [`scripts/check-version-sync.mjs`](../../scripts/check-version-sync.mjs)（支持 `--target all|standard|tv`）、
   [`scripts/check-doc-links.mjs`](../../scripts/check-doc-links.mjs)、
@@ -59,7 +61,7 @@ ad-hoc 签名都不应进入仓库或本机脚本输出。
    `node scripts/check-doc-links.mjs`、`node scripts/check-size-budgets.mjs`、
    `node scripts/check-version-sync.mjs`。它**不包含**
    `pnpm test:smoke`；smoke 由 CI 的独立 job 和 `make test-smoke` 执行。
-4. 标准版 CI/CD 日常校验（`ci.yml`，`pull_request`、推送 `main` 或手动 `mode=ci`）：
+4. 标准版 CI 日常校验（`ci.yml`，`pull_request`、推送 `main` 或手动 `mode=ci`）：
    - `frontend`：Node 22、pnpm 10、版本字段检查（同时校验标准版与 TV 版）、文档链接、标准版 `pnpm build`、尺寸预算。
    - `rust`：Linux 系统依赖、`cargo check --all-targets`、`cargo test --lib`。
    - `smoke`：安装 Chromium，运行 `pnpm test:smoke`。
@@ -69,7 +71,7 @@ ad-hoc 签名都不应进入仓库或本机脚本输出。
      `review` 场景运行 `scripts/test-round-review.mjs`（搜索返回键与网络设置检查）；账号同步/批量取消收藏
      回归 `scripts/test-account-sync-empty-state.mjs` 在 smoke 的 `account-sync` 套件中运行，不在 `review` 中重复执行。
      手动 `mode=playback` 可只跑播放诊断或指定 `scenarios` 子集（如 `pnpm test:playback --scenarios review`）。
-5. 标准版打包与发布（`ci.yml`，推送 `v*` tag 或手动 `mode=package`）：在分支上手动运行且 `tag` 留空时，
+5. 标准版 CD 打包与发布（`release.yml`，推送 `v*` tag 或手动触发）：在分支上手动运行且 `tag` 留空时，
    只构建所选范围（如 `platforms=ios` 仅验证未签名 ipa），不发布 GitHub Release。各平台构建 job 先跑
    `node scripts/set-version.mjs "$V"`：同步 `package.json`、`tauri.conf.json`（含
    `bundle.android.versionCode`）、`Cargo.toml` 和 `Cargo.lock` 的 `hghubx` 版本。
@@ -86,22 +88,22 @@ ad-hoc 签名都不应进入仓库或本机脚本输出。
      `scripts/build-ios-unsigned.sh <version>`；Xcode `CODE_SIGNING_ALLOWED=NO`，产出
      `HGhubX_<version>_ios.ipa`。
    - Linux：`pnpm tauri build` 产出 deb，文件名 `HGhubX_<version>_amd64.deb`。
-7. 标准版 `release` job 依赖五个标准版平台构建 job（不含 TV），在 `!cancelled()` 且
+7. 标准版 `release` job（`release.yml`）依赖五个标准版平台构建 job（不含 TV），在 `!cancelled()` 且
    `windows`、`android`、`macos`、`linux` 全部成功（`ios` 允许成功或失败）时执行；发布条件是 `v*` tag ref，
-   或手动 `mode=package` 且 `tag` 非空、`platforms=all`、`quick=false`。它下载已有 artifact，用
+   或手动触发且 `tag` 非空、`platforms=all`、`quick=false`。它下载已有 artifact，用
    `softprops/action-gh-release` 上传 `artifacts/*`；如果存在 `docs/release-notes/<tag>.md` 就作为正文，
    否则开启 `generate_release_notes` 自动生成说明。
    正文格式以 `docs/release-notes/TEMPLATE.md` 与 AGENTS.md「Release 描述格式」为准：维护者发布前
    按模板写 `docs/release-notes/<tag>.md`；自动生成说明只是缺文件时的兜底。
-8. TV 子项目独立工作流（`tv.yml`）：
-   - `acceptance`：在 `pull_request` / 推送 `main` 且 TV 专属或共享依赖路径变化时（或手动 `mode=acceptance`）执行
+8. TV 子项目独立 CI / CD 工作流（`tv.yml` + `tv-release.yml`）：
+   - `tv.yml`（`TV CI`）：在 `pull_request` / 推送 `main` 且 TV 专属或共享依赖路径变化时（或手动触发）执行
      `node scripts/check-version-sync.mjs --target tv`、`VITE_APP_EDITION=tv pnpm build` 与
      `node scripts/test-tv-remote.mjs`。
-   - `package`：在推送 `tv-v*` tag 或手动 `mode=package` 时执行 `node scripts/set-version.mjs --target tv "$V"`
+   - `tv-release.yml`（`TV Release`）的 `package`：在推送 `tv-v*` tag 或手动触发时执行 `node scripts/set-version.mjs --target tv "$V"`
      并注入 `HGHUBX_APP_VERSION="$V"`，复制 `src-tauri/tauri.tv.conf.json` 到 `src-tauri/tauri.android.conf.json`、
      执行 `pnpm tauri android init --ci` 与按 ABI 分包编译，继续使用 `ANDROID_KEY_*` 签名（保障存量 `com.hghubx.tv`
      覆盖升级连续性），产出 `HGhubX-TV_<version>_<abi>.apk` 并由 `aapt2` 复核。
-   - `release`：在 `tv-v*` tag（或手动 `mode=package` 且 `tag` 非空、`quick=false`）且 `package` 成功时，
+   - `tv-release.yml` 的 `release`：在 `tv-v*` tag（或手动触发且 `tag` 非空、`quick=false`）且 `package` 成功时，
      读取 `docs/release-notes/tv/<tag>.md`（模板见 [`docs/release-notes/tv/TEMPLATE.md`](../release-notes/tv/TEMPLATE.md)），
      以 `--latest=false` 发布独立 TV GitHub Release（不抢占仓库 `Latest` 徽章；仅当去掉 `tv-v` 前缀后含 `-` 或显式勾选
      `prerelease` 时标为 Pre-release）。
