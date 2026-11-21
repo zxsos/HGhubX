@@ -40,6 +40,7 @@
 | 2026-11-20 | 桌面闲置/锁定不隐藏左上角与指针（#180） | 控件闲置隐藏后左上角标题栏仍显示，锁定时按钮隐藏但文字留下，鼠标指针不隐藏 | `.desktop-context-header` 不在 `is-idle`/`is-locked` 的隐藏名单；锁定只隐藏 `[inert] button`，标题文字不是按钮；无 `cursor: none` | 闲置与锁定名单补上 `.desktop-context-header`；闲置时媒体容器 `cursor: none`，移动鼠标由 `wake()` 恢复 | `src/index.css`；常驻回归待核实 |
 | 2026-11-20 | 未授权合并到 main（#180） | issue #180 的两个修复 PR 在 CI 全绿后被 agent 直接 squash 合入 main，维护者并未授权本次合并 | 把「修完走 Actions 验证提 PR」理解成包含合并；变更协议只约束了 tag/发布，没有约束合并 main | 合并 main 必须每次先获维护者明确授权；未授权只提 PR、跑 CI、汇报，停在待合并状态 | `AGENTS.md` 变更协议第 7 条；#183、#185 |
 | 2026-11-21 | 桌面端上下划切集无效 | 桌面端开启「上下划切集」后用鼠标滚轮/触控板上下滑动仍直接切到下一部剧，底栏「下一个」按钮在关闭开关时仍切下一集 | `touch-action: none` 只约束触摸手势、不拦截桌面 `wheel` 事件，纵向滚轮直接触发 `boxRef` 原生滚动切剧；`FeedPlayerShellChrome` 的 `onNext` 未检查 `swipeEp` | 桌面端开启 `swipeEp` 或全屏时在 `boxRef` 上用 `{ passive: false }` 拦截纵向 `wheel` 并经阈值/冷却转为 `stepDir`；桌面 `stepDir` 与底栏 `onNext` 统一遵循 `swipeEp` 并复用 `tag="episode"` 提示 | `src/features/feed/useFeedViewport.ts`、`src/features/feed/FeedPlayerShellChrome.tsx`；常驻回归 `scripts/test-playback.mjs`（seek 场景 `desktop_swipe_ep_wheel`） |
+| 2026-11-21 | iOS TUN 代理 fake-IP 导致所有请求被拒 | 开 Shadowrocket 等 fake-IP VPN 后请求报「禁止访问普通内网、回环或保留地址」，关 VPN 正常 | AAAA 被合成 ULA 假地址（`fc00::/7`），系统解析结果整组校验，fake IPv4 与假 IPv6 混合时整次失败 | 严格模式只固定可放行地址，丢弃 fake ULA；整组都不可放行才报错，不得放宽 `allowed_ip` 白名单 | `src-tauri/src/network_policy.rs` 的 `fakeip_mixed_answers_keep_only_the_pinnable_addresses` |
 
 新回归的追加方式：
 
