@@ -5,6 +5,7 @@ import { api, fmt } from "../../shared/api/api";
 import type { Post, TopicCard, TopicDetail, VideoCard } from "../../shared/api/types";
 import { useStore } from "../../shared/model/store";
 import { MAX_BLOCKED_TAGS, MAX_TAG_LENGTH, useContentPreferences } from "../../shared/model/contentPreferences";
+import { AUTO_LOAD_EMPTY_PAGE_LIMIT, useAutoLoadMore } from "../../shared/lib/useAutoLoadMore";
 import { Masonry, MediaCard } from "../../shared/ui/cards";
 import { FilteredContent } from "../../shared/ui/FilteredContent";
 import { InplaceSearch } from "../search/InplaceSearch";
@@ -111,10 +112,15 @@ export function TopicsPage({ onBack, wide }: { onBack: () => void; wide: boolean
 /* ================= 专题详情页 ================= */
 export function TopicPage({ slug, name, onBack, wide }: { slug: string; name: string; onBack: () => void; wide: boolean }) {
   const { push, lineEpoch } = useStore();
-  const { preferences } = useContentPreferences();
+  const { preferences, blockReason } = useContentPreferences();
   const filtering = !preferences.paused && (preferences.blockedTags.length > 0 || preferences.hideUntagged);
+  const blockReasonRef = useRef(blockReason);
+  blockReasonRef.current = blockReason;
+  const filteringRef = useRef(filtering);
+  filteringRef.current = filtering;
   const [searching, setSearching] = useState(false);
   const [introExpanded, setIntroExpanded] = useState(false);
+  const [emptyStreak, setEmptyStreak] = useState(0);
   const introId = useId();
   const scrollRef = useRef<HTMLDivElement>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
@@ -138,6 +144,7 @@ export function TopicPage({ slug, name, onBack, wide }: { slug: string; name: st
     if (busy.current) return;
     busy.current = true;
     const token = reset ? ++sequence.current : sequence.current;
+    if (reset) setEmptyStreak(0);
     setState(previous => reset
       ? { ...previous, topic: null, related: [], videos: [], page: 0, pages: 1, total: 0, loading: true, loadingMore: false, error: "" }
       : { ...previous, loading: false, loadingMore: true, error: "" });
@@ -145,6 +152,12 @@ export function TopicPage({ slug, name, onBack, wide }: { slug: string; name: st
       const data = await api.topic(slug, page, 20);
       if (token !== sequence.current) return;
       const incoming = data?.videos?.items ?? [];
+      if (filteringRef.current && incoming.length > 0) {
+        const visibleCount = incoming.filter(video => !blockReasonRef.current(video.tags)).length;
+        setEmptyStreak(prev => (visibleCount > 0 ? 0 : (reset ? 1 : prev + 1)));
+      } else {
+        setEmptyStreak(0);
+      }
       setState(previous => {
         const seen = new Set(reset ? [] : previous.videos.map(video => video.id));
         const videos = [...(reset ? [] : previous.videos), ...incoming.filter(video => !seen.has(video.id))];
@@ -190,17 +203,17 @@ export function TopicPage({ slug, name, onBack, wide }: { slug: string; name: st
 
   const { topic, related, videos, page, pages, total, loading, loadingMore, error } = state;
   const hasMore = page < pages;
+  useEffect(() => { setEmptyStreak(0); }, [filtering, preferences.blockedTags, preferences.hideUntagged]);
+  const autoLoadPaused = filtering && emptyStreak >= AUTO_LOAD_EMPTY_PAGE_LIMIT;
 
-  useEffect(() => {
-    const el = sentinelRef.current;
-    if (!el || filtering || loading || loadingMore || error || !hasMore || !scrollRef.current) return;
-    const io = new IntersectionObserver(entries => {
-      if (entries[0].isIntersecting) loadMore();
-    }, { root: scrollRef.current, rootMargin: "260px" });
-    io.observe(el);
-    return () => io.disconnect();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filtering, loading, loadingMore, error, hasMore, page, pages]);
+  useAutoLoadMore({
+    scrollRef,
+    sentinelRef,
+    enabled: !loading && !loadingMore && !error && hasMore && !autoLoadPaused,
+    watchKey: `${page}:${pages}:${videos.length}`,
+    onLoadMore: loadMore,
+    rootMargin: "260px",
+  });
 
   return (
     <div className="ios-page absolute inset-0 bg-bg flex flex-col">
@@ -255,7 +268,7 @@ export function TopicPage({ slug, name, onBack, wide }: { slug: string; name: st
           <Button disabled={loadingMore} onClick={loadMore} className="px-3 text-primary">{tr("重试")}</Button>
         </div>}
         {loadingMore && <div className="flex justify-center py-3"><Loader label={tr("正在加载更多专题影片")} className="w-6 h-6" /></div>}
-        {!loading && !loadingMore && hasMore && <Button onClick={loadMore} className="mt-3 w-full rounded-(--r-ctl) bg-s3 py-2.5 text-[13px] text-on pressable">{tr("加载更多（{0}/{1}）", videos.length, total)}</Button>}
+        {!loading && !loadingMore && !error && hasMore && autoLoadPaused && <Button onClick={() => { setEmptyStreak(0); loadMore(); }} className="mt-3 w-full rounded-(--r-ctl) bg-s3 py-2.5 text-[13px] text-on pressable">{tr("加载更多（{0}/{1}）", videos.length, total)}</Button>}
         {!loading && !loadingMore && !hasMore && videos.length > 0 && <div className="py-3 text-center text-[12px] text-dim">{tr("已加载全部 {0} 部", total)}</div>}
         <div ref={sentinelRef} className="h-6" aria-hidden="true" />
         {wide && <div className="h-2" />}
@@ -326,8 +339,12 @@ export function TagsPage({ onBack, wide }: { onBack: () => void; wide: boolean }
 /* ================= 标签视频页 ================= */
 export function TagPage({ tag, name, onBack, wide }: { tag: string; name: string; onBack: () => void; wide: boolean }) {
   const { push, lineEpoch } = useStore();
-  const { preferences, storageError, isTagBlocked, blockTags, unblockTag } = useContentPreferences();
+  const { preferences, storageError, isTagBlocked, blockTags, unblockTag, blockReason } = useContentPreferences();
   const filtering = !preferences.paused && (preferences.blockedTags.length > 0 || preferences.hideUntagged);
+  const blockReasonRef = useRef(blockReason);
+  blockReasonRef.current = blockReason;
+  const filteringRef = useRef(filtering);
+  filteringRef.current = filtering;
   const tagBlocked = isTagBlocked(name);
   const cannotAdd = !name.trim() || name.trim().length > MAX_TAG_LENGTH || preferences.blockedTags.length >= MAX_BLOCKED_TAGS;
   const [searching, setSearching] = useState(false);
@@ -343,6 +360,8 @@ export function TagPage({ tag, name, onBack, wide }: { tag: string; name: string
   const [postLoading, setPostLoading] = useState(true);
   const [videoErr, setVideoErr] = useState("");
   const [postErr, setPostErr] = useState("");
+  const [videoEmptyStreak, setVideoEmptyStreak] = useState(0);
+  const [postEmptyStreak, setPostEmptyStreak] = useState(0);
   const [loadedVideoTag, setLoadedVideoTag] = useState("");
   const [loadedPostTag, setLoadedPostTag] = useState("");
   const busy = useRef({ video: false, post: false });
@@ -359,26 +378,40 @@ export function TagPage({ tag, name, onBack, wide }: { tag: string; name: string
     if (busy.current[kind] && !reset) return;
     busy.current[kind] = true;
     const token = ++sequence.current[kind];
-    if (kind === "video") { setVideoLoading(true); setVideoErr(""); }
-    else { setPostLoading(true); setPostErr(""); }
+    if (kind === "video") { setVideoLoading(true); setVideoErr(""); if (reset) setVideoEmptyStreak(0); }
+    else { setPostLoading(true); setPostErr(""); if (reset) setPostEmptyStreak(0); }
     try {
       if (kind === "video") {
         const result = await api.tagVideos(tag, next, 20);
         if (sequence.current.video !== token) return;
+        const incoming = result?.items ?? [];
         setVideos(previous => {
           const base = reset ? [] : previous;
           const seen = new Set(base.map(item => item.id));
-          return [...base, ...(result?.items ?? []).filter(item => !seen.has(item.id))];
+          return [...base, ...incoming.filter(item => !seen.has(item.id))];
         });
+        if (filteringRef.current && incoming.length > 0) {
+          const visibleCount = incoming.filter(item => !blockReasonRef.current(item.tags)).length;
+          setVideoEmptyStreak(prev => (visibleCount > 0 ? 0 : (reset ? 1 : prev + 1)));
+        } else {
+          setVideoEmptyStreak(0);
+        }
         setLoadedVideoTag(tag); setVideoPage(next); setVideoPages(result?.pagination?.pages || next); setVideoTotal(result?.pagination?.total || 0);
       } else {
         const result = await api.postTag(name, next, 20);
         if (sequence.current.post !== token) return;
+        const incoming = result?.items ?? [];
         setPosts(previous => {
           const base = reset ? [] : previous;
           const seen = new Set(base.map(item => item.id));
-          return [...base, ...(result?.items ?? []).filter(item => !seen.has(item.id))];
+          return [...base, ...incoming.filter(item => !seen.has(item.id))];
         });
+        if (filteringRef.current && incoming.length > 0) {
+          const visibleCount = incoming.filter(item => !blockReasonRef.current(item.tags)).length;
+          setPostEmptyStreak(prev => (visibleCount > 0 ? 0 : (reset ? 1 : prev + 1)));
+        } else {
+          setPostEmptyStreak(0);
+        }
         setLoadedPostTag(tag); setPostPage(next); setPostPages(result?.pagination?.pages || next); setPostTotal(result?.pagination?.total || 0);
       }
     } catch (error) {
@@ -399,29 +432,31 @@ export function TagPage({ tag, name, onBack, wide }: { tag: string; name: string
     setVideos([]); setPosts([]); setLoadedVideoTag(""); setLoadedPostTag("");
     setVideoPage(0); setPostPage(0); setVideoPages(1); setPostPages(1); setVideoTotal(0); setPostTotal(0);
     setVideoLoading(true); setPostLoading(true); setVideoErr(""); setPostErr(""); setSearching(false);
+    setVideoEmptyStreak(0); setPostEmptyStreak(0);
     if (scrollContainer.current) scrollContainer.current.scrollTop = 0;
     void load("video", 1, true);
     void load("post", 1, true);
     return () => { sequence.current.video++; sequence.current.post++; busy.current.video = false; busy.current.post = false; };
   }, [load, tag, lineEpoch]);
-  useEffect(() => {
-    const el = videoSentinel.current;
-    if (!el || filtering || videoErr || videoLoading || videoPage >= videoPages) return;
-    const io = new IntersectionObserver(entries => {
-      if (entries[0].isIntersecting) void load("video", videoPage + 1);
-    }, { root: scrollContainer.current, rootMargin: "300px" });
-    io.observe(el);
-    return () => io.disconnect();
-  }, [load, videoPage, videoPages, videoErr, videoLoading, filtering]);
-  useEffect(() => {
-    const el = postSentinel.current;
-    if (!el || filtering || postErr || postLoading || postPage >= postPages) return;
-    const io = new IntersectionObserver(entries => {
-      if (entries[0].isIntersecting) void load("post", postPage + 1);
-    }, { root: scrollContainer.current, rootMargin: "300px" });
-    io.observe(el);
-    return () => io.disconnect();
-  }, [load, postPage, postPages, postErr, postLoading, filtering]);
+  useEffect(() => { setVideoEmptyStreak(0); setPostEmptyStreak(0); }, [filtering, preferences.blockedTags, preferences.hideUntagged]);
+  const videoAutoLoadPaused = filtering && videoEmptyStreak >= AUTO_LOAD_EMPTY_PAGE_LIMIT;
+  const postAutoLoadPaused = filtering && postEmptyStreak >= AUTO_LOAD_EMPTY_PAGE_LIMIT;
+  useAutoLoadMore({
+    scrollRef: scrollContainer,
+    sentinelRef: videoSentinel,
+    enabled: !videoErr && !videoLoading && videoPage < videoPages && !videoAutoLoadPaused,
+    watchKey: `${videoPage}:${videoPages}:${videos.length}`,
+    onLoadMore: () => { void load("video", videoPage + 1); },
+    rootMargin: "300px",
+  });
+  useAutoLoadMore({
+    scrollRef: scrollContainer,
+    sentinelRef: postSentinel,
+    enabled: !postErr && !postLoading && postPage < postPages && !postAutoLoadPaused,
+    watchKey: `${postPage}:${postPages}:${posts.length}`,
+    onLoadMore: () => { void load("post", postPage + 1); },
+    rootMargin: "300px",
+  });
 
   return (
     <div className="ios-page absolute inset-0 bg-bg flex flex-col">
@@ -461,10 +496,10 @@ export function TagPage({ tag, name, onBack, wide }: { tag: string; name: string
           </div>
           <Masonry videos={visibleVideos} scopeKey={`tag-video:${tag}`} wide={wide} onOpen={(v, visible) => push({ kind: "feed", videoIds: visible.map(x => x.id), index: visible.findIndex(x => x.id === v.id), title: name })} />
         </section>}
-        <div ref={videoSentinel} className="h-2" />
+        <div ref={videoSentinel} className="h-2" aria-hidden="true" />
         {videoErr && visibleVideos.length > 0 && <div role="status" className="flex flex-wrap items-center justify-center gap-2 py-2 text-[12px] text-mut"><span>{tr("短剧加载失败：{0}", videoErr)}</span><Button onClick={() => void load("video", videoPage + 1)} className="px-3 text-primary">{tr("重试")}</Button></div>}
         {videoLoading && visibleVideos.length > 0 && <div className="flex justify-center py-3"><Loader className="w-6 h-6 spinner" /></div>}
-        {!videoLoading && !videoErr && videoPage < videoPages && <Button onClick={() => void load("video", videoPage + 1)} className="my-2 px-4 text-primary">{tr("加载更多短剧")}</Button>}
+        {!videoLoading && !videoErr && videoPage < videoPages && videoAutoLoadPaused && <Button onClick={() => { setVideoEmptyStreak(0); void load("video", videoPage + 1); }} className="my-2 px-4 text-primary">{tr("加载更多短剧")}</Button>}
 
         {postLoading && !visiblePosts.length && <div className="flex justify-center py-8"><Loader className="w-7 h-7 spinner" /></div>}
         {postErr && !visiblePosts.length && <Empty icon={<TagIcon size={26} />} title={tr("吃瓜帖子加载失败")} sub={postErr} action={tr("重试")} onAction={() => void load("post", 1, true)} />}
@@ -477,10 +512,10 @@ export function TagPage({ tag, name, onBack, wide }: { tag: string; name: string
             {shownPosts.map(post => <MediaCard key={post.id} title={post.title} cover={post.cover} subtitle={post.tags?.slice(0, 2).join(" · ")} onOpen={() => push({ kind: "post", id: post.id })} />)}
           </div>}</FilteredContent>
         </section>}
-        <div ref={postSentinel} className="h-2" />
+        <div ref={postSentinel} className="h-2" aria-hidden="true" />
         {postErr && visiblePosts.length > 0 && <div role="status" className="flex flex-wrap items-center justify-center gap-2 py-2 text-[12px] text-mut"><span>{tr("吃瓜加载失败：{0}", postErr)}</span><Button onClick={() => void load("post", postPage + 1)} className="px-3 text-primary">{tr("重试")}</Button></div>}
         {postLoading && visiblePosts.length > 0 && <div className="flex justify-center py-3"><Loader className="w-6 h-6 spinner" /></div>}
-        {!postLoading && !postErr && postPage < postPages && <Button onClick={() => void load("post", postPage + 1)} className="my-2 px-4 text-primary">{tr("加载更多吃瓜")}</Button>}
+        {!postLoading && !postErr && postPage < postPages && postAutoLoadPaused && <Button onClick={() => { setPostEmptyStreak(0); void load("post", postPage + 1); }} className="my-2 px-4 text-primary">{tr("加载更多吃瓜")}</Button>}
         {!videoLoading && !postLoading && !videoErr && !postErr && !visibleVideos.length && !visiblePosts.length && <Empty icon={<TagIcon size={26} />} title={tr("该标签下暂无内容")} />}
       </div>
       {searching && <InplaceSearch kind="video" wide={wide} onClose={() => setSearching(false)} onOpenVideo={(v, list, kw) => push({ kind: "feed", videoIds: list.map(x => x.id), index: list.findIndex(x => x.id === v.id), title: kw ? tr("搜索 · {0}", kw) : tr("搜索") })} />}

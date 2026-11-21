@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "../../shared/api/api";
 import type { Post, VideoCard } from "../../shared/api/types";
 import { useStore } from "../../shared/model/store";
+import { useContentPreferences } from "../../shared/model/contentPreferences";
+import { AUTO_LOAD_EMPTY_PAGE_LIMIT } from "../../shared/lib/useAutoLoadMore";
 import { tr } from "../../shared/i18n";
 
 type SearchKind = "video" | "post";
@@ -17,16 +19,24 @@ const CACHE_ITEMS = 200;
 /** Keep query identity together with its cards so pending searches never relabel old content. */
 export function useSearchResults(scope?: "original") {
   const { lineEpoch, accountScope } = useStore();
+  const { preferences, blockReason } = useContentPreferences();
+  const filtering = !preferences.paused && (preferences.blockedTags.length > 0 || preferences.hideUntagged);
+  const blockReasonRef = useRef(blockReason);
+  blockReasonRef.current = blockReason;
+  const filteringRef = useRef(filtering);
+  filteringRef.current = filtering;
   const [result, setResult] = useState<Result | null>(null);
   const [request, setRequest] = useState<Request | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [emptyStreak, setEmptyStreak] = useState(0);
   const current = useRef<Result | null>(null);
   const attempt = useRef<Request | null>(null);
   const busy = useRef(false);
   const sequence = useRef(0);
   const cache = useRef(new Map<string, { result: Result; at: number }>());
   useEffect(() => () => { sequence.current++; }, []);
+  useEffect(() => { setEmptyStreak(0); }, [filtering, preferences.blockedTags, preferences.hideUntagged]);
   const envKey = `${accountScope}:${lineEpoch}`;
   const prevEnvRef = useRef(envKey);
 
@@ -38,6 +48,7 @@ export function useSearchResults(scope?: "original") {
     attempt.current = next;
     setRequest(next);
     setError(null);
+    if (next.page === 1) setEmptyStreak(0);
     const key = JSON.stringify([envKey, scope, next.kind, next.keyword]);
     const cached = cache.current.get(key);
     if (reuse && cached && Date.now() - cached.at < CACHE_TTL) {
@@ -57,12 +68,20 @@ export function useSearchResults(scope?: "original") {
       const old = current.current;
       const base = next.page > 1 && old?.keyword === next.keyword && old.kind === next.kind ? old.items : [];
       const seen = new Set(base.map(item => item.id));
-      const incoming = (response?.items || []).filter(item => !(scope === "original" && next.kind === "video") || item.is_original === 1);
-      const items = [...base, ...incoming.filter(item => {
+      const rawItems = response?.items || [];
+      const incoming = rawItems.filter(item => !(scope === "original" && next.kind === "video") || item.is_original === 1);
+      const uniqueIncoming = incoming.filter(item => {
         if (seen.has(item.id)) return false;
         seen.add(item.id);
         return true;
-      })];
+      });
+      const items = [...base, ...uniqueIncoming];
+      if ((filteringRef.current || scope === "original") && rawItems.length > 0) {
+        const visibleCount = uniqueIncoming.filter(item => !filteringRef.current || !blockReasonRef.current(item.tags)).length;
+        setEmptyStreak(prev => (visibleCount > 0 ? 0 : (next.page === 1 ? 1 : prev + 1)));
+      } else {
+        setEmptyStreak(0);
+      }
       const total = response?.pagination?.total;
       const value: Result = { keyword: next.keyword, kind: next.kind, items, page: next.page,
         pages: Math.max(next.page, response?.pagination?.pages || next.page),
@@ -81,15 +100,17 @@ export function useSearchResults(scope?: "original") {
     const trimmed = keyword.trim();
     if (trimmed) void run({ keyword: trimmed, kind, page: 1 }, reuse);
   };
-  const loadMore = () => {
+  const loadMore = (manual = false) => {
     const data = current.current, latest = attempt.current;
     if (!data || !latest || data.keyword !== latest.keyword || data.kind !== latest.kind || data.page >= data.pages) return;
+    if (manual) setEmptyStreak(0);
     void run({ keyword: data.keyword, kind: data.kind, page: data.page + 1 });
   };
   const retry = () => { if (!busy.current && attempt.current) void run(attempt.current); };
   const clear = () => {
     sequence.current++;
     busy.current = false; attempt.current = null;
+    setEmptyStreak(0);
     publish(null); setRequest(null); setLoading(false); setError(null);
   };
   useEffect(() => {
@@ -100,5 +121,6 @@ export function useSearchResults(scope?: "original") {
     if (attempt.current) void run({ ...attempt.current, page: 1 });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [envKey]);
-  return { result, request, loading, error, search, loadMore, retry, clear };
+  const autoLoadPaused = (filtering || scope === "original") && emptyStreak >= AUTO_LOAD_EMPTY_PAGE_LIMIT;
+  return { result, request, loading, error, autoLoadPaused, search, loadMore, retry, clear };
 }

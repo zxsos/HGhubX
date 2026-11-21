@@ -7,14 +7,34 @@ import { Button } from "./ios/controls";
 import { FilteredContent } from "./FilteredContent";
 import { tr } from "../i18n";
 
+const NEW_BADGE_WINDOW_SECONDS = 72 * 3600;
+const NEW_BADGE_CLOCK_SKEW_SECONDS = 600;
+
+export type CornerBadge = { label: string; tone: "original" | "hot" | "new" };
+
+function isNewRelease(newAt?: number): boolean {
+  if (!newAt || !Number.isFinite(newAt) || newAt <= 0) return false;
+  if (newAt === 1) return true;
+  const age = Math.floor(Date.now() / 1000) - newAt;
+  return age >= -NEW_BADGE_CLOCK_SKEW_SECONDS && age < NEW_BADGE_WINDOW_SECONDS;
+}
+
+function videoCornerBadges(v: VideoCard): CornerBadge[] {
+  const badges: CornerBadge[] = [];
+  if (Number(v.is_original) === 1) badges.push({ label: tr("原创"), tone: "original" });
+  if (v.is_hot === true || Number(v.is_hot) === 1) badges.push({ label: tr("热播"), tone: "hot" });
+  if (isNewRelease(v.new_at)) badges.push({ label: tr("新片"), tone: "new" });
+  return badges;
+}
+
 function ScoreBadge({ score }: { score: number }) {
   return Number.isFinite(score) && score > 0 ? <span className="ios-score-badge" aria-label={tr("评分 {0}", score.toFixed(1))}>
     <IStarF size={12} />{score.toFixed(1)}
   </span> : null;
 }
 
-export function MediaCard({ title, cover, subtitle, badge, badgeTone = "default", progress, score, priority = false, onOpen, blockedReason, onLongPress, selectionMode = false, selected = false }: {
-  title: string; cover: string; subtitle?: string; badge?: string; badgeTone?: "default" | "update"; progress?: string; score?: number; priority?: boolean; onOpen: () => void; blockedReason?: string | null;
+export function MediaCard({ title, cover, subtitle, badge, badgeTone = "default", cornerBadges, episode, progress, progressLabel, score, priority = false, onOpen, blockedReason, onLongPress, selectionMode = false, selected = false }: {
+  title: string; cover: string; subtitle?: string; badge?: string; badgeTone?: "default" | "update"; cornerBadges?: CornerBadge[]; episode?: string; progress?: string; progressLabel?: string; score?: number; priority?: boolean; onOpen: () => void; blockedReason?: string | null;
   onLongPress?: () => void; selectionMode?: boolean; selected?: boolean;
 }) {
   const pressTimer = useRef<number | undefined>(undefined);
@@ -71,12 +91,31 @@ export function MediaCard({ title, cover, subtitle, badge, badgeTone = "default"
     {progress && <span className="ios-poster-subtitle">{progress}</span>}
   </Button>;
   const hasScore = typeof score === "number" && Number.isFinite(score) && score > 0;
+  const hasCornerBadges = Boolean(cornerBadges && cornerBadges.length > 0);
+  const hasBottomMeta = Boolean(episode || progress);
   return <Button onClick={open} className={className} aria-label={ariaLabel} aria-pressed={selectionMode ? selected : undefined} {...pressProps}>
-    <span className={`ios-poster-art${badge ? " has-poster-badge" : ""}${hasScore ? " has-score-badge" : ""}`}>
+    <span className={`ios-poster-art${badge || hasCornerBadges ? " has-poster-badge" : ""}${hasScore ? " has-score-badge" : ""}`}>
       <Img src={cover} alt="" eager={priority} />
-      {badge && <span className={`ios-poster-badge${badgeTone === "update" ? " is-update" : ""}`}>{badge}</span>}
+      {hasCornerBadges ? (
+        <span className="ios-poster-badges">
+          {cornerBadges!.map((item) => (
+            <span key={item.tone} className={`ios-poster-flag is-${item.tone}`}>{item.label}</span>
+          ))}
+        </span>
+      ) : badge && <span className={`ios-poster-badge${badgeTone === "update" ? " is-update" : ""}`}>{badge}</span>}
       {hasScore && <ScoreBadge score={score} />}
-      {progress && <span className="ios-poster-progress"><IPlayF size={12} />{progress}</span>}
+      {hasBottomMeta && (
+        episode && progress ? (
+          <span className="ios-poster-progress has-split">
+            <span className="ios-poster-ep">{episode}</span>
+            <span className="ios-poster-views" aria-label={progressLabel || progress}><IPlayF size={11} />{progress}</span>
+          </span>
+        ) : episode ? (
+          <span className="ios-poster-progress"><span className="ios-poster-ep">{episode}</span></span>
+        ) : (
+          <span className="ios-poster-progress" aria-label={progressLabel || undefined}><IPlayF size={12} />{progress}</span>
+        )
+      )}
       <span className="ios-poster-play" aria-hidden="true"><IPlayF size={23} /></span>
       {selection}
     </span>
@@ -87,9 +126,11 @@ export function MediaCard({ title, cover, subtitle, badge, badgeTone = "default"
 
 export function WaterfallCard({ v, onOpen, priority = false }: { v: VideoCard; onOpen: () => void; priority?: boolean }) {
   return <MediaCard title={v.title} cover={v.cover} onOpen={onOpen} priority={priority} score={v.score}
-    badge={v.is_finished ? tr("已完结") : tr("更新至 {0} 集", v.episode_count)}
+    cornerBadges={videoCornerBadges(v)}
+    episode={v.is_finished ? tr("已完结") : tr("更新至 {0} 集", v.episode_count)}
     subtitle={v.tags?.slice(0, 2).join(" · ") || v.author?.name || "HGhubX"}
-    progress={tr("{0} 次播放", fmt(v.hot))} />;
+    progress={fmt(v.hot)}
+    progressLabel={tr("{0} 次播放", fmt(v.hot))} />;
 }
 
 export function Masonry({ videos, onOpen, wide = false, scopeKey }: {
@@ -102,7 +143,8 @@ export function Masonry({ videos, onOpen, wide = false, scopeKey }: {
 
 export function RowCard({ v, onOpen }: { v: VideoCard; onOpen: () => void }) {
   return <div className="ios-row-card"><MediaCard title={v.title} cover={v.cover} score={v.score} onOpen={onOpen}
-    badge={v.is_finished ? tr("完结") : tr("{0} 集", v.episode_count)}
+    cornerBadges={videoCornerBadges(v)}
+    episode={v.is_finished ? tr("完结") : tr("{0} 集", v.episode_count)}
     subtitle={v.score ? tr("{0} 分 · {1}", v.score.toFixed(1), v.tags?.[0] || tr("短剧")) : v.tags?.slice(0, 2).join(" · ")} />
   </div>;
 }

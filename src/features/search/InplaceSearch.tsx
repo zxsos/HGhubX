@@ -11,6 +11,7 @@ import { IBack, IClose, ISearch } from "../../shared/ui/icons";
 import { useSearchResults } from "./useSearchResults";
 import { SearchHistory } from "./SearchHistory";
 import { useDialogFocusTrap } from "../../shared/ui/ios/dialogFocus";
+import { useAutoLoadMore } from "../../shared/lib/useAutoLoadMore";
 import { registerOverlayBack } from "../../shared/lib/back";
 import { tr } from "../../shared/i18n";
 
@@ -29,10 +30,20 @@ export function InplaceSearch({ kind, postLabel = tr("吃瓜帖"), scope, onOpen
   const [submitted, setSubmitted] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const sentinelRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
   const results = useSearchResults(scope);
   const { result, request, loading, error } = results;
+  useAutoLoadMore({
+    scrollRef,
+    sentinelRef,
+    enabled: Boolean(submitted && result && result.keyword === submitted && result.page < result.pages && !loading && !error && !results.autoLoadPaused),
+    watchKey: `${result?.page ?? 0}:${result?.pages ?? 0}:${result?.items.length ?? 0}`,
+    onLoadMore: () => results.loadMore(),
+    rootMargin: "300px",
+  });
   const items = result?.kind === "video" ? result.items as VideoCard[] : [];
   const posts = result?.kind === "post" ? result.items as Post[] : [];
   const count = result?.items.length ?? 0;
@@ -79,7 +90,7 @@ export function InplaceSearch({ kind, postLabel = tr("吃瓜帖"), scope, onOpen
         </div>
       </div>
 
-      <div className="flex-1 scroll-y pt-3.5 pb-8">
+      <div ref={scrollRef} className="flex-1 scroll-y pt-3.5 pb-8">
         {!submitted ? (
           !scope && searchHist.length > 0 ? (
             <div className="mt-1 a-rise">
@@ -108,10 +119,11 @@ export function InplaceSearch({ kind, postLabel = tr("吃瓜帖"), scope, onOpen
               : !error && <Empty icon={<ISearch size={26} />}
                 title={result && result.page < result.pages ? tr("已加载页面没有匹配内容") : tr("没有找到相关内容")}
                 sub={result && result.page < result.pages ? tr("继续加载，看看后面的搜索结果") : tr("换个关键词试试")} />}
+            <div ref={sentinelRef} className="h-6" aria-hidden="true" />
             {result && <div className="flex justify-center py-4">
               {loading && count > 0 ? <Loader label={tr("搜索结果更新中")} className="w-6 h-6 spinner" />
                 : !loading && !error && result.keyword === submitted && (result.page < result.pages
-                  ? <Button onClick={results.loadMore} className="px-5 h-9 rounded-(--r-ctl) bg-s3 text-[13px] text-on/85 pressable">{tr("加载更多")}</Button>
+                  ? (results.autoLoadPaused && <Button onClick={() => results.loadMore(true)} className="px-5 h-9 rounded-(--r-ctl) bg-s3 text-[13px] text-on/85 pressable">{tr("加载更多")}</Button>)
                   : count > 0 && <span className="text-[12px] text-dim">{tr("— 已经到底啦 —")}</span>)}
             </div>}
           </section>

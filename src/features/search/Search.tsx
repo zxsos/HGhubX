@@ -5,6 +5,7 @@ import { api, fmt, isMobile } from "../../shared/api/api";
 import type { HotSearchVideo, Post, RankItem, VideoCard } from "../../shared/api/types";
 import { useStore } from "../../shared/model/store";
 import { useContentPreferences } from "../../shared/model/contentPreferences";
+import { useAutoLoadMore } from "../../shared/lib/useAutoLoadMore";
 import { MediaCard, Masonry, RankRow } from "../../shared/ui/cards";
 import { FilteredContent } from "../../shared/ui/FilteredContent";
 import { Empty } from "../../shared/ui/ui";
@@ -27,6 +28,8 @@ export default function Search({ active, wide }: { active: boolean; wide: boolea
   const posts = result?.kind === "post" ? result.items as Post[] : [];
   const count = result?.items.length ?? 0;
   const inputRef = useRef<HTMLInputElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const sentinelRef = useRef<HTMLDivElement>(null);
   const [hotVideos, setHotVideos] = useState<HotSearchVideo[]>([]);
   const [hotLoading, setHotLoading] = useState(false);
   const [hotError, setHotError] = useState<string | null>(null);
@@ -165,6 +168,19 @@ export default function Search({ active, wide }: { active: boolean; wide: boolea
     </ol>
   ) : null;
 
+  const canAutoLoad = Boolean(
+    active && submitted && result && result.keyword === submitted && result.kind === tab
+    && result.page < result.pages && !loading && !err && !results.autoLoadPaused,
+  );
+  useAutoLoadMore({
+    scrollRef,
+    sentinelRef,
+    enabled: canAutoLoad,
+    watchKey: `${result?.page ?? 0}:${result?.pages ?? 0}:${count}`,
+    onLoadMore: () => results.loadMore(),
+    rootMargin: "300px",
+  });
+
   return (
     <div className="ios-page absolute inset-0 bg-bg flex flex-col">
       <div className="ios-page-heading shrink-0"><h1 className="ios-page-title">{tr("搜索")}</h1></div>
@@ -189,7 +205,7 @@ export default function Search({ active, wide }: { active: boolean; wide: boolea
         </Button>
       </div>
 
-      <div className="flex-1 scroll-y pb-24">
+      <div ref={scrollRef} className="flex-1 scroll-y pb-24">
         {!querying ? (
           <>
             <Surface role="region" aria-label={tr("热搜榜")} className="mt-1 rounded-(--r-md) bg-s2 p-3.5 a-rise">
@@ -264,10 +280,11 @@ export default function Search({ active, wide }: { active: boolean; wide: boolea
                     ))}
                   </div>}</FilteredContent>
                 )}
+                <div ref={sentinelRef} className="h-6" aria-hidden="true" />
                 <div className="flex justify-center py-4">
                   {loading ? <Loader label={tr("搜索结果更新中")} className="w-6 h-6 spinner" />
                     : !err && result.keyword === submitted && (result.page < result.pages ? (
-                      <Button onClick={results.loadMore} className="px-5 h-9 rounded-(--r-ctl) bg-s3 text-[13px] text-on/85 pressable">{tr("加载更多")}</Button>
+                      results.autoLoadPaused && <Button onClick={() => results.loadMore(true)} className="px-5 h-9 rounded-(--r-ctl) bg-s3 text-[13px] text-on/85 pressable">{tr("加载更多")}</Button>
                     ) : <span className="text-[12px] text-dim">{tr("— 已经到底啦 —")}</span>)}
                 </div>
               </> : loading ? (

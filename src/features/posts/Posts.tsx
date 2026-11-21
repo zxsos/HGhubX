@@ -22,11 +22,12 @@ import { tr } from "../../shared/i18n";
 /* ================= 吃瓜列表 ================= */
 export function PostsPage({ onBack, wide }: { onBack: () => void; wide: boolean }) {
   const { push, lineEpoch } = useStore();
-  const { preferences } = useContentPreferences();
+  const { preferences, blockReason } = useContentPreferences();
   const filtering = !preferences.paused && (preferences.blockedTags.length > 0 || preferences.hideUntagged);
   const [searching, setSearching] = useState(false);
-  const { items, page, pages, loading, err, loadMore, scroller: scrollRef, sentinel } = usePaginatedList<Post>({
+  const { items, page, pages, loading, err, autoLoadPaused, loadMore, scroller: scrollRef, sentinel } = usePaginatedList<Post>({
     filtering,
+    isVisible: (item) => !blockReason(item.tags),
     resetKey: lineEpoch,
     rootMargin: "240px",
     getId: (item) => item.id,
@@ -62,14 +63,14 @@ export function PostsPage({ onBack, wide }: { onBack: () => void; wide: boolean 
         ) : (
           <Empty icon={<IFireF size={26} />} title={tr("暂无吃瓜内容")} />
         )}
-        <div ref={sentinel} className="h-10" />
+        <div ref={sentinel} className="h-10" aria-hidden="true" />
         {err && items.length > 0 && (
           <div className="flex flex-wrap items-center justify-center gap-3 py-2 text-[13px] text-danger" role="alert">
             <span>{tr("加载更多失败：{0}", err)}</span>
             <Button disabled={loading} onClick={() => loadMore()} className="text-primary pressable">{tr("重试")}</Button>
           </div>
         )}
-        {!loading && !err && items.length > 0 && page < pages && <Button onClick={() => loadMore()} className="w-full mt-3">{tr("加载更多")}</Button>}
+        {!loading && !err && items.length > 0 && page < pages && autoLoadPaused && <Button onClick={() => loadMore()} className="w-full mt-3">{tr("加载更多")}</Button>}
         {loading && items.length > 0 && <div className="flex justify-center py-2"><Loader className="w-6 h-6 spinner" /></div>}
       </div>
       {searching && <InplaceSearch kind="post" postLabel={tr("吃瓜帖子")} wide={wide} onClose={() => setSearching(false)} onOpenPost={(p) => push({ kind: "post", id: p.id })} />}

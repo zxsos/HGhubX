@@ -14,11 +14,12 @@ import { tr } from "../../shared/i18n";
 
 /** Keep pagination local to the scrolling page and reject responses from an old account/author. */
 function useUserVideos(enabled: boolean, resetKey: string | number, request: (page: number) => Promise<Paged<VideoCard>>) {
-  const { preferences } = useContentPreferences();
+  const { preferences, blockReason } = useContentPreferences();
   const filtering = !preferences.paused && (preferences.blockedTags.length > 0 || preferences.hideUntagged);
   return usePaginatedList<VideoCard>({
     enabled,
     filtering,
+    isVisible: (item) => !blockReason(item.tags),
     resetKey,
     rootMargin: "200px",
     getId: (item) => item.id,
@@ -35,8 +36,8 @@ function PaginationFeedback({ state }: { state: VideoState }) {
       <Button onClick={() => void state.loadMore()} className="mt-2 px-4 text-primary">{tr("重试")}</Button>
     </div>}
     {state.loading ? <div className="flex justify-center py-3"><Loader label={tr("加载更多作品")} /></div>
-      : !state.err && state.hasMore ? <Button onClick={() => void state.loadMore()} className="mt-3 w-full rounded-(--r-ctl) bg-s3">{tr("加载更多")}</Button>
-      : !state.err && <p className="py-3 text-center text-[12px] text-mut">{tr("— 已展示全部作品 —")}</p>}
+      : !state.err && state.hasMore && state.autoLoadPaused ? <Button onClick={() => void state.loadMore()} className="mt-3 w-full rounded-(--r-ctl) bg-s3">{tr("加载更多")}</Button>
+      : !state.err && !state.hasMore && <p className="py-3 text-center text-[12px] text-mut">{tr("— 已展示全部作品 —")}</p>}
     <div ref={state.sentinel} className="h-8" aria-hidden="true" />
   </>;
 }

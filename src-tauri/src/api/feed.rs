@@ -14,8 +14,7 @@ pub async fn api_feed(state: State<'_, Api>, page: u32, size: u32) -> Result<Val
 }
 
 /// 原创频道，返回分页视频卡（结构同 api_feed）。
-/// `cate="all"` 走 `/api/videos?is_original=1`；`ai-duanju`/`ai-manju` 走
-/// `/api/videos/category/{cate}?is_original=1`。
+/// 优先解析官网 SSR 频道页与网站排序保持一致；解析失败回退 JSON 接口。
 #[tauri::command]
 pub async fn api_original_videos(
     state: State<'_, Api>,
@@ -24,6 +23,9 @@ pub async fn api_original_videos(
     size: u32,
     sort: Option<String>,
 ) -> Result<Value, String> {
+    if let Ok(value) = crate::channel_page::fetch_original(&cate, page, size).await {
+        return Ok(value);
+    }
     let sort = match sort.as_deref() {
         Some(s) if !s.trim().is_empty() => format!("&sort={s}"),
         _ => String::new(),
@@ -98,6 +100,9 @@ pub async fn api_category(
     size: u32,
     sort: Option<String>,
 ) -> Result<Value, String> {
+    if let Ok(value) = crate::channel_page::fetch_category(&cate, page, size, sort.as_deref()).await {
+        return Ok(value);
+    }
     let sort = match sort.as_deref() {
         Some(s) if !s.trim().is_empty() => format!("&sort={s}"),
         _ => String::new(),

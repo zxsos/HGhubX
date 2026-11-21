@@ -16,6 +16,7 @@ export type VideoCard = {
   comment_count: number;
   is_finished: boolean;
   is_original: number;
+  is_hot?: number | boolean;
   created_at?: string;
   last_ep_at?: number;
   new_at?: number;
