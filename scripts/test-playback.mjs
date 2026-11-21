@@ -16,7 +16,7 @@ const scriptScenarios = {
   tv: { script: "test-tv-remote.mjs", timeout: 480000, metrics: { transport: "mock Tauri IPC; actual TV bootstrap, worker, library and player" } },
   "post-flicker": { script: "test-post-flicker.mjs", timeout: 240000, metrics: { transport: "mock Tauri IPC; real PostDetail/AppProvider/Player; local HLS fixture" } },
 };
-const ALL_SCENARIOS = ["seek", "legacy", "lifecycle", "gesture", "proxy", "portrait-fit", "episode-toast", "ambient", "balance-volume", "super-resolution", "ios-native", "recovery", "review", "tv", "post-flicker"];
+const ALL_SCENARIOS = ["seek", "legacy", "lifecycle", "gesture", "proxy", "portrait-fit", "episode-toast", "ambient", "balance-volume", "super-resolution", "super-resolution-2x", "ios-native", "recovery", "review", "tv", "post-flicker"];
 const { values: args } = parseArgs({ options: {
   "media-dir": { type: "string" }, output: { type: "string" }, "browser-executable": { type: "string" },
   scenarios: { type: "string", default: "seek,legacy,lifecycle,gesture,proxy,portrait-fit" }, help: { type: "boolean" },
@@ -499,6 +499,67 @@ async function superResolutionChecks(page, dir) {
   assert.equal(await page.locator(".hg-super-resolution-canvas").count(), 0, "Super resolution must fall back when WebGL2 is unavailable");
   await page.screenshot({ path: join(dir, "super-resolution-fallback.png") });
   return { source, on, fps, gpu, fallback: true, cpu_ms: on.cpuMs };
+}
+
+async function superResolutionQualityChecks(page, dir) {
+  // A 2x display is FSR1's normal operating range. Keep the wrapper at 640x360
+  // so the canvas is 1:1 with CSS pixels; otherwise the browser scales the
+  // canvas again and hides the actual FSR result.
+  await page.addInitScript(() => localStorage.setItem("hghubx_mobile_hold_guide_v1", "1"));
+  await loadPlayer(page, false, "&sr=1");
+  await page.evaluate(() => {
+    const root = document.querySelector("[data-player-fixture]");
+    if (root) {
+      root.style.width = "640px";
+      root.style.height = "360px";
+      window.dispatchEvent(new Event("resize"));
+    }
+  });
+  await page.waitForTimeout(700);
+  await page.waitForFunction(() => Number(document.querySelector(".hg-super-resolution-canvas")?.dataset.frames || 0) > 0);
+  const on = await page.locator(".hg-super-resolution-canvas").evaluate(canvas => ({
+    width: canvas.width,
+    height: canvas.height,
+    frames: Number(canvas.dataset.frames),
+    scale: canvas.dataset.scale,
+    active: canvas.closest(".hg-super-resolution")?.style.display,
+  }));
+  const source = await page.locator("video").evaluate(video => ({ width: video.videoWidth, height: video.videoHeight }));
+  assert.equal(on.width, 640, `2x canvas width must be 640: ${JSON.stringify({ source, on })}`);
+  assert.equal(on.height, 360, `2x canvas height must be 360: ${JSON.stringify({ source, on })}`);
+  assert.equal(on.scale, "2.00", `2x scale must be exactly 2.00: ${JSON.stringify({ source, on })}`);
+  assert.equal(on.active, "block", "2x canvas must be visible");
+  await page.evaluate(() => {
+    const video = document.querySelector("video");
+    video.pause();
+    video.currentTime = Number.isFinite(video.duration) ? Math.min(6, video.duration * 0.5) : 6;
+  });
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: join(dir, "super-resolution-2x-on.png") });
+  await page.evaluate(() => { document.querySelector("video").style.visibility = "hidden"; });
+  await page.waitForTimeout(150);
+  await page.screenshot({ path: join(dir, "super-resolution-2x-canvas-only.png") });
+  await page.evaluate(() => { document.querySelector("video").style.visibility = ""; });
+
+  await loadPlayer(page);
+  await page.evaluate(() => {
+    const root = document.querySelector("[data-player-fixture]");
+    if (root) {
+      root.style.width = "640px";
+      root.style.height = "360px";
+      window.dispatchEvent(new Event("resize"));
+    }
+  });
+  await page.waitForTimeout(500);
+  await page.evaluate(() => {
+    const video = document.querySelector("video");
+    video.pause();
+    video.currentTime = Number.isFinite(video.duration) ? Math.min(6, video.duration * 0.5) : 6;
+  });
+  await page.waitForTimeout(500);
+  assert.equal(await page.locator(".hg-super-resolution-canvas").count(), 0, "2x native path must not create a canvas");
+  await page.screenshot({ path: join(dir, "super-resolution-2x-off.png") });
+  return { source, on, quality: true };
 }
 
 async function ambientGlowChecks(page) {
@@ -1150,7 +1211,8 @@ try {
       continue;
     }
     const mobileContext = name === "gesture" || name === "portrait-fit" || name === "episode-toast" || name === "ambient" || name === "balance-volume" || name === "super-resolution";
-    const context = await browser.newContext({ ...(mobileContext ? {userAgent:"Mozilla/5.0 (iPhone; CPU iPhone OS 17_1_1 like Mac OS X) AppleWebKit/605.1.15 Version/17.1 Mobile/15E148 Safari/604.1",hasTouch:true} : {}), ...(name === "super-resolution" ? { deviceScaleFactor: 2 } : {}), viewport: name === "portrait-fit" || name === "episode-toast" || name === "ambient" || name === "super-resolution" ? { width: 390, height: 844 } : { width: 1000, height: 900 } });
+    const qualityContext = name === "super-resolution-2x";
+    const context = await browser.newContext({ ...(mobileContext ? {userAgent:"Mozilla/5.0 (iPhone; CPU iPhone OS 17_1_1 like Mac OS X) AppleWebKit/605.1.15 Version/17.1 Mobile/15E148 Safari/604.1",hasTouch:true} : {}), ...(name === "super-resolution" ? { deviceScaleFactor: 2 } : {}), viewport: qualityContext ? { width: 1000, height: 900 } : name === "portrait-fit" || name === "episode-toast" || name === "ambient" || name === "super-resolution" ? { width: 390, height: 844 } : { width: 1000, height: 900 } });
     await context.exposeBinding("collectPlaybackLogs", (_source, entries) => {
       for (const e of entries) jsonl(join(dir, "playback.jsonl"), { ts: e.data.at, event: `web.${e.event}`, data: e.data, transport: "browser-fixture" });
     });
@@ -1173,7 +1235,7 @@ try {
     const result = { name, status: "running", started: new Date().toISOString() }; report.cases.push(result);
     let deadline;
     try {
-      const action = name === "recovery" ? explicitRecoveryCheck(page) : name === "proxy" ? proxyRecoveryCheck(page) : name === "gesture" ? gestureChecks(page) : name === "portrait-fit" ? portraitFitChecks(page, dir) : name === "episode-toast" ? episodeToastChecks(page) : name === "ambient" ? ambientGlowChecks(page) : name === "balance-volume" ? balanceVolumeChecks(page) : name === "super-resolution" ? superResolutionChecks(page, dir) : name === "seek" || name === "legacy" ? seekChecks(page, name === "legacy") : lifecycleCheck(page);
+      const action = name === "recovery" ? explicitRecoveryCheck(page) : name === "proxy" ? proxyRecoveryCheck(page) : name === "gesture" ? gestureChecks(page) : name === "portrait-fit" ? portraitFitChecks(page, dir) : name === "episode-toast" ? episodeToastChecks(page) : name === "ambient" ? ambientGlowChecks(page) : name === "balance-volume" ? balanceVolumeChecks(page) : name === "super-resolution" ? superResolutionChecks(page, dir) : name === "super-resolution-2x" ? superResolutionQualityChecks(page, dir) : name === "seek" || name === "legacy" ? seekChecks(page, name === "legacy") : lifecycleCheck(page);
       result.metrics = await Promise.race([action, new Promise((_, reject) => { deadline = setTimeout(() => reject(new Error("Scenario exceeded 45 seconds")), 45000); })]);
       assert.deepEqual(pageErrors, [], "Browser script errors");
       assert.deepEqual(externalRequests, [], "Unexpected external network requests");
