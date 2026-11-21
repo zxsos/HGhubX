@@ -136,6 +136,19 @@ loopback、Windows 的自定义标题栏与注册表代理判断、Android 的 W
    键盘收起后清除 `--native-ime-overlap`。`LoginModal` 启用该边距，弹层在键盘上方滚动，
    可在键盘保持展开时将密码框和提交按钮滚到可见位置；弹层缩小时将被裁切的已聚焦输入框带回屏内。
    其他弹层、TV 版和 iOS 不使用这条路径。
+9. Android TV 版应用内一键更新：[`src-tauri/src/updater.rs`](../../src-tauri/src/updater.rs) 与
+   [`src-tauri/src/api/update.rs`](../../src-tauri/src/api/update.rs) 提供 `check_update`
+   （`edition="tv"` 时检索本仓库 `tv-v*` 或含 `HGhubX-TV_*.apk` 的正式 Release，并按设备架构挑选
+   APK 及提取 `size`/`sha256`）、`download_tv_update` 与 `cancel_tv_update`。下载目标固定限制为
+   `https://github.com/zxsos/HGhubX/releases/download/<tag>/HGhubX-TV_*.apk`，仅内置 2 个精简加速前缀
+   （`gh-proxy.com`、`ghfast.top`）与官方 `github.com` 互为自动回退，流式校验 ZIP/APK 魔数、预期字节数
+   与 SHA-256 摘要后原子写入 `<app_cache_dir>/updates/hghubx-tv-update.apk`（启动与清理缓存时自动清除旧包）。
+   [`scripts/patch-android-tv.mjs`](../../scripts/patch-android-tv.mjs) 写入 `REQUEST_INSTALL_PACKAGES`
+   与仅暴露 `cacheDir/updates/` 的 `FileProvider`（[`hghubx_tv_file_paths.xml`](../../src-tauri/tv/android/res/xml/hghubx_tv_file_paths.xml)）；
+   [`src-tauri/tv/android/MainActivity.kt`](../../src-tauri/tv/android/MainActivity.kt) 在 WebView 上注入无参桥接
+   `HGhubXTvInstaller.installCachedUpdate()`，Android 8.0+ 未授权时跳转 `ACTION_MANAGE_UNKNOWN_APP_SOURCES`
+   并在 `onResume` 返回后自动调起系统安装器。前端状态与交互见 [`src/tv/updater.ts`](../../src/tv/updater.ts)、
+   [`src/tv/TvApp.tsx`](../../src/tv/TvApp.tsx) 与 [`src/tv/SettingsPage.tsx`](../../src/tv/SettingsPage.tsx)「关于」分组。
 
 ### 共享页面壳几何
 

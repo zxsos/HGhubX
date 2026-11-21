@@ -1,5 +1,5 @@
 /** Serialized into Chromium before the actual application module loads. */
-export function installTvFixture({ accepted = false, legacy, contentPreferences, detailDelay = 0, failDetailIds = [], heldDetailIds = [] } = {}) {
+export function installTvFixture({ accepted = false, legacy, contentPreferences, detailDelay = 0, failDetailIds = [], heldDetailIds = [], updateInfo = null } = {}) {
   const base = "https://tv.fixture.invalid";
   if (accepted) localStorage.setItem("hghubx_usage_agreement", JSON.stringify({ version: "2026-11-15-v1", accepted: true, acceptedAt: new Date().toISOString() }));
   localStorage.setItem("hghubx_auto_line", "off");
@@ -17,6 +17,7 @@ export function installTvFixture({ accepted = false, legacy, contentPreferences,
     detailDelay, failDetailIds, detailActive: 0, detailMax: 0, heldDetailIds, detailReleases: [],
     releaseDetails() { const releases = fixture.detailReleases.splice(0); releases.forEach(release => release()); },
     nativeListeners: 0, exits: 0, catalogMode: "normal", holdCatalog: false, releaseCatalog: null, failPostIds: [], backChannel: null,
+    updateInfo, downloadHandler: null,
     back() { if (!fixture.backChannel) throw new Error("Missing native back listener"); fixture.backChannel.onmessage({}); } };
   Object.defineProperty(window, "__tvFixture", { value: fixture });
   let startup;
@@ -47,6 +48,17 @@ export function installTvFixture({ accepted = false, legacy, contentPreferences,
       if (command === "proxy_state") return { mode: "off", url: "", effective: null, system_proxy: false, env_proxy: false };
       if (command === "proxy_set") return { mode: args.mode, url: "", effective: null, system_proxy: false, env_proxy: false };
       if (command === "cache_clear") return { webCache: true, platform: "android" };
+      if (command === "check_update") {
+        const cur = args.currentVersion || "2.2.3";
+        return fixture.updateInfo || { current: cur, latest: cur, tag: `tv-v${cur}`, has_update: false, asset: null, url: "https://github.com/zxsos/HGhubX/releases" };
+      }
+      if (command === "download_tv_update") {
+        if (fixture.downloadHandler) return await fixture.downloadHandler(args);
+        args.onProgress?.onmessage?.({ phase: "downloading", source: "gh-proxy.com", attempt: 1, totalAttempts: 3, downloaded: 5000000, total: 10000000, percent: 50 });
+        args.onProgress?.onmessage?.({ phase: "ready", source: "gh-proxy.com", attempt: 1, totalAttempts: 3, downloaded: 10000000, total: 10000000, percent: 100 });
+        return { ok: true, size: args.size || 10000000, sha256: args.sha256 || "", source: "gh-proxy.com" };
+      }
+      if (command === "cancel_tv_update") return null;
       if (command === "api_feed" && args.size === 50) {
         if (fixture.holdCatalog) await new Promise(resolve => { fixture.releaseCatalog = resolve; });
         if (fixture.catalogMode === "error") throw new Error("fixture catalog offline");

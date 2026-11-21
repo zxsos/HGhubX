@@ -273,7 +273,7 @@ pub async fn get(
     get_with_dns(raw, timeout, accept, referer, false).await
 }
 
-pub(super) async fn get_with_dns(
+pub(crate) async fn get_with_dns(
     raw: &str,
     timeout: Duration,
     accept: Option<&str>,

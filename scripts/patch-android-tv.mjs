@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Keep Android's generated project disposable: apply the tracked TV manifest,
 // launcher resources and native window policy after every `tauri android init`.
+import { createHash } from "node:crypto";
 import { cpSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -53,6 +54,16 @@ function setAttr(tag, name, value) {
 function replaceMatch(xml, match, value) {
   return xml.slice(0, match.index) + value + xml.slice(match.index + match[0].length);
 }
+function setPermission(xml, name) {
+  const found = matches(xml, /<uses-permission\b[^>]*\/>/g)
+    .filter((match) => attr(match[0], "android:name") === name);
+  if (found.length > 1) fail(`Manifest 重复 permission ${name}`);
+  if (found.length) return xml;
+  const applications = matches(xml, /<application\b/g);
+  if (applications.length !== 1) fail("Manifest 缺少唯一 application");
+  const start = applications[0].index;
+  return xml.slice(0, start) + `<uses-permission android:name="${name}" />\n    ` + xml.slice(start);
+}
 function setFeature(xml, name) {
   const found = matches(xml, /<uses-feature\b[^>]*\/>/g)
     .filter((match) => attr(match[0], "android:name") === name);
@@ -63,8 +74,20 @@ function setFeature(xml, name) {
   const start = applications[0].index;
   return xml.slice(0, start) + `<uses-feature android:name="${name}" android:required="false" />\n\n    ` + xml.slice(start);
 }
+function setUpdateFileProvider(xml) {
+  const authority = "com.hghubx.tv.fileprovider";
+  const block = `<provider\n            android:name="androidx.core.content.FileProvider"\n            android:authorities="${authority}"\n            android:exported="false"\n            android:grantUriPermissions="true">\n            <meta-data\n                android:name="android.support.FILE_PROVIDER_PATHS"\n                android:resource="@xml/hghubx_tv_file_paths" />\n        </provider>`;
+  const providers = matches(xml, /<provider\b[\s\S]*?<\/provider\s*>/g)
+    .filter((match) => attr(match[0], "android:authorities") === authority);
+  if (providers.length > 1) fail(`Manifest 重复 provider ${authority}`);
+  if (providers.length) return replaceMatch(xml, providers[0], block);
+  const closings = matches(xml, /<\/application\s*>/g);
+  if (closings.length !== 1) fail("Manifest 缺少唯一 application 结束标签");
+  return xml.slice(0, closings[0].index) + `    ${block}\n    ` + xml.slice(closings[0].index);
+}
 
 let manifest = readFileSync(manifestPath, "utf8");
+manifest = setPermission(manifest, "android.permission.REQUEST_INSTALL_PACKAGES");
 manifest = setFeature(manifest, "android.software.leanback");
 manifest = setFeature(manifest, "android.hardware.touchscreen");
 const applications = matches(manifest, /<application\b[^>]*>/g);
@@ -97,6 +120,7 @@ if (!matches(filter, /<category\b[^>]*\/>/g)
 }
 body = replaceMatch(body, filters[0], filter);
 manifest = replaceMatch(manifest, activity, opening + body + activity[3]);
+manifest = setUpdateFileProvider(manifest);
 
 const generatedActivity = readFileSync(activityPath, "utf8");
 const tvActivity = readFileSync(join(source, "MainActivity.kt"), "utf8");
@@ -112,7 +136,10 @@ class MainActivity : TauriActivity() {
   }
 }`;
 const normalize = (text) => text.trim().replace(/\s+/g, " ");
-if (![templateActivity, tvActivity].some((expected) => normalize(expected) === normalize(generatedActivity))) {
+const normalizedGenerated = normalize(generatedActivity);
+const previousTvActivityHash = "f8320e5ebd8ee76776fad2b5752f09e4a4fa04f0630f6ef28e7d28663ef20c6f";
+if (![templateActivity, tvActivity].some((expected) => normalize(expected) === normalizedGenerated) &&
+    createHash("sha256").update(normalizedGenerated).digest("hex") !== previousTvActivityHash) {
   fail("MainActivity 与已知 Tauri 模板不同，请审阅原生改动后更新 TV patch");
 }
 
@@ -121,4 +148,4 @@ if (![templateActivity, tvActivity].some((expected) => normalize(expected) === n
 cpSync(join(source, "res"), join(main, "res"), { recursive: true, force: true });
 writeFileSync(manifestPath, manifest);
 writeFileSync(activityPath, tvActivity);
-console.log("[tv] HGhubX TV：独立包、Leanback 入口、横屏 banner 与原生安全视口已写入");
+console.log("[tv] HGhubX TV：独立包、Leanback 入口、应用内更新安装器、横屏 banner 与原生安全视口已写入");

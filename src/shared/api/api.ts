@@ -209,15 +209,23 @@ export const api = {
   proxyTest: (mode: ProxyMode, url: string) => call<ProxyProbe>("proxy_test", { mode, url }),
 
   /* 更新检查：对比 GitHub Release 的 tag */
-  checkUpdate: () => call<UpdateInfo>("check_update"),
+  checkUpdate: (opts?: { edition?: "tv"; currentVersion?: string }) =>
+    call<UpdateInfo>("check_update", opts),
   openUrl: (url: string) => call<void>("open_url", { url }),
 };
 
 /* ── 更新检查 ───────────────────────────────────────────── */
 
+export type UpdateAsset = {
+  name: string;
+  url: string;
+  size?: number | null;
+  sha256?: string | null;
+};
+
 export type UpdateInfo = {
   /** 当前平台对应的安装包；没有就是这次 release 没给本平台出包 */
-  asset?: { name: string; url: string } | null;
+  asset?: UpdateAsset | null;
   current: string;
   latest: string;
   tag?: string;

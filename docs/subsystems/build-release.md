@@ -103,7 +103,8 @@ ad-hoc 签名都不应进入仓库或本机脚本输出。
    - `release`：在 `tv-v*` tag（或手动 `mode=package` 且 `tag` 非空、`quick=false`）且 `package` 成功时，
      读取 `docs/release-notes/tv/<tag>.md`（模板见 [`docs/release-notes/tv/TEMPLATE.md`](../release-notes/tv/TEMPLATE.md)），
      以 `--latest=false` 发布独立 TV GitHub Release（不抢占仓库 `Latest` 徽章；仅当去掉 `tv-v` 前缀后含 `-` 或显式勾选
-     `prerelease` 时标为 Pre-release）。
+     `prerelease` 时标为 Pre-release）。TV 客户端通过 `check_update(edition="tv")` 读取该 Release 资产摘要与大小，
+     校验 SHA-256 后由系统安装器覆盖升级。
 
 ## 状态转换
 

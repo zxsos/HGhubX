@@ -160,13 +160,21 @@ function applyPendingRestore(): boolean {
 let restoration = 0;
 export function restoreFocus(page: string) {
   const generation = ++restoration;
-  requestAnimationFrame(() => {
-    if (generation !== restoration) return;
-    const saved = memories.get(page), all = focusables(surface());
-    pendingRestore = saved ? { page, saved, until: performance.now()+15_000 } : undefined;
-    if (applyPendingRestore()) return;
+  const saved = memories.get(page);
+  pendingRestore = saved ? { page, saved, until: performance.now()+15_000 } : undefined;
+  const attempt = (allowNavFallback: boolean) => {
+    if (generation !== restoration) return true;
+    if (applyPendingRestore()) return true;
+    if (saved) return false;
+    const all = focusables(surface()), active = document.activeElement as HTMLElement;
+    if (all.includes(active) && !active.closest('nav')) return true;
     // Keep pending restoration while asynchronously mounted cards arrive, but
     // any subsequent user key cancels it so late data never steals focus.
-    focusElement(all.find(el=>el.hasAttribute("data-tv-initial")) || all.find(el=>!el.closest('nav')) || all[0]);
-  });
+    const target = all.find(el=>el.hasAttribute("data-tv-initial")) || all.find(el=>!el.closest('nav')) || (allowNavFallback ? all[0] : undefined);
+    if (!target) return false;
+    focusElement(target);
+    return !target.closest('nav');
+  };
+  if (attempt(false)) return;
+  requestAnimationFrame(() => { attempt(true); });
 }
