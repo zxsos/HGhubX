@@ -22,6 +22,8 @@
  */
 
 import { useEffect, useRef, useState, type RefObject } from "react";
+import { DetailUpscaler } from "./detailUpscaler";
+import detailShaderSource from "./shaders/FSRCNNX_x2_16_0_4_1.glsl?raw";
 import "../../styles/super-resolution.css";
 
 type Fit = "contain" | "cover";
@@ -262,10 +264,32 @@ void main() {
   );
 }`;
 
+/** Adds the FSRCNNX luma detail to the EASU color without changing chroma. */
+const DETAIL_COMPOSITE_SHADER = `#version 300 es
+precision highp float;
+
+uniform sampler2D uColor;
+uniform sampler2D uDetail;
+uniform vec2 uOutputSize;
+out vec4 outColor;
+
+float luma(vec3 c) { return c.r * 0.2126 + c.g * 0.7152 + c.b * 0.0722; }
+
+void main() {
+  vec2 uv = gl_FragCoord.xy / uOutputSize;
+  vec3 color = texture(uColor, uv).rgb;
+  float detail = texture(uDetail, uv).r;
+  float base = luma(color);
+  color += detail - base;
+  outColor = vec4(clamp(color, 0.0, 1.0), 1.0);
+}`;
+
 const FULLSCREEN_TRIANGLE = new Float32Array([-1, -1, 3, -1, -1, 3]);
 // FSR 1 is cheap, but a 720p source at 3x would be a 4K output. Cap the work
 // at a 2.5 MP render target so the overlay stays viable on mobile GPUs.
 const MAX_OUTPUT_PIXELS = 2_500_000;
+// FSRCNNX is a 2x luma network; keep its output small enough for mobile GPUs.
+const MAX_DETAIL_OUTPUT_PIXELS = 1_000_000;
 
 function compile(gl: WebGL2RenderingContext, type: number, source: string) {
   const shader = gl.createShader(type);
@@ -310,21 +334,24 @@ function createTexture(gl: WebGL2RenderingContext, width: number, height: number
   return texture;
 }
 
-export type SuperResolutionVariant = "fsr" | "cas";
+export type SuperResolutionVariant = "fsr" | "cas" | "detail";
 
-/** The hidden prototype switch: ?sr=1, ?sr=fsr, or ?sr=cas. */
+/** The hidden prototype switch: ?sr=1, ?sr=fsr, ?sr=cas, or ?sr=detail. */
 export function superResolutionRequested() {
   if (typeof window === "undefined") return false;
   const value = new URLSearchParams(window.location.search).get("sr");
-  return value === "1" || value === "fsr" || value === "cas";
+  return value === "1" || value === "fsr" || value === "cas" || value === "detail";
 }
 
 export function superResolutionVariant(): SuperResolutionVariant {
   if (typeof window === "undefined") return "fsr";
-  return new URLSearchParams(window.location.search).get("sr") === "cas" ? "cas" : "fsr";
+  const value = new URLSearchParams(window.location.search).get("sr");
+  if (value === "cas") return "cas";
+  if (value === "detail") return "detail";
+  return "fsr";
 }
 
-function outputSize(video: HTMLVideoElement, fit: Fit) {
+function outputSize(video: HTMLVideoElement, fit: Fit, variant: SuperResolutionVariant) {
   const vw = video.videoWidth;
   const vh = video.videoHeight;
   if (!vw || !vh) return null;
@@ -343,7 +370,8 @@ function outputSize(video: HTMLVideoElement, fit: Fit) {
   }
 
   const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
-  const pixelScale = Math.sqrt(MAX_OUTPUT_PIXELS / (vw * vh));
+  const pixelBudget = variant === "detail" ? MAX_DETAIL_OUTPUT_PIXELS : MAX_OUTPUT_PIXELS;
+  const pixelScale = Math.sqrt(pixelBudget / (vw * vh));
   const scale = Math.min((displayW * dpr) / vw, (displayH * dpr) / vh, 3, pixelScale);
   if (!Number.isFinite(scale) || scale <= 1.01) return null;
   return { width: Math.round(vw * scale), height: Math.round(vh * scale), scale };
@@ -364,6 +392,8 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
     let gl: WebGL2RenderingContext | null = null;
     let programEasu: WebGLProgram | null = null;
     let programRcas: WebGLProgram | null = null;
+    let programComposite: WebGLProgram | null = null;
+    let detailUpscaler: DetailUpscaler | null = null;
     let videoTexture: WebGLTexture | null = null;
     let intermediate: WebGLTexture | null = null;
     let framebuffer: WebGLFramebuffer | null = null;
@@ -387,6 +417,9 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
     let rcasLimitLoc: WebGLUniformLocation | null = null;
     let rcasStrengthLoc: WebGLUniformLocation | null = null;
     let rcasModeLoc: WebGLUniformLocation | null = null;
+    let compositeColorLoc: WebGLUniformLocation | null = null;
+    let compositeDetailLoc: WebGLUniformLocation | null = null;
+    let compositeOutputLoc: WebGLUniformLocation | null = null;
 
     const onContextLost = (event: Event) => {
       event.preventDefault();
@@ -404,6 +437,8 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
         if (framebuffer) gl.deleteFramebuffer(framebuffer);
         if (programEasu) gl.deleteProgram(programEasu);
         if (programRcas) gl.deleteProgram(programRcas);
+        if (programComposite) gl.deleteProgram(programComposite);
+        if (detailUpscaler) detailUpscaler.dispose();
         if (vertexArray) gl.deleteVertexArray(vertexArray);
         if (vertexBuffer) gl.deleteBuffer(vertexBuffer);
       }
@@ -427,12 +462,19 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
       canvas.height = height;
       if (intermediate) gl.deleteTexture(intermediate);
       intermediate = createTexture(gl, width, height);
+      if (detailUpscaler && video.videoWidth && video.videoHeight) {
+        detailUpscaler.resize(video.videoWidth, video.videoHeight, width, height);
+      }
       if (!framebuffer) framebuffer = gl.createFramebuffer();
       if (!framebuffer) throw new Error("Unable to create framebuffer");
       gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
       gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, intermediate, 0);
       if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) {
         throw new Error("Incomplete framebuffer");
+      }
+      for (let unit = 0; unit < 8; unit += 1) {
+        gl.activeTexture(gl.TEXTURE0 + unit);
+        gl.bindTexture(gl.TEXTURE_2D, null);
       }
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     };
@@ -441,7 +483,7 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
       if (disposed || !gl || !video || video.readyState < 2 || !video.videoWidth) return;
       const now = performance.now();
       if (force || !measuredSize || now - measuredAt > 500) {
-        measuredSize = outputSize(video, fit);
+        measuredSize = outputSize(video, fit, variant);
         measuredAt = now;
       }
       const size = measuredSize;
@@ -469,33 +511,66 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
         return;
       }
 
-      if (!programEasu || !programRcas || !intermediate || !framebuffer) return;
+      if (!programEasu || !intermediate || !framebuffer || !vertexArray) return;
       const started = performance.now();
-      gl.viewport(0, 0, width, height);
-      gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
-      gl.useProgram(programEasu);
-      gl.bindVertexArray(vertexArray);
-      gl.uniform1i(easuSourceLoc, 0);
-      gl.uniform2f(easuInputLoc, video.videoWidth, video.videoHeight);
-      gl.uniform2f(easuOutputLoc, width, height);
-      gl.drawArrays(gl.TRIANGLES, 0, 3);
+      if (variant === "detail") {
+        if (!detailUpscaler || !programComposite || !videoTexture) return;
+        const detailTexture = detailUpscaler.render(videoTexture, vertexArray);
 
-      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-      gl.viewport(0, 0, width, height);
-      gl.useProgram(programRcas);
-      gl.bindVertexArray(vertexArray);
-      gl.activeTexture(gl.TEXTURE0);
-      gl.bindTexture(gl.TEXTURE_2D, intermediate);
-      gl.uniform1i(rcasSourceLoc, 0);
-      gl.activeTexture(gl.TEXTURE1);
-      gl.bindTexture(gl.TEXTURE_2D, videoTexture);
-      gl.uniform1i(rcasNativeLoc, 1);
-      gl.uniform2f(rcasOutputLoc, width, height);
-      gl.uniform1f(rcasSharpLoc, 0.0);
-      gl.uniform1f(rcasLimitLoc, 0.1875);
-      gl.uniform1f(rcasStrengthLoc, variant === "cas" ? 0.60 : 1.0);
-      gl.uniform1f(rcasModeLoc, variant === "cas" ? 1.0 : 0.0);
-      gl.drawArrays(gl.TRIANGLES, 0, 3);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
+        gl.viewport(0, 0, width, height);
+        gl.useProgram(programEasu);
+        gl.bindVertexArray(vertexArray);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, videoTexture);
+        gl.uniform1i(easuSourceLoc, 0);
+        gl.uniform2f(easuInputLoc, video.videoWidth, video.videoHeight);
+        gl.uniform2f(easuOutputLoc, width, height);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        gl.viewport(0, 0, width, height);
+        gl.useProgram(programComposite);
+        gl.bindVertexArray(vertexArray);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, intermediate);
+        gl.uniform1i(compositeColorLoc, 0);
+        gl.activeTexture(gl.TEXTURE1);
+        gl.bindTexture(gl.TEXTURE_2D, detailTexture);
+        gl.uniform1i(compositeDetailLoc, 1);
+        gl.uniform2f(compositeOutputLoc, width, height);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+        canvas.dataset.detailPasses = String(detailUpscaler.passCount);
+      } else {
+        if (!programRcas) return;
+        gl.viewport(0, 0, width, height);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
+        gl.useProgram(programEasu);
+        gl.bindVertexArray(vertexArray);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, videoTexture);
+        gl.uniform1i(easuSourceLoc, 0);
+        gl.uniform2f(easuInputLoc, video.videoWidth, video.videoHeight);
+        gl.uniform2f(easuOutputLoc, width, height);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        gl.viewport(0, 0, width, height);
+        gl.useProgram(programRcas);
+        gl.bindVertexArray(vertexArray);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, intermediate);
+        gl.uniform1i(rcasSourceLoc, 0);
+        gl.activeTexture(gl.TEXTURE1);
+        gl.bindTexture(gl.TEXTURE_2D, videoTexture);
+        gl.uniform1i(rcasNativeLoc, 1);
+        gl.uniform2f(rcasOutputLoc, width, height);
+        gl.uniform1f(rcasSharpLoc, 0.0);
+        gl.uniform1f(rcasLimitLoc, 0.1875);
+        gl.uniform1f(rcasStrengthLoc, variant === "cas" ? 0.60 : 1.0);
+        gl.uniform1f(rcasModeLoc, variant === "cas" ? 1.0 : 0.0);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+      }
 
       frames += 1;
       canvas.dataset.frames = String(frames);
@@ -505,7 +580,8 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
     const safeDraw = (force = false) => {
       try {
         draw(force);
-      } catch {
+      } catch (error) {
+        console.error("[super-resolution] draw failed", error);
         setFailed(true);
         stop();
       }
@@ -528,6 +604,10 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
       if (!gl) throw new Error("WebGL2 unavailable");
       programEasu = link(gl, VERTEX_SHADER, EASU_SHADER);
       programRcas = link(gl, VERTEX_SHADER, RCAS_SHADER);
+      if (variant === "detail") {
+        programComposite = link(gl, VERTEX_SHADER, DETAIL_COMPOSITE_SHADER);
+        detailUpscaler = new DetailUpscaler(gl, VERTEX_SHADER, detailShaderSource);
+      }
       easuSourceLoc = gl.getUniformLocation(programEasu, "uSource");
       easuInputLoc = gl.getUniformLocation(programEasu, "uInputSize");
       easuOutputLoc = gl.getUniformLocation(programEasu, "uOutputSize");
@@ -538,6 +618,11 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
       rcasLimitLoc = gl.getUniformLocation(programRcas, "uLimit");
       rcasStrengthLoc = gl.getUniformLocation(programRcas, "uStrength");
       rcasModeLoc = gl.getUniformLocation(programRcas, "uMode");
+      if (programComposite) {
+        compositeColorLoc = gl.getUniformLocation(programComposite, "uColor");
+        compositeDetailLoc = gl.getUniformLocation(programComposite, "uDetail");
+        compositeOutputLoc = gl.getUniformLocation(programComposite, "uOutputSize");
+      }
       videoTexture = createTexture(gl, video.videoWidth || 2, video.videoHeight || 2);
       vertexArray = gl.createVertexArray();
       vertexBuffer = gl.createBuffer();
@@ -545,14 +630,14 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
       gl.bindVertexArray(vertexArray);
       gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
       gl.bufferData(gl.ARRAY_BUFFER, FULLSCREEN_TRIANGLE, gl.STATIC_DRAW);
-      const position = gl.getAttribLocation(programEasu, "aPosition");
-      gl.enableVertexAttribArray(position);
-      gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 0, 0);
+      gl.enableVertexAttribArray(0);
+      gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
       gl.disable(gl.DEPTH_TEST);
       gl.disable(gl.BLEND);
       drawOnce();
       schedule();
-    } catch {
+    } catch (error) {
+      console.error("[super-resolution] init failed", error);
       setFailed(true);
       stop();
       return;
