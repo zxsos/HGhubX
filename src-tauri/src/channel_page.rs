@@ -392,3 +392,130 @@ pub async fn fetch_original(cate: &str, page: u32, size: u32) -> Result<Value, S
     let html = fetch_html(&path).await?;
     parse_channel_html(&html, panel, page, size)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{category_route, original_route, parse_channel_html};
+
+    const SAMPLE_CHANNEL_HTML: &str = r#"
+        <header>
+          <div class="hg-card-grid" data-channel-panel="latest">
+            <div class="hg-drama-card" data-track-id="99999">
+              <h3 class="hg-drama-card__title"><a href="/video/99999/">页头噪声卡片</a></h3>
+            </div>
+          </div>
+        </header>
+        <section class="hg-channel-page">
+          <div class="hg-card-grid is-active" data-channel-panel="latest" data-panel-total="1624">
+            <div class="hg-drama-card" data-track-id="13731" data-track-title="上瘾">
+              <div class="hg-drama-card__cover">
+                <a class="hg-drama-card__cover-link" href="/video/13731/">
+                  <img src="/static/web/images/cover-placeholder.png" data-src="https://pic.example.test/cover1.jpg" alt="上瘾" />
+                </a>
+                <span class="hg-drama-card__badges">
+                  <span class="hg-drama-card__badge">原创</span>
+                  <span class="hg-drama-card__badge hg-drama-card__badge--hot">热播</span>
+                  <span class="hg-drama-card__badge hg-drama-card__badge--new" data-new-at="1795259930">新片</span>
+                </span>
+                <span class="hg-drama-card__score">8.7分</span>
+                <span class="hg-drama-card__episode">更新至2集</span>
+                <span class="hg-drama-card__views"><img src="/icon.svg" alt="" />16.6w</span>
+              </div>
+              <div class="hg-drama-card__body">
+                <h3 class="hg-drama-card__title"><a href="/video/13731/">上瘾</a></h3>
+                <div class="hg-drama-card__tags">
+                  <a class="hg-tag" href="/tag/dushi/">都市</a>
+                  <a class="hg-tag" href="/tag/xiaoyuan/">校园</a>
+                  <a class="hg-tag" href="/tag/dushi/">都市</a>
+                </div>
+              </div>
+            </div>
+            <div class="hg-drama-card" data-track-id="10175">
+              <div class="hg-drama-card__cover">
+                <a class="hg-drama-card__cover-link" href="/video/10175/">
+                  <img src="https://pic.example.test/cover2.jpg" alt="完结剧" />
+                </a>
+                <span class="hg-drama-card__score">9.1分</span>
+                <span class="hg-drama-card__episode">全21集</span>
+                <span class="hg-drama-card__views">1.2亿</span>
+              </div>
+              <div class="hg-drama-card__body">
+                <h3 class="hg-drama-card__title"><a href="/video/10175/">完结剧 &amp; 番外</a></h3>
+                <div class="hg-drama-card__tags"><a class="hg-tag" href="/tag/xiandai/">现代</a></div>
+              </div>
+            </div>
+          </div>
+          <div class="hg-card-grid" data-channel-panel="hot" data-panel-total="1729" hidden="">
+            <div class="hg-drama-card" data-track-id="88888">
+              <h3 class="hg-drama-card__title"><a href="/video/88888/">隐藏热播面板</a></h3>
+            </div>
+          </div>
+          <nav class="hg-pager">
+            <span class="hg-pager__jump" data-pages="42"></span>
+          </nav>
+        </section>
+    "#;
+
+    #[test]
+    fn routes_map_category_and_original_pages_and_reject_unknown() {
+        assert_eq!(category_route("ai-duanju", 1, Some("latest")), Some(("/ai-duanju/".into(), "latest")));
+        assert_eq!(category_route("ai-duanju", 2, None), Some(("/ai-duanju/2/".into(), "latest")));
+        assert_eq!(category_route("ai-duanju", 1, Some("hot_window")), Some(("/ai-duanju/hot/".into(), "hot")));
+        assert_eq!(category_route("ai-duanju", 3, Some("hot_window")), Some(("/ai-duanju/hot/3/".into(), "hot")));
+        assert_eq!(category_route("ai-manju", 1, Some("random")), Some(("/ai-manju/random/".into(), "random")));
+        assert_eq!(category_route("ai-manju", 2, Some("random")), Some(("/ai-manju/random/2/".into(), "random")));
+        assert_eq!(category_route("unknown", 1, Some("latest")), None);
+        assert_eq!(category_route("ai-duanju", 1, Some("unsupported")), None);
+
+        assert_eq!(original_route("all", 1), Some(("/original/".into(), "drama")));
+        assert_eq!(original_route("all", 2), Some(("/original/2/".into(), "drama")));
+        assert_eq!(original_route("ai-manju", 1), Some(("/original/manju/".into(), "comic")));
+        assert_eq!(original_route("ai-duanju", 2), Some(("/original/duanju/2/".into(), "short")));
+        assert_eq!(original_route("other", 1), None);
+    }
+
+    #[test]
+    fn parses_active_panel_badges_tags_episodes_views_and_pagination() {
+        let full = parse_channel_html(SAMPLE_CHANNEL_HTML, "latest", 1, 20).unwrap();
+        let items = full["items"].as_array().unwrap();
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0]["id"], 13731);
+        assert_eq!(items[0]["title"], "上瘾");
+        assert_eq!(items[0]["cover"], "https://pic.example.test/cover1.jpg");
+        assert_eq!(items[0]["score"], 8.7);
+        assert_eq!(items[0]["episode_count"], 2);
+        assert_eq!(items[0]["total_episodes"], 0);
+        assert_eq!(items[0]["is_finished"], false);
+        assert_eq!(items[0]["hot"], 166_000);
+        assert_eq!(items[0]["is_original"], 1);
+        assert_eq!(items[0]["is_hot"], 1);
+        assert_eq!(items[0]["new_at"], 1_795_259_930_u64);
+        assert_eq!(items[0]["tags"], serde_json::json!(["都市", "校园"]));
+
+        assert_eq!(items[1]["id"], 10175);
+        assert_eq!(items[1]["title"], "完结剧 & 番外");
+        assert_eq!(items[1]["is_finished"], true);
+        assert_eq!(items[1]["episode_count"], 21);
+        assert_eq!(items[1]["total_episodes"], 21);
+        assert_eq!(items[1]["hot"], 120_000_000);
+        assert_eq!(items[1]["is_original"], 0);
+        assert_eq!(items[1]["is_hot"], 0);
+        assert!(items[1].get("new_at").is_none());
+
+        assert_eq!(full["pagination"]["page"], 1);
+        assert_eq!(full["pagination"]["pages"], 42);
+        assert_eq!(full["pagination"]["total"], 1624);
+
+        let preview = parse_channel_html(SAMPLE_CHANNEL_HTML, "latest", 1, 1).unwrap();
+        assert_eq!(preview["items"].as_array().unwrap().len(), 1);
+        assert_eq!(preview["pagination"]["pages"], 42);
+    }
+
+    #[test]
+    fn rejects_hidden_missing_and_outside_section_panels() {
+        assert!(parse_channel_html(SAMPLE_CHANNEL_HTML, "hot", 1, 20).is_err());
+        assert!(parse_channel_html(SAMPLE_CHANNEL_HTML, "random", 1, 20).is_err());
+        let outside_only = r#"<header><div class="hg-card-grid" data-channel-panel="latest"><div class="hg-drama-card" data-track-id="1"><h3 class="hg-drama-card__title">外部</h3></div></div></header>"#;
+        assert!(parse_channel_html(outside_only, "latest", 1, 20).is_err());
+    }
+}

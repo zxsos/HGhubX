@@ -139,8 +139,8 @@ pnpm test:post-flicker
 cargo test --manifest-path src-tauri/Cargo.toml --lib
 ```
 
-`test:smoke` 当前包含 `api-loading`、`storage-migration`、`line-selection`、
-`diagnostic-copy`、`ui-feedback`、`home-controls`、`account-sync`（最后运行）。账号切换期间批量取消收藏的
+`test:smoke` 当前包含 `api-loading`、`channel-autoload-badges`、`storage-migration`、`line-selection`、
+`diagnostic-copy`、`ui-feedback`、`home-controls`、`account-sync` 与 `i18n`。账号切换期间批量取消收藏的
 fixture 位于 `scripts/test-account-sync-empty-state.mjs`；需要单独运行时可执行
 `node scripts/test-account-sync-empty-state.mjs`。浏览器 fixture 使用 mock Tauri IPC 且阻断外部请求，
 不能证明真实上游的正文结构或账号接口；真实接口变化需要另加网络隔离的 fixture 或手动验证。
