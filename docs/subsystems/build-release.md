@@ -21,12 +21,13 @@ ad-hoc 签名都不应进入仓库或本机脚本输出。
   [`tauri.tv.conf.json`](../../src-tauri/tauri.tv.conf.json)。
 - Rust 版本：[`src-tauri/Cargo.toml`](../../src-tauri/Cargo.toml) 的 `[package].version`、
   `custom-protocol` feature；[`src-tauri/Cargo.lock`](../../src-tauri/Cargo.lock) 的 `hghubx` 包。
-- CI 与 CD 拆分工作流（+ 测试预览合成）：
-  - 标准版 CI：[`.github/workflows/ci.yml`](../../.github/workflows/ci.yml)（名称 `CI`），负责标准版日常校验（`frontend`、`rust`、`smoke`、`playback` 矩阵），PR/推 `main` 仅运行校验，无跳过的打包任务。
-  - 标准版 CD：[`.github/workflows/release.yml`](../../.github/workflows/release.yml)（名称 `Release`），负责 `v*` 发版与手动全平台/单平台打包（`windows`、`android`、`macos`、`ios`、`linux`、`release`）。
+- CI 与 CD 拆分工作流（+ 公共 Composite Actions 与测试预览合成）：
+  - 公共环境动作：`.github/actions/setup-node-pnpm`、`.github/actions/install-webkitgtk`、`.github/actions/setup-ffmpeg-chrome`、`.github/actions/setup-android-sdk`、`.github/actions/setup-ios-project`，供以下 5 个工作流统一复用。
+  - 标准版 CI：[`.github/workflows/ci.yml`](../../.github/workflows/ci.yml)（名称 `CI`），负责标准版日常校验（`changes`、`frontend`、`rust`、`smoke`、`playback` 矩阵）；纯文档变更（`docs/**`、`*.md`）仅运行 `frontend`（含文档链接与预算检查），跳过 `rust`/`smoke`/`playback`。
+  - 标准版 CD：[`.github/workflows/release.yml`](../../.github/workflows/release.yml)（名称 `Release`），先执行 `preflight`（版本号格式、`check-i18n`、`check-doc-links` 与发布说明提示），再并行执行 5 平台构建（`windows`、`android`、`macos`、`ios`、`linux`）与 `release`。
   - TV 版 CI：[`.github/workflows/tv.yml`](../../.github/workflows/tv.yml)（名称 `TV CI`），负责 TV 版按路径过滤的构建与遥控器验收（`acceptance`）。
-  - TV 版 CD：[`.github/workflows/tv-release.yml`](../../.github/workflows/tv-release.yml)（名称 `TV Release`），负责 `tv-v*` 与手动 TV APK 打包及独立发版（`package`、`release`，`--latest=false` 不抢占仓库 `Latest` 徽章）。
-  - 测试预览：[`.github/workflows/test-preview.yml`](../../.github/workflows/test-preview.yml)（名称 `Test Preview`）与 [`scripts/sync-test-branch.mjs`](../../scripts/sync-test-branch.mjs)，通过单一 `test` PR 标签驱动信任继承（首次打标自动合入并继承到同一作者后续新 PR，移除 `test` 标签即清空该作者历史继承），从 `main` 自动合并所有打开中、非草稿且无冲突的 `test` PR 到 `test` 分支（拦截外部 PR 修改 `.github/`），在无密钥构建运行器完成全平台（Windows、macOS、Linux、Android、Android TV、iOS）编译后，由独立干净运行器签名 APK 并滚动更新 `test-pre` Pre-release（`--latest=false`）。
+  - TV 版 CD：[`.github/workflows/tv-release.yml`](../../.github/workflows/tv-release.yml)（名称 `TV Release`），先执行 `preflight` 校验 TV 版本号/字典/文档，再执行 `package` 与 `release`（`--latest=false` 不抢占仓库 `Latest` 徽章）。
+  - 测试预览：[`.github/workflows/test-preview.yml`](../../.github/workflows/test-preview.yml)（名称 `Test Preview`）与 [`scripts/sync-test-branch.mjs`](../../scripts/sync-test-branch.mjs)，通过单一 `test` PR 标签驱动信任继承（Draft 草稿不提前贴标；首次打标自动合入并继承到同一作者后续非草稿 PR，移除 `test` 标签即清空该作者历史继承），从 `main` 自动合并所有打开中、非草稿、影响客户端代码且无冲突的 `test` PR 到 `test` 分支（跳过纯文档/工作流 PR，拦截外部 PR 修改 `.github/`）；支持手动按单平台重编，在无密钥构建运行器完成编译后，由独立干净运行器签名 APK 并原地零 404 空窗滚动更新 `test-pre` Pre-release（`--latest=false`）。
 - 版本/预算门禁：[`scripts/set-version.mjs`](../../scripts/set-version.mjs)（支持 `--target standard|tv`）、
   [`scripts/check-version-sync.mjs`](../../scripts/check-version-sync.mjs)（支持 `--target all|standard|tv`）、
   [`scripts/check-doc-links.mjs`](../../scripts/check-doc-links.mjs)、

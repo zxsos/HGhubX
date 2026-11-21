@@ -36,6 +36,7 @@ on:
       - "src-tauri/src/**"
       - "src-tauri/Cargo.*"
       - ".github/workflows/tv.yml"
+      - ".github/actions/**"
   push:
     branches: [main]
     paths:
@@ -69,6 +70,7 @@ on:
       - "src-tauri/src/**"
       - "src-tauri/Cargo.*"
       - ".github/workflows/tv.yml"
+      - ".github/actions/**"
   workflow_dispatch:
 
 permissions:
@@ -88,59 +90,12 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6
-        with:
-          version: 10
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: pnpm
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/setup-node-pnpm
       - name: TV version fields
         run: node scripts/check-version-sync.mjs --target tv
       - name: Build TV frontend
         run: VITE_APP_EDITION=tv pnpm build
-      - name: Cache FFmpeg .deb packages
-        id: ffmpeg-cache
-        uses: actions/cache@v6
-        with:
-          path: ~/apt-ffmpeg-debs
-          key: apt-ffmpeg-ubuntu24-v1
-      - name: Resolve pre-installed FFmpeg & Chrome
-        run: |
-          install_ffmpeg_from_mirror() {
-            mkdir -p ~/apt-ffmpeg-debs
-            sudo find /etc/apt/sources.list.d -maxdepth 1 -type f ! -name 'ubuntu.sources' -delete
-            if [ -f /etc/apt/sources.list.d/ubuntu.sources ]; then
-              sudo sed -i -E 's|^URIs:.*|URIs: https://mirrors.edge.kernel.org/ubuntu/|g' /etc/apt/sources.list.d/ubuntu.sources
-            fi
-            sudo apt-get -o Acquire::ForceIPv4=true -o Acquire::Retries=3 -o Acquire::http::Timeout=15 -o Acquire::https::Timeout=15 update
-            sudo apt-get -o Dir::Cache::archives="$HOME/apt-ffmpeg-debs" -o Acquire::ForceIPv4=true -o Acquire::Retries=3 -o Acquire::http::Timeout=15 -o Acquire::https::Timeout=15 \
-              install -y --no-install-recommends ffmpeg
-            sudo rm -rf ~/apt-ffmpeg-debs/lock ~/apt-ffmpeg-debs/partial 2>/dev/null || true
-            sudo chown -R "$USER:$USER" ~/apt-ffmpeg-debs
-          }
-          if ! command -v ffmpeg >/dev/null 2>&1; then
-            if [ "${{ steps.ffmpeg-cache.outputs.cache-hit }}" = "true" ] && compgen -G "$HOME/apt-ffmpeg-debs/*.deb" >/dev/null; then
-              echo "Installing FFmpeg from cached .deb packages..."
-              if ! (sudo dpkg --unpack ~/apt-ffmpeg-debs/*.deb && sudo dpkg --configure -a); then
-                sudo apt-get -f install -y || true
-                rm -rf ~/apt-ffmpeg-debs/*
-                install_ffmpeg_from_mirror
-              fi
-            else
-              install_ffmpeg_from_mirror
-            fi
-          fi
-          if [ -x /usr/bin/google-chrome ]; then
-            BROWSER="/usr/bin/google-chrome"
-          else
-            pnpm exec playwright-core install --with-deps chromium
-            BROWSER="$(node --input-type=module -e "import { chromium } from 'playwright-core'; console.log(chromium.executablePath())")"
-          fi
-          echo "Using browser: $BROWSER, ffmpeg: $(command -v ffmpeg)"
-          echo "BROWSER_EXECUTABLE=$BROWSER" >> "$GITHUB_ENV"
+      - uses: ./.github/actions/setup-ffmpeg-chrome
       - name: Run TV acceptance
         run: node scripts/test-tv-remote.mjs
       - name: Upload diagnostics even when a check fails

@@ -138,6 +138,10 @@ async function handlePullRequestGate(event) {
   }
 
   if (["opened", "reopened", "ready_for_review", "synchronize"].includes(action)) {
+    if (pr.draft) {
+      console.log(`[test-preview] #${pr.number} 当前为 Draft 草稿状态，暂不自动继承或合入 test 分支`);
+      return false;
+    }
     let hasTest = prLabels.includes(TEST_LABEL);
     if (!hasTest && author && (await authorHasPriorTestPr(author, pr.number))) {
       console.log(`[test-preview] @${author} 曾有 ${TEST_LABEL} 标记记录，自动为 #${pr.number} 继承 ${TEST_LABEL} 标签`);
@@ -154,10 +158,6 @@ async function handlePullRequestGate(event) {
       console.log(`[test-preview] #${pr.number} (@${author}) 未携带 ${TEST_LABEL} 标签，跳过自动合流`);
       return false;
     }
-    if (pr.draft) {
-      console.log(`[test-preview] #${pr.number} 当前为 Draft 草稿状态，暂不合入 test 分支`);
-      return false;
-    }
     return true;
   }
 
@@ -170,6 +170,16 @@ async function handlePullRequestGate(event) {
   }
 
   return false;
+}
+
+function isNonAppFile(file) {
+  return (
+    file === ".github" ||
+    file.startsWith(".github/") ||
+    file === "docs" ||
+    file.startsWith("docs/") ||
+    file.endsWith(".md")
+  );
 }
 
 async function main() {
@@ -226,6 +236,10 @@ async function main() {
       diffFiles.some((f) => f === ".github" || f.startsWith(".github/"))
     ) {
       skipped.push(`#${pr.number} ${pr.title}（@${author}）：外部 PR 涉及 \`.github/\` 变更，按安全规则跳过`);
+      continue;
+    }
+    if (diffFiles.length > 0 && diffFiles.every(isNonAppFile)) {
+      skipped.push(`#${pr.number} ${pr.title}（@${author}）：仅涉及文档或工作流变更，不影响客户端构建，已跳过`);
       continue;
     }
 

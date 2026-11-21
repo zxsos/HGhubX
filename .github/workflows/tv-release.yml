@@ -1,7 +1,7 @@
 name: TV Release
 run-name: "TV Release · ${{ inputs.tag != '' && inputs.tag || github.ref_name }}"
 
-# TV 版打包与独立发布（CD）：推送 tv-v* tag 或手动触发时打包 Android TV APK 并发布独立 TV Release（--latest=false）。
+# TV 版打包与独立发布（CD）：推送 tv-v* tag 或手动触发时先跑轻量前置门禁，再打包 Android TV APK 并发布独立 TV Release（--latest=false）。
 # TV 版日常验收（CI）见 .github/workflows/tv.yml。
 on:
   push:
@@ -25,63 +25,62 @@ permissions:
   contents: read
 
 concurrency:
-  group: tv-release-${{ github.ref }}-${{ github.run_id }}
-  cancel-in-progress: false
+  group: tv-release-${{ github.ref }}-${{ (startsWith(github.ref, 'refs/tags/tv-v') || inputs.tag != '') && github.run_id || 'quick' }}
+  cancel-in-progress: ${{ github.event_name == 'workflow_dispatch' && inputs.tag == '' }}
 
 env:
   CI: "true"
 
 jobs:
+  preflight:
+    name: TV release preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-node-pnpm
+      - name: 校验 TV 版本号与发布说明
+        id: ver
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/tv-v* ]]; then
+            TAG="$GITHUB_REF_NAME"
+            V="${GITHUB_REF_NAME#tv-v}"
+          elif [[ -n "$INPUT_TAG" ]]; then
+            TAG="$INPUT_TAG"
+            V="${INPUT_TAG#tv-v}"
+            V="${V#v}"
+          else
+            TAG=""
+            V="$(node -p "require('./src-tauri/tauri.tv.conf.json').version")"
+          fi
+          node scripts/set-version.mjs --target tv "$V"
+          node scripts/check-i18n.mjs
+          node scripts/check-doc-links.mjs
+          if [[ -n "$TAG" && ! -f "docs/release-notes/tv/${TAG}.md" ]]; then
+            echo "::notice::未找到 docs/release-notes/tv/${TAG}.md，发布时将回退自动生成说明"
+          fi
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+
   package:
     name: Android TV (split per ABI)
+    needs: [preflight]
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
       CARGO_PROFILE_RELEASE_LTO: ${{ inputs.quick && 'thin' || 'true' }}
       CARGO_PROFILE_RELEASE_CODEGEN_UNITS: ${{ inputs.quick && '4' || '1' }}
+      HGHUBX_APP_VERSION: ${{ needs.preflight.outputs.version }}
     steps:
       - uses: actions/checkout@v7
       - name: TV 版本号对齐 tag
-        id: ver
         shell: bash
-        env:
-          INPUT_TAG: ${{ inputs.tag }}
-        run: |
-          if [[ "$GITHUB_REF" == refs/tags/tv-v* ]]; then
-            V="${GITHUB_REF_NAME#tv-v}"
-          elif [[ -n "$INPUT_TAG" ]]; then
-            V="${INPUT_TAG#tv-v}"
-            V="${V#v}"
-          else
-            V="$(node -p "require('./src-tauri/tauri.tv.conf.json').version")"
-          fi
-          node scripts/set-version.mjs --target tv "$V"
-          CODE="$(node -p "require('./src-tauri/tauri.tv.conf.json').bundle.android.versionCode")"
-          echo "version=$V" >> "$GITHUB_OUTPUT"
-          echo "versionCode=$CODE" >> "$GITHUB_OUTPUT"
-          echo "HGHUBX_APP_VERSION=$V" >> "$GITHUB_ENV"
-          echo "versionName=$V  versionCode=$CODE"
-      - uses: pnpm/action-setup@v6
-        with:
-          version: 10
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: pnpm
-      - uses: actions/setup-java@v6
-        with:
-          distribution: temurin
-          java-version: "17"
-      - name: 准备 Android SDK / NDK
-        run: |
-          SDK="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
-          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
-          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
-          SDKM="$SDK/cmdline-tools/latest/bin/sdkmanager"
-          yes | "$SDKM" --licenses > /dev/null 2>&1 || true
-          "$SDKM" --install "platform-tools" "platforms;android-36" "build-tools;36.0.0" "ndk;28.2.13676358"
-          echo "NDK_HOME=$SDK/ndk/28.2.13676358" >> "$GITHUB_ENV"
-          ls "$SDK/ndk"
+        run: node scripts/set-version.mjs --target tv "${{ needs.preflight.outputs.version }}"
+      - uses: ./.github/actions/setup-node-pnpm
+      - uses: ./.github/actions/setup-android-sdk
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
@@ -91,11 +90,10 @@ jobs:
         with:
           workspaces: src-tauri -> target
           key: android-tv
-      - run: pnpm install --frozen-lockfile
-      - name: 选择 Android TV 配置
-        run: cp src-tauri/tauri.tv.conf.json src-tauri/tauri.android.conf.json
-      - name: 生成 Android 工程
-        run: pnpm tauri android init --ci
+      - name: 选择 Android TV 配置并生成工程
+        run: |
+          cp src-tauri/tauri.tv.conf.json src-tauri/tauri.android.conf.json
+          pnpm tauri android init --ci
       - name: 编译 APK（按 ABI 分包）
         run: |
           if [ "${{ inputs.quick }}" = "true" ]; then
@@ -111,7 +109,7 @@ jobs:
           KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-          VERSION: ${{ steps.ver.outputs.version }}
+          VERSION: ${{ needs.preflight.outputs.version }}
         run: |
           set -euo pipefail
           if [ -z "${KEYSTORE_BASE64:-}" ]; then
