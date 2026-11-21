@@ -21,9 +21,10 @@ ad-hoc 签名都不应进入仓库或本机脚本输出。
   [`tauri.tv.conf.json`](../../src-tauri/tauri.tv.conf.json)。
 - Rust 版本：[`src-tauri/Cargo.toml`](../../src-tauri/Cargo.toml) 的 `[package].version`、
   `custom-protocol` feature；[`src-tauri/Cargo.lock`](../../src-tauri/Cargo.lock) 的 `hghubx` 包。
-- CI/CD（双工作流解耦）：
+- CI/CD（双工作流解耦 + 测试预览合成）：
   - 标准版：[`.github/workflows/ci.yml`](../../.github/workflows/ci.yml)，负责标准版日常校验（`frontend`、`rust`、`smoke`、`playback` 矩阵）与 `v*` 发版构建（`windows`、`android` 标准版、`macos`、`ios`、`linux`、`release`）。
   - TV 子项目：[`.github/workflows/tv.yml`](../../.github/workflows/tv.yml)，负责 TV 版按路径过滤的构建与遥控器验收（`acceptance`）、独立版本打包（`package`）与 `tv-v*` 独立发版（`release`，`--latest=false` 不抢占仓库 `Latest` 徽章）。
+  - 测试预览：[`.github/workflows/test-preview.yml`](../../.github/workflows/test-preview.yml) 与 [`scripts/sync-test-branch.mjs`](../../scripts/sync-test-branch.mjs)，通过单一 `test` PR 标签驱动信任继承（首次打标自动合入并继承到同一作者后续新 PR，移除 `test` 标签即清空该作者历史继承），从 `main` 自动合并所有打开中、非草稿且无冲突的 `test` PR 到 `test` 分支（拦截外部 PR 修改 `.github/`），在无密钥构建运行器完成全平台（Windows、macOS、Linux、Android、Android TV、iOS）编译后，由独立干净运行器签名 APK 并滚动更新 `test-pre` Pre-release（`--latest=false`）。
 - 版本/预算门禁：[`scripts/set-version.mjs`](../../scripts/set-version.mjs)（支持 `--target standard|tv`）、
   [`scripts/check-version-sync.mjs`](../../scripts/check-version-sync.mjs)（支持 `--target all|standard|tv`）、
   [`scripts/check-doc-links.mjs`](../../scripts/check-doc-links.mjs)、
