@@ -8,11 +8,13 @@ import { usePlaybackActivity } from "./usePlaybackActivity";
 import { useProxyPlaybackRecovery } from "./useProxyPlaybackRecovery";
 import { createHlsRecovery, type HlsRecovery } from "./hlsRecovery";
 import AmbientGlow from "./AmbientGlow";
-import SuperResolutionCanvas, { superResolutionRequested } from "./SuperResolutionCanvas";
+import { superResolutionRequested } from "./superResolutionRequest";
 import { setBalanceVolume } from "./balanceVolume";
 import { tr } from "../../shared/i18n";
 
 if (Hls.version) registerHlsVersion(Hls.version);
+
+type SuperResolutionComponent = typeof import("./SuperResolutionCanvas")["default"];
 
 export type VideoHandle = {
   el: () => HTMLVideoElement | null;
@@ -80,6 +82,16 @@ const VideoSurface = forwardRef<VideoHandle, Props>(function VideoSurface(
   measurementRef.current = { key: measurementKey, onSize };
   const [ready, setReady] = useState(false);
   const superResolution = superResolutionRequested();
+  const [SuperResolutionCanvas, setSuperResolutionCanvas] = useState<SuperResolutionComponent | null>(null);
+  useEffect(() => {
+    if (!superResolution || !active || SuperResolutionCanvas) return;
+    let cancelled = false;
+    /* A hidden ?sr= opt-in loads the overlay and its shader chunk on demand. */
+    void import("./SuperResolutionCanvas")
+      .then(module => { if (!cancelled) setSuperResolutionCanvas(() => module.default); })
+      .catch(() => { /* Native <video> remains the fallback. */ });
+    return () => { cancelled = true; };
+  }, [active, superResolution, SuperResolutionCanvas]);
   const { trace, requestSeek } = usePlayerDiagnostics(videoRef, hlsRef, { ...diagnosticContext, active, resource: mediaResource(src) });
   const activity = usePlaybackActivity(videoRef, hlsRef, { active, autoPlay, src, trace });
   const proxyRecovery = useProxyPlaybackRecovery(videoRef, src, activity, trace);
@@ -275,7 +287,7 @@ const VideoSurface = forwardRef<VideoHandle, Props>(function VideoSurface(
   return (
     <div className="relative isolate h-full w-full">
       {ambientGlow && <AmbientGlow videoRef={videoRef} active={active} />}
-      {superResolution && active && (
+      {SuperResolutionCanvas && active && (
         <SuperResolutionCanvas videoRef={videoRef} fit={fit} active={active} />
       )}
       <video

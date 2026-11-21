@@ -22,8 +22,8 @@
  */
 
 import { useEffect, useRef, useState, type RefObject } from "react";
-import { DetailUpscaler } from "./detailUpscaler";
-import detailShaderSource from "./shaders/FSRCNNX_x2_16_0_4_1.glsl?raw";
+import type { DetailUpscaler } from "./detailUpscaler";
+import { superResolutionRequested, superResolutionVariant, type SuperResolutionVariant } from "./superResolutionRequest";
 import "../../styles/super-resolution.css";
 
 type Fit = "contain" | "cover";
@@ -334,23 +334,6 @@ function createTexture(gl: WebGL2RenderingContext, width: number, height: number
   return texture;
 }
 
-export type SuperResolutionVariant = "fsr" | "cas" | "detail";
-
-/** The hidden prototype switch: ?sr=1, ?sr=fsr, ?sr=cas, or ?sr=detail. */
-export function superResolutionRequested() {
-  if (typeof window === "undefined") return false;
-  const value = new URLSearchParams(window.location.search).get("sr");
-  return value === "1" || value === "fsr" || value === "cas" || value === "detail";
-}
-
-export function superResolutionVariant(): SuperResolutionVariant {
-  if (typeof window === "undefined") return "fsr";
-  const value = new URLSearchParams(window.location.search).get("sr");
-  if (value === "cas") return "cas";
-  if (value === "detail") return "detail";
-  return "fsr";
-}
-
 function outputSize(video: HTMLVideoElement, fit: Fit, variant: SuperResolutionVariant) {
   const vw = video.videoWidth;
   const vh = video.videoHeight;
@@ -606,7 +589,25 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
       programRcas = link(gl, VERTEX_SHADER, RCAS_SHADER);
       if (variant === "detail") {
         programComposite = link(gl, VERTEX_SHADER, DETAIL_COMPOSITE_SHADER);
-        detailUpscaler = new DetailUpscaler(gl, VERTEX_SHADER, detailShaderSource);
+        void (async () => {
+          try {
+            /* Keep the 26-pass runner and its weights out of the main bundle. */
+            const [runner, shader] = await Promise.all([
+              import("./detailUpscaler"),
+              import("./shaders/FSRCNNX_x2_16_0_4_1.glsl?raw"),
+            ]);
+            if (disposed || !gl) return;
+            detailUpscaler = new runner.DetailUpscaler(gl, VERTEX_SHADER, shader.default);
+            if (video.videoWidth && video.videoHeight && width && height) {
+              detailUpscaler.resize(video.videoWidth, video.videoHeight, width, height);
+            }
+            drawOnce();
+          } catch (error) {
+            console.error("[super-resolution] detail shader load failed", error);
+            setFailed(true);
+            stop();
+          }
+        })();
       }
       easuSourceLoc = gl.getUniformLocation(programEasu, "uSource");
       easuInputLoc = gl.getUniformLocation(programEasu, "uInputSize");
