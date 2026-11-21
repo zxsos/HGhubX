@@ -333,14 +333,15 @@ async function gestureChecks(page) {
 //   修复前：landscapeVideo=false 且已测量、非全屏、vpLandscape=false → "cover"（裁切铺满）→ 断言失败；
 //   修复后：竖屏视频一律 "contain"（保留原始比例）→ 断言通过。
 // 第二段用横屏源验证「铺满/适应」切换链路未被修复破坏（该分支修复前后行为一致）。
-// A landscape fullscreen episode swap resets the measured video size. Until the
-// next source is playing, the stage is not rotated yet; the episode hint must
-// stay hidden instead of flashing at the portrait toast anchor.
+// Switching episodes within the same landscape series in fullscreen must keep
+// .fs-landscape active and keep episode/boundary hints anchored at the landscape
+// bottom on every frame — including while distinct episode URLs are loading.
 async function episodeToastChecks(page) {
   await page.addInitScript(() => {
-    const { promise, resolve } = Promise.withResolvers();
-    window.__playGate = promise;
-    window.__releasePlay = resolve;
+    const g2 = Promise.withResolvers();
+    const g3 = Promise.withResolvers();
+    window.__playGates = { 2: g2.promise, 3: g3.promise };
+    window.__releaseEp = ep => (ep === 2 ? g2.resolve() : ep === 3 ? g3.resolve() : undefined);
     window.__TAURI_INTERNALS__ = { invoke: async () => null };
   });
   await page.goto(`${report.ui}/tests/player-seek.html?portrait-fit=1&swipe-ep=1&proxy=${encodeURIComponent(report.media)}`);
@@ -363,6 +364,15 @@ async function episodeToastChecks(page) {
     assert(Math.abs((box.y + box.height / 2) - viewport.h / 2) < 24, "Rotated hint must be centered along the landscape video");
     assert(await toast.evaluate(el => !!el.closest(".player-root.fs-landscape")), "Rotated hint must stay inside the rotated stage");
   };
+  const swipeNext = pointerId => page.evaluate(id => {
+    const surface = document.querySelector("[data-mobile-hold-target]");
+    const box = surface.getBoundingClientRect();
+    const y = box.y + box.height / 2;
+    const x0 = box.x + box.width * .3, x1 = box.x + box.width * .7;
+    surface.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerId: id, pointerType: "touch", isPrimary: true, button: 0, buttons: 1, clientX: x0, clientY: y }));
+    surface.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, pointerId: id, pointerType: "touch", isPrimary: true, button: 0, buttons: 1, clientX: x1, clientY: y }));
+    surface.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerId: id, pointerType: "touch", isPrimary: true, button: 0, buttons: 0, clientX: x1, clientY: y }));
+  }, pointerId);
 
   await dismissGuide();
   await waitForPlayback();
@@ -371,58 +381,89 @@ async function episodeToastChecks(page) {
   await page.waitForFunction(() => document.querySelector(".player-root")?.classList.contains("fs-landscape"));
   assert.equal(await page.locator(".mobile-video-episode").count(), 0, "Fullscreen must not render the portrait episode badge");
 
-  // Fullscreen episode hint waits for the incoming source's decoded aspect ratio, then appears at the landscape video bottom.
-  const ep2Toast = page.locator(".a-toast").filter({ hasText: /第 2 ?集 \/ 3/ });
+  // Continuously observe DOM mutations + animation frames while in landscape fullscreen:
+  // neither the rotated stage nor any visible toast may ever drop to portrait coordinates.
   await page.evaluate(() => {
-    const surface = document.querySelector("[data-mobile-hold-target]");
-    const box = surface.getBoundingClientRect();
-    const y = box.y + box.height / 2;
-    const x0 = box.x + box.width * .3, x1 = box.x + box.width * .7;
-    surface.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerId: 120, pointerType: "touch", isPrimary: true, button: 0, buttons: 1, clientX: x0, clientY: y }));
-    surface.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, pointerId: 120, pointerType: "touch", isPrimary: true, button: 0, buttons: 1, clientX: x1, clientY: y }));
-    surface.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerId: 120, pointerType: "touch", isPrimary: true, button: 0, buttons: 0, clientX: x1, clientY: y }));
+    const audit = { active: true, stageDropped: 0, portraitToasts: [] };
+    const sample = () => {
+      if (!audit.active) return;
+      const root = document.querySelector(".player-root");
+      if (!root || !root.classList.contains("fs-landscape")) audit.stageDropped += 1;
+      for (const el of document.querySelectorAll(".a-toast")) {
+        const rect = el.getBoundingClientRect();
+        if (rect.width === 0 && rect.height === 0) continue;
+        const inRotated = !!el.closest(".player-root.fs-landscape");
+        const rotatedShape = rect.left < innerWidth / 2 && rect.height > rect.width;
+        if (!inRotated || !rotatedShape) {
+          audit.portraitToasts.push({ text: (el.textContent || "").trim(), inRotated, x: Math.round(rect.left), y: Math.round(rect.top), w: Math.round(rect.width), h: Math.round(rect.height) });
+        }
+      }
+    };
+    const observer = new MutationObserver(sample);
+    observer.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ["class", "style"] });
+    const tick = () => { sample(); if (audit.active) requestAnimationFrame(tick); };
+    requestAnimationFrame(tick);
+    window.__stopLandscapeAudit = () => { audit.active = false; observer.disconnect(); return audit; };
   });
-  await page.waitForTimeout(350);
-  assert.equal(await ep2Toast.count(), 0, "Episode hint must wait while the next video is still loading");
-  await page.evaluate(() => window.__releasePlay());
+
+  // Swipe 1 (Ep 1 -> Ep 2, gated): rotated stage stays active while Ep 2 loads and toast sits at landscape bottom.
+  const ep2Toast = page.locator(".a-toast").filter({ hasText: /第 2 ?集 \/ 3/ });
+  await swipeNext(120);
+  await page.waitForTimeout(100);
+  assert.equal(await page.evaluate(() => !!document.querySelector(".player-root.fs-landscape")), true, "Landscape stage must not drop .fs-landscape while next episode loads");
+  await ep2Toast.waitFor({ timeout: 3000 });
+  await page.waitForTimeout(250);
+  assert.equal(await page.locator(".a-toast").count(), 1, "Episode 2 hint must appear in landscape bottom without stacking");
+  await assertRotatedBottom(ep2Toast);
+  await page.evaluate(() => window.__releaseEp(2));
   await waitForPlayback();
-  await page.waitForFunction(() => document.querySelector(".player-root")?.classList.contains("fs-landscape"));
-  await ep2Toast.waitFor();
-  assert.equal(await page.locator(".a-toast").count(), 1, "Episode hint must appear once the next video decodes");
   await assertRotatedBottom(ep2Toast);
 
-  const toast = page.locator(".a-toast").filter({ hasText: /第 3 ?集 \/ 3/ });
-  await page.evaluate(() => {
-    const surface = document.querySelector("[data-mobile-hold-target]");
-    const box = surface.getBoundingClientRect();
-    const y = box.y + box.height / 2;
-    const x0 = box.x + box.width * .3, x1 = box.x + box.width * .7;
-    surface.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerId: 121, pointerType: "touch", isPrimary: true, button: 0, buttons: 1, clientX: x0, clientY: y }));
-    surface.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, pointerId: 121, pointerType: "touch", isPrimary: true, button: 0, buttons: 1, clientX: x1, clientY: y }));
-    surface.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerId: 121, pointerType: "touch", isPrimary: true, button: 0, buttons: 0, clientX: x1, clientY: y }));
-  });
-  await toast.waitFor();
-  await waitForPlayback();
-  await page.waitForFunction(() => document.querySelector(".player-root")?.classList.contains("fs-landscape"));
+  // Swipe 2 (Ep 2 -> Ep 3 while Ep 2 toast is still mounted and Ep 3 is gated):
+  // neither the existing toast nor the incoming Ep 3 toast may flash in portrait.
+  const ep3Toast = page.locator(".a-toast").filter({ hasText: /第 3 ?集 \/ 3/ });
+  await swipeNext(121);
+  await ep3Toast.waitFor({ timeout: 3000 });
+  await page.waitForTimeout(250);
   assert.equal(await page.locator(".a-toast").count(), 1, "Next episode hint must replace in-place");
-  await assertRotatedBottom(toast);
+  await assertRotatedBottom(ep3Toast);
 
-  // A last-episode boundary must replace the same hint card, not stack below it.
-  await page.evaluate(() => {
-    const surface = document.querySelector("[data-mobile-hold-target]");
-    const box = surface.getBoundingClientRect();
-    const y = box.y + box.height / 2;
-    const x0 = box.x + box.width * .3, x1 = box.x + box.width * .7;
-    surface.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerId: 123, pointerType: "touch", isPrimary: true, button: 0, buttons: 1, clientX: x0, clientY: y }));
-    surface.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, pointerId: 123, pointerType: "touch", isPrimary: true, button: 0, buttons: 1, clientX: x1, clientY: y }));
-    surface.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerId: 123, pointerType: "touch", isPrimary: true, button: 0, buttons: 0, clientX: x1, clientY: y }));
-  });
+  // Boundary swipe while Ep 3 is still loading (gated) must also replace in-place at landscape bottom.
+  await swipeNext(123);
   const lastToast = page.locator(".a-toast").filter({ hasText: /当前已是最后一集/ });
-  await lastToast.waitFor();
+  await lastToast.waitFor({ timeout: 3000 });
   assert.equal(await page.locator(".a-toast").count(), 1, "Boundary hint must replace the episode hint instead of stacking");
   await assertRotatedBottom(lastToast);
+  await page.evaluate(() => window.__releaseEp(3));
+  await waitForPlayback();
+  await assertRotatedBottom(lastToast);
+
+  const audit = await page.evaluate(() => window.__stopLandscapeAudit());
+  assert.equal(audit.stageDropped, 0, `Landscape stage dropped .fs-landscape during episode switches (${audit.stageDropped} times)`);
+  assert.deepEqual(audit.portraitToasts, [], `Toast flashed at portrait position during landscape episode switches: ${JSON.stringify(audit.portraitToasts)}`);
   const lastBox = await lastToast.boundingBox();
-  return { deferredWhileLoading: true, boundaryReplaces: true, rotatedBottom: true, noPortraitEpisodeBadge: true, host: "rotated-stage", text: (await lastToast.innerText()).trim(), box: lastBox };
+
+  // Exiting fullscreen while a toast is visible must immediately move ToastHost back to the portrait viewport
+  // without waiting for another toast event.
+  await swipeNext(124);
+  await lastToast.waitFor({ timeout: 3000 });
+  const exitBtn = page.getByRole("button", { name: "退出全屏", exact: true });
+  if (await exitBtn.count() === 0) {
+    await page.locator("[data-mobile-hold-target]").click();
+    await exitBtn.waitFor({ timeout: 3000 });
+  }
+  await exitBtn.click();
+  await page.waitForFunction(() => !document.querySelector(".player-root")?.classList.contains("fs-landscape"));
+  const portraitAfterExit = await page.evaluate(() => {
+    const el = document.querySelector(".a-toast");
+    if (!el) return null;
+    const rect = el.getBoundingClientRect();
+    return { inPlayerRoot: !!el.closest(".player-root"), w: rect.width, h: rect.height, y: rect.top, vh: innerHeight };
+  });
+  assert(portraitAfterExit, "Active toast must still be visible right after exiting fullscreen");
+  assert.equal(portraitAfterExit.inPlayerRoot, false, "Exiting fullscreen must move active ToastHost out of .player-root");
+  assert(portraitAfterExit.w > portraitAfterExit.h && portraitAfterExit.y > portraitAfterExit.vh / 2, "Toast after exiting fullscreen must sit horizontally at portrait bottom");
+  return { stageDropped: audit.stageDropped, portraitFlashes: audit.portraitToasts.length, boundaryReplaces: true, rotatedBottom: true, noPortraitEpisodeBadge: true, host: "rotated-stage", text: (await lastToast.innerText().catch(() => "当前已是最后一集")).trim(), box: lastBox, portraitAfterExit };
 }
 
 // Ambient glow is a sampled color wash behind the video. It must follow the

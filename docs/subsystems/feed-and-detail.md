@@ -123,7 +123,8 @@ Feed 负责列表播放页的条目位置、详情/帖子读取、标签门、�
   图片节点，避免懒加载图片反复消失、重载和撑开布局（issue #165）。
 - 播放页状态提示（上下划切集、剧集边界、上下划切集开关、屏幕锁定/解锁）统一带 `tag="playback-hint"`（`Feed.tsx`、`FeedPlayerShellChrome.tsx`、`useFeedTouchGestures.ts` 与 `useFeedViewport.ts`）；`store.tsx` 的
   `pushToastItem` 对同 tag 原地替换内容并重置 2200ms 计时，快速连续操作只显示一张最新卡片，
-  不堆叠、不重放入场动画；无 tag 的普通 toast 仍按原逻辑堆叠（最多 3 张）。移动端全屏切集提示通过 `pendingEpisodeToast` state 等待新集解码宽高后再弹出，避免横屏旋转舞台就绪前在竖屏位置提前闪现。桌面端开启「上下划切集」或处于全屏时，
+  不堆叠、不重放入场动画；无 tag 的普通 toast 仍按原逻辑堆叠（最多 3 张）。同剧同作用域（`permissionKey` 不变）切集过渡期内，
+  `Feed.tsx` 沿用本剧最近一次已确认的宽高比例直到新集回传真实尺寸，避免 `.player-root` 丢掉 `.fs-landscape` 回退竖屏导致旋转舞台和已有提示卡片闪回竖屏位置（换剧、切账号/线路或改过滤规则仍立即清零；首次进入全屏尚无已确认宽高时继续由 `pendingEpisodeToast` 等待解码）；`ToastHost` 通过 `registerRotatedToastHost` 在绘制前响应式同步 `.fs-landscape` 宿主与偏移，进出全屏不滞留旧坐标。桌面端开启「上下划切集」或处于全屏时，
   `useFeedViewport` 在播放区滚动容器上注册非被动 `wheel` 监听（`{ passive: false }`），按位移阈值与冷却时间将
   滚轮/触控板纵向滚动转为单步 `stepDir`，避免浏览器原生纵向滚动直接切到下一部剧；底部控制栏「下一集 ↓ / 下一部 ↓」
   按钮同样遵循 `swipeEp` 开关。

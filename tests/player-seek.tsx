@@ -98,10 +98,12 @@ api.play = async (id = 991, ep = 1) => {
   if (fixture.rejectPlaybackApi) throw new Error("fixture playback API unavailable");
   if (swipeEpTest) {
     fixture.playCalls.push([id, ep]);
-    const gate = (window as typeof window & { __playGate?: Promise<void> }).__playGate;
-    if (ep > 1 && gate) await gate;
+    const w = window as typeof window & { __playGate?: Promise<void>; __playGates?: Record<number, Promise<void>> };
+    const gate = w.__playGates?.[ep] ?? (ep > 1 ? w.__playGate : undefined);
+    if (gate) await gate;
   }
-  return { id, ep_num: ep, title: "Seek fixture", duration: 90, video_url: "https://media.fixture.invalid/list.m3u8" };
+  const url = swipeEpTest ? `https://media.fixture.invalid/list.m3u8?ep=${ep}` : "https://media.fixture.invalid/list.m3u8";
+  return { id, ep_num: ep, title: "Seek fixture", duration: 90, video_url: url };
 };
 api.video = async (id = 991) => ({
   id, title: id === 991 ? "Seek fixture" : "Other fixture", description: "", cover: "", tags: [], score: 0,

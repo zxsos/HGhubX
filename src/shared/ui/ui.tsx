@@ -1,5 +1,5 @@
 import { Button, Image, Surface } from "./ios/controls";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { cover, platform } from "../api/api";
 import { getFullscreenElement, onFullscreenChange } from "../lib/fullscreen";
@@ -60,14 +60,37 @@ export function Empty({ icon, title, sub, action, onAction }: {
 }
 
 /* ——— Toast ——— */
+let rotatedToastHost: Element | null = null;
+const rotatedHostListeners = new Set<() => void>();
+const emitRotatedHost = () => { rotatedHostListeners.forEach((fn) => fn()); };
+const subscribeRotatedHost = (fn: () => void) => {
+  rotatedHostListeners.add(fn);
+  return () => { rotatedHostListeners.delete(fn); };
+};
+const getRotatedToastHost = () => (rotatedToastHost?.isConnected ? rotatedToastHost : null);
+/** Register the active CSS-rotated fullscreen stage so ToastHost reacts before paint. */
+export function registerRotatedToastHost(el: Element | null) {
+  if (!el) return undefined;
+  if (rotatedToastHost !== el) {
+    rotatedToastHost = el;
+    emitRotatedHost();
+  }
+  return () => {
+    if (rotatedToastHost !== el) return;
+    rotatedToastHost = null;
+    emitRotatedHost();
+  };
+}
+
 export function ToastHost() {
   const toasts = useToasts();
   const [fsHost, setFsHost] = useState<Element | null>(() => getFullscreenElement());
+  const registeredRotatedHost = useSyncExternalStore(subscribeRotatedHost, getRotatedToastHost);
   useEffect(() => onFullscreenChange(() => setFsHost(getFullscreenElement())), []);
   /* The CSS-rotated landscape stage is itself a rotated coordinate system: local
      bottom: 96px sits horizontally centered above the bottom controls when viewed
      in landscape (#181). */
-  const rotatedHost = fsHost ? null : document.querySelector(".player-root.fs-landscape");
+  const rotatedHost = fsHost ? null : (registeredRotatedHost ?? document.querySelector(".player-root.fs-landscape"));
   const host = fsHost || rotatedHost;
   const content = (
     <div role="status" aria-live="polite" aria-atomic="true"

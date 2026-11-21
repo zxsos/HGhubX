@@ -5,7 +5,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { api, cover, isMobile, logLine } from "../../shared/api/api";
 import type { Detail, Episode, PlayInfo, Post, VideoCard } from "../../shared/api/types";
 import { useStore } from "../../shared/model/store";
-import { Img } from "../../shared/ui/ui";
+import { Img, registerRotatedToastHost } from "../../shared/ui/ui";
 import { registerOverlayBack } from "../../shared/lib/back";
 import { PlaybackLock, VideoSurface, createPlaybackClock, type VideoHandle } from "../playback";
 import { tracePlayback } from "../../shared/diagnostics/playbackDiagnostics";
@@ -95,7 +95,7 @@ export default function Feed({
 
   const playbackClock = useMemo(() => createPlaybackClock(), []);
   const [duration, setDuration] = useState(0);
-  const [vsize, setVsize] = useState({ key: "", w: 0, h: 0 });
+  const [vsize, setVsize] = useState({ key: "", scope: "", w: 0, h: 0 });
   const [paused, setPaused] = useState(false);
   const [controlsLocked, setControlsLocked] = useState(false);
   const [rate, setRate] = useState(1);
@@ -208,10 +208,13 @@ export default function Feed({
   const hevcUrl = hevcUrls[playKey] || "";
   const playUrl = preferHevc && hevcUrl ? hevcUrl : mainUrl;
   const measurementKey = JSON.stringify([accountScope, store.lineEpoch, permissionKey, playKey, playUrl]);
-  const videoSize = vsize.key === measurementKey ? vsize : { key: measurementKey, w: 0, h: 0 };
-  /* Keep playback hints in one slot ("playback-hint"), and in fullscreen wait for
-     the incoming source's decoded aspect ratio so landscape stage rotation settles
-     before the toast mounts. */
+  // Same-series episode swaps keep the last confirmed series aspect ratio until the new
+  // episode reports its own size so .fs-landscape and active toasts never drop to portrait.
+  const videoSize = vsize.key === measurementKey || (vsize.scope === permissionKey && vsize.w > 0 && vsize.h > 0)
+    ? vsize
+    : { key: measurementKey, scope: permissionKey, w: 0, h: 0 };
+  /* Keep playback hints in one slot ("playback-hint"), and in fullscreen wait when the
+     current series has no confirmed aspect ratio yet so landscape rotation settles first. */
   const [pendingEpisodeToast, setPendingEpisodeToast] = useState<string | null>(null);
   const showEpisodeToast = useCallback((msg: string, immediate = false) => {
     if (immediate || isDesktop || !fs) { toast(msg, "info", "playback-hint"); return; }
@@ -225,10 +228,10 @@ export default function Feed({
       toast(pendingEpisodeToast, "info", "playback-hint");
       return;
     }
-    if (videoSize.key !== measurementKey || videoSize.h <= 0 || videoSize.w <= 0) return;
+    if (videoSize.h <= 0 || videoSize.w <= 0) return;
     setPendingEpisodeToast(null);
     toast(pendingEpisodeToast, "info", "playback-hint");
-  }, [err, fs, isDesktop, measurementKey, pendingEpisodeToast, toast, videoSize]);
+  }, [err, fs, isDesktop, pendingEpisodeToast, toast, videoSize]);
   // 等播放画面就绪再提示，启动动画/协议、加载失败和其他面板不叠加教程。
   const showHoldGuide = !isDesktop && !holdGuide.seen && active && allowed
     && !!playUrl && duration > 0 && !err && !panel && !tagMenu && !controlsLocked;
@@ -339,6 +342,7 @@ export default function Feed({
   /* 沉浸全屏 + 横屏视频 → 舞台旋转 90°，看起来就是横屏 */
   const rotated = !isDesktop && fs && videoSize.w > videoSize.h && videoSize.h > 0 && !vpLandscape;
   const landscapeVideo = videoSize.w > 0 && videoSize.h > 0 && videoSize.w > videoSize.h;
+  useLayoutEffect(() => (rotated ? registerRotatedToastHost(playerRootRef.current) : undefined), [rotated, allowed, blocked, effectiveVideoIds.length]);
 
   const {
     zoom, setZoom, holdSpeed, holdSlow,
@@ -660,7 +664,7 @@ export default function Feed({
                         onDuration={onDurationTick}
                         onSize={(w, h, key) => {
                           if (key !== measurementKey || !isCurrentPlayback()) return false;
-                          setVsize((prev) => (prev.key === key && prev.w === w && prev.h === h ? prev : { key, w, h }));
+                          setVsize((prev) => (prev.key === key && prev.scope === permissionKey && prev.w === w && prev.h === h ? prev : { key, scope: permissionKey, w, h }));
                           return true;
                         }}
                         onPlaying={() => { if (isCurrentPlayback()) { setPaused(false); setWaiting(false); setErr(""); setPlayingKey(playKey); } }}
