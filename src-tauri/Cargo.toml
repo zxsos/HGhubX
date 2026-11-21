@@ -45,6 +45,7 @@ aes = "0.8"
 base64 = "0.22"
 percent-encoding = "2"
 once_cell = "1"
+sha2 = "0.10"
 url = "2"
 # 与 reqwest 使用同一个匹配器判断各平台的目标代理，避免诊断/路由判断与实际连接不一致。
 # 此库和这些 feature 已由 reqwest 引入，不额外引入网络栈。

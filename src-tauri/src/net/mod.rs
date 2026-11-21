@@ -72,7 +72,7 @@ static NEXT_REQUEST: AtomicU64 = AtomicU64::new(0);
 
 #[allow(unused_imports)]
 pub use client::{get, refresh_client, UA};
-pub(crate) use client::{build_client, proxy_active, request_scope, ProxyRoute, RequestScope};
+pub(crate) use client::{build_client, get_with_dns, proxy_active, request_scope, ProxyRoute, RequestScope};
 pub use crate::net_diag::{diagnose, proxy_state, test_proxy};
 pub use edge::{edge, fetch_bytes, fetch_bytes_with_url};
 pub(crate) use edge::edge_redirect_target;

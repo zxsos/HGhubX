@@ -114,6 +114,9 @@ pub fn run() {
                 let state: tauri::State<Api> = app.state();
                 state.session.bind(dir);
             }
+            if let Ok(cache_dir) = app.path().app_cache_dir() {
+                updater::cleanup_tv_updates(&cache_dir);
+            }
             // Linux 的 <video> 由 GStreamer 播放，它只认常规 HTTP scheme；
             // 这里起一个 loopback 代理，前端与 m3u8 改写都指向它（见 linux_http.rs）
             #[cfg(target_os = "linux")]
@@ -233,6 +236,8 @@ pub fn run() {
             api::lines::proxy_set,
             api::lines::proxy_test,
             api::update::check_update,
+            api::update::download_tv_update,
+            api::update::cancel_tv_update,
             api::update::open_url,
             api::platform::set_orientation,
             api::platform::set_text_interaction,
