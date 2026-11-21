@@ -1,23 +1,15 @@
 name: Test Preview
-run-name: "Test Preview · ${{ github.event_name == 'pull_request_target' && format('PR #{0} ({1})', github.event.pull_request.number, github.event.action) || (github.event_name == 'workflow_dispatch' && inputs.platforms != 'all' && format('manual ({0})', inputs.platforms) || github.event_name) }}"
+run-name: "Test Preview · ${{ github.event_name == 'workflow_dispatch' && inputs.platforms != 'all' && format('manual ({0})', inputs.platforms) || (github.event_name == 'workflow_dispatch' && 'manual (all)' || 'auto build') }}"
 
-# 自动集成测试预览工作流：
-# 1. 通过单一 `test` PR 标签驱动信任继承（Draft 不提前贴标；首次打标自动合入并继承到后续非草稿 PR；移除标签即撤销历史继承）。
-# 2. 从最新 `main` 自动合并所有打开中、非草稿、带 `test` 标签且影响客户端代码的无冲突 PR 到 `test` 分支（跳过纯文档/工作流 PR）。
-# 3. 隔离全平台构建并在独立干净运行器签名 APK，原地零空窗滚动更新 `test-pre` 预发布页（不抢占 Latest，不触发正式版自动更新）。
+# 全平台测试预览构建与发布工作流：
+# - 自动模式：监听 `Sync Test Branch` 完成事件（workflow_run），不直接挂载在 PR 检查页上，
+#   因此并发取消旧构建时绝不会把任何 PR 标红或标取消；
+# - 手动模式：支持按需选择 `all` 或单平台重编并原地更新 `test-pre` 对应资产；
+# - 隔离安全：6 平台构建机无密钥，独立干净运行器签名 APK 并原地零空窗滚动更新 `test-pre`。
 on:
-  pull_request_target:
-    types:
-      - opened
-      - synchronize
-      - reopened
-      - closed
-      - labeled
-      - unlabeled
-      - ready_for_review
-      - converted_to_draft
-  push:
-    branches: [main]
+  workflow_run:
+    workflows: ["Sync Test Branch"]
+    types: [completed]
   workflow_dispatch:
     inputs:
       platforms:
@@ -30,51 +22,88 @@ permissions:
   contents: read
 
 concurrency:
-  group: test-preview
+  group: test-preview-build
   cancel-in-progress: true
 
 env:
   CI: "true"
 
 jobs:
-  sync-test:
-    name: Sync test branch
+  prepare:
+    name: Prepare test preview metadata
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: write
       pull-requests: write
       issues: write
+      actions: read
     outputs:
-      should_build: ${{ steps.sync.outputs.should_build }}
-      commit_sha: ${{ steps.sync.outputs.commit_sha }}
-      short_sha: ${{ steps.sync.outputs.short_sha }}
+      should_build: ${{ steps.meta.outputs.should_build }}
+      commit_sha: ${{ steps.meta.outputs.commit_sha }}
+      short_sha: ${{ steps.meta.outputs.short_sha }}
     steps:
+      - name: 下载 Sync Test Branch 元数据
+        if: github.event_name == 'workflow_run'
+        uses: actions/download-artifact@v8
+        with:
+          name: test-sync-bundle
+          path: test-sync-bundle
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/checkout@v7
+        if: github.event_name == 'workflow_dispatch'
         with:
           ref: main
           fetch-depth: 0
       - uses: actions/setup-node@v7
+        if: github.event_name == 'workflow_dispatch'
         with:
           node-version: 22
-      - name: 合并可信测试 PR 至 test 分支
-        id: sync
+      - name: 手动触发时同步 test 分支
+        id: manual_sync
+        if: github.event_name == 'workflow_dispatch'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TEST_NOTES_PATH: test-release-notes.md
-        run: node scripts/sync-test-branch.mjs
+          TEST_NOTES_PATH: test-sync-bundle/test-release-notes.md
+        run: |
+          mkdir -p test-sync-bundle
+          node scripts/sync-test-branch.mjs
+          node -e '
+            const fs = require("node:fs");
+            const out = fs.readFileSync(process.env.GITHUB_OUTPUT, "utf8");
+            const read = (k) => (out.match(new RegExp("^" + k + "=(.*)$", "m"))?.[1] || "").trim();
+            fs.writeFileSync("test-sync-bundle/meta.json", JSON.stringify({
+              should_build: read("should_build") === "true",
+              commit_sha: read("commit_sha"),
+              short_sha: read("short_sha"),
+            }, null, 2));
+          '
+      - name: 解析构建元数据
+        id: meta
+        run: |
+          node -e '
+            const fs = require("node:fs");
+            const meta = JSON.parse(fs.readFileSync("test-sync-bundle/meta.json", "utf8"));
+            fs.appendFileSync(process.env.GITHUB_OUTPUT,
+              `should_build=${meta.should_build ? "true" : "false"}\n` +
+              `commit_sha=${meta.commit_sha || ""}\n` +
+              `short_sha=${meta.short_sha || ""}\n`);
+            console.log("Resolved preview metadata:", JSON.stringify(meta));
+          '
       - uses: actions/upload-artifact@v7
-        if: steps.sync.outputs.should_build == 'true'
+        if: steps.meta.outputs.should_build == 'true'
         with:
           name: test-release-notes
-          path: test-release-notes.md
+          path: test-sync-bundle/test-release-notes.md
           if-no-files-found: error
 
   windows:
     name: Test · Windows (setup + portable)
-    needs: [sync-test]
+    needs: [prepare]
     if: >-
-      needs.sync-test.outputs.should_build == 'true' &&
+      needs.prepare.outputs.should_build == 'true' &&
       (github.event_name != 'workflow_dispatch' || inputs.platforms == 'all' || inputs.platforms == 'windows')
     runs-on: windows-latest
     timeout-minutes: 60
@@ -84,7 +113,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ needs.sync-test.outputs.commit_sha }}
+          ref: ${{ needs.prepare.outputs.commit_sha }}
       - name: 读取版本号
         id: ver
         shell: bash
@@ -123,9 +152,9 @@ jobs:
 
   android:
     name: Test · Android (split per ABI)
-    needs: [sync-test]
+    needs: [prepare]
     if: >-
-      needs.sync-test.outputs.should_build == 'true' &&
+      needs.prepare.outputs.should_build == 'true' &&
       (github.event_name != 'workflow_dispatch' || inputs.platforms == 'all' || inputs.platforms == 'android')
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -135,7 +164,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ needs.sync-test.outputs.commit_sha }}
+          ref: ${{ needs.prepare.outputs.commit_sha }}
       - name: 读取版本号
         id: ver
         shell: bash
@@ -178,9 +207,9 @@ jobs:
 
   android-tv:
     name: Test · Android TV (split per ABI)
-    needs: [sync-test]
+    needs: [prepare]
     if: >-
-      needs.sync-test.outputs.should_build == 'true' &&
+      needs.prepare.outputs.should_build == 'true' &&
       (github.event_name != 'workflow_dispatch' || inputs.platforms == 'all' || inputs.platforms == 'android-tv')
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -190,7 +219,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ needs.sync-test.outputs.commit_sha }}
+          ref: ${{ needs.prepare.outputs.commit_sha }}
       - name: 读取 TV 版本号
         id: ver
         shell: bash
@@ -236,9 +265,9 @@ jobs:
 
   macos:
     name: Test · macOS (universal dmg)
-    needs: [sync-test]
+    needs: [prepare]
     if: >-
-      needs.sync-test.outputs.should_build == 'true' &&
+      needs.prepare.outputs.should_build == 'true' &&
       (github.event_name != 'workflow_dispatch' || inputs.platforms == 'all' || inputs.platforms == 'macos')
     runs-on: macos-latest
     timeout-minutes: 60
@@ -248,7 +277,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ needs.sync-test.outputs.commit_sha }}
+          ref: ${{ needs.prepare.outputs.commit_sha }}
       - name: 读取版本号
         id: ver
         shell: bash
@@ -284,9 +313,9 @@ jobs:
 
   ios:
     name: Test · iOS (unsigned ipa)
-    needs: [sync-test]
+    needs: [prepare]
     if: >-
-      needs.sync-test.outputs.should_build == 'true' &&
+      needs.prepare.outputs.should_build == 'true' &&
       (github.event_name != 'workflow_dispatch' || inputs.platforms == 'all' || inputs.platforms == 'ios')
     runs-on: macos-latest
     timeout-minutes: 60
@@ -297,7 +326,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ needs.sync-test.outputs.commit_sha }}
+          ref: ${{ needs.prepare.outputs.commit_sha }}
       - name: 读取版本号
         id: ver
         shell: bash
@@ -329,9 +358,9 @@ jobs:
 
   linux:
     name: Test · Linux (deb)
-    needs: [sync-test]
+    needs: [prepare]
     if: >-
-      needs.sync-test.outputs.should_build == 'true' &&
+      needs.prepare.outputs.should_build == 'true' &&
       (github.event_name != 'workflow_dispatch' || inputs.platforms == 'all' || inputs.platforms == 'linux')
     runs-on: ubuntu-22.04
     timeout-minutes: 60
@@ -341,7 +370,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ needs.sync-test.outputs.commit_sha }}
+          ref: ${{ needs.prepare.outputs.commit_sha }}
       - name: 读取版本号
         id: ver
         shell: bash
@@ -377,12 +406,12 @@ jobs:
 
   publish-test-pre:
     name: Sign & Publish test-pre Pre-release
-    needs: [sync-test, windows, android, android-tv, macos, linux, ios]
+    needs: [prepare, windows, android, android-tv, macos, linux, ios]
     # 独立干净运行器（不检出 PR 代码）：按平台范围签名 APK 并原地零空窗滚动更新 `test-pre`
     if: >-
       always() &&
       !cancelled() &&
-      needs.sync-test.outputs.should_build == 'true' &&
+      needs.prepare.outputs.should_build == 'true' &&
       (
         ((github.event_name != 'workflow_dispatch' || inputs.platforms == 'all') &&
           needs.windows.result == 'success' &&
@@ -461,8 +490,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
-          TEST_SHA: ${{ needs.sync-test.outputs.commit_sha }}
-          SHORT_SHA: ${{ needs.sync-test.outputs.short_sha }}
+          TEST_SHA: ${{ needs.prepare.outputs.commit_sha }}
+          SHORT_SHA: ${{ needs.prepare.outputs.short_sha }}
           SELECTED_PLATFORMS: ${{ github.event_name == 'workflow_dispatch' && inputs.platforms || 'all' }}
         run: |
           set -euo pipefail
