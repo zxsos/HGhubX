@@ -189,6 +189,9 @@ precision highp float;
 uniform sampler2D uSource;
 uniform vec2 uOutputSize;
 uniform float uSharpness;
+uniform float uLimit;
+uniform float uStrength;
+uniform float uMode;
 out vec4 outColor;
 
 float max3(float a, float b, float c) { return max(a, max(b, c)); }
@@ -208,6 +211,18 @@ void main() {
   float fL = f.b * 0.5 + (f.r * 0.5 + f.g);
   float hL = h.b * 0.5 + (h.r * 0.5 + h.g);
 
+  // Experimental CAS-like unsharp path for ?sr=cas. It sharpens luminance
+  // detail after EASU without changing hue; uStrength controls the halo tradeoff.
+  if (uMode > 0.5) {
+    float detail = eL - (bL + dL + fL + hL) * 0.25;
+    float casMin = min(min(bL, dL), min(fL, hL));
+    float casMax = max(max(bL, dL), max(fL, hL));
+    float casRange = max(casMax - casMin, 1e-4);
+    float casAmp = sqrt(clamp(min(casMin, 2.0 - casMax) / casRange, 0.0, 1.0));
+    outColor = vec4(clamp(e + detail * (uStrength * casAmp), 0.0, 1.0), 1.0);
+    return;
+  }
+
   float mn4R = min(min(b.r, d.r), min(f.r, h.r));
   float mn4G = min(min(b.g, d.g), min(f.g, h.g));
   float mn4B = min(min(b.b, d.b), min(f.b, h.b));
@@ -225,9 +240,8 @@ void main() {
   float lobeR = max(-hitMinR, hitMaxR);
   float lobeG = max(-hitMinG, hitMaxG);
   float lobeB = max(-hitMinB, hitMaxB);
-  float lobe = max(-0.1875, min(max3(lobeR, lobeG, lobeB), 0.0)) * exp2(-uSharpness);
+  float lobe = max(-uLimit, min(max3(lobeR, lobeG, lobeB), 0.0)) * exp2(-uSharpness);
   float rcpL = 1.0 / (4.0 * lobe + 1.0);
-
   outColor = vec4(
     (lobe * (b + d + f + h) + e) * rcpL,
     1.0
@@ -282,11 +296,18 @@ function createTexture(gl: WebGL2RenderingContext, width: number, height: number
   return texture;
 }
 
-/** The hidden prototype switch: ?sr=1 or ?sr=fsr. */
+export type SuperResolutionVariant = "fsr" | "cas";
+
+/** The hidden prototype switch: ?sr=1, ?sr=fsr, or ?sr=cas. */
 export function superResolutionRequested() {
   if (typeof window === "undefined") return false;
   const value = new URLSearchParams(window.location.search).get("sr");
-  return value === "1" || value === "fsr";
+  return value === "1" || value === "fsr" || value === "cas";
+}
+
+export function superResolutionVariant(): SuperResolutionVariant {
+  if (typeof window === "undefined") return "fsr";
+  return new URLSearchParams(window.location.search).get("sr") === "cas" ? "cas" : "fsr";
 }
 
 function outputSize(video: HTMLVideoElement, fit: Fit) {
@@ -318,6 +339,7 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [failed, setFailed] = useState(false);
   const [enabled] = useState(superResolutionRequested);
+  const [variant] = useState(superResolutionVariant);
 
   useEffect(() => {
     if (!enabled || !active || failed) return;
@@ -347,6 +369,9 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
     let rcasSourceLoc: WebGLUniformLocation | null = null;
     let rcasOutputLoc: WebGLUniformLocation | null = null;
     let rcasSharpLoc: WebGLUniformLocation | null = null;
+    let rcasLimitLoc: WebGLUniformLocation | null = null;
+    let rcasStrengthLoc: WebGLUniformLocation | null = null;
+    let rcasModeLoc: WebGLUniformLocation | null = null;
 
     const onContextLost = (event: Event) => {
       event.preventDefault();
@@ -449,6 +474,9 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
       gl.uniform1i(rcasSourceLoc, 0);
       gl.uniform2f(rcasOutputLoc, width, height);
       gl.uniform1f(rcasSharpLoc, 0.0);
+      gl.uniform1f(rcasLimitLoc, 0.1875);
+      gl.uniform1f(rcasStrengthLoc, variant === "cas" ? 0.45 : 1.0);
+      gl.uniform1f(rcasModeLoc, variant === "cas" ? 1.0 : 0.0);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
 
       frames += 1;
@@ -488,6 +516,9 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
       rcasSourceLoc = gl.getUniformLocation(programRcas, "uSource");
       rcasOutputLoc = gl.getUniformLocation(programRcas, "uOutputSize");
       rcasSharpLoc = gl.getUniformLocation(programRcas, "uSharpness");
+      rcasLimitLoc = gl.getUniformLocation(programRcas, "uLimit");
+      rcasStrengthLoc = gl.getUniformLocation(programRcas, "uStrength");
+      rcasModeLoc = gl.getUniformLocation(programRcas, "uMode");
       videoTexture = createTexture(gl, video.videoWidth || 2, video.videoHeight || 2);
       vertexArray = gl.createVertexArray();
       vertexBuffer = gl.createBuffer();
@@ -514,12 +545,12 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
     video.addEventListener("resize", drawOnce);
 
     return stop;
-  }, [active, enabled, failed, fit, videoRef]);
+  }, [active, enabled, failed, fit, videoRef, variant]);
 
   if (failed) return null;
 
   return (
-    <div className="hg-super-resolution" aria-hidden="true" data-super-resolution={enabled ? "on" : "off"}>
+    <div className="hg-super-resolution" aria-hidden="true" data-super-resolution={enabled ? "on" : "off"} data-super-resolution-mode={variant}>
       <canvas
         ref={canvasRef}
         className={`hg-super-resolution-canvas sr-fit-${fit}`}
