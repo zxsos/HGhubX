@@ -54,7 +54,7 @@ export function useTabSwipe<T extends HTMLElement>({
       !target.closest(current.current.ignoreSelector);
 
     const begin = (event: TouchEvent) => {
-      if (event.touches.length !== 1) { touchStart.current = null; return; }
+      if (current.current.tabCount <= 1 || event.touches.length !== 1) { touchStart.current = null; return; }
       const touch = event.touches[0];
       if (!canStart(event.target)) { touchStart.current = null; return; }
       touchStart.current = { x: touch.clientX, y: touch.clientY, lastX: touch.clientX, lastY: touch.clientY };
@@ -94,7 +94,7 @@ export function useTabSwipe<T extends HTMLElement>({
   useEffect(() => () => window.clearTimeout(suppressTimer.current), []);
 
   const onPointerDown = (event: ReactPointerEvent<T>) => {
-    if (event.pointerType === "touch" || !event.isPrimary || event.button !== 0) return;
+    if (current.current.tabCount <= 1 || event.pointerType === "touch" || !event.isPrimary || event.button !== 0) return;
     if (!(event.target instanceof Element) || event.target.closest(current.current.ignoreSelector)) return;
     pointerStart.current = { x: event.clientX, y: event.clientY, pointerId: event.pointerId };
   };

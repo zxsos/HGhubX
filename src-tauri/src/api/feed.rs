@@ -108,15 +108,13 @@ pub async fn api_category(
     if let Ok(value) = crate::channel_page::fetch_category(&cate, page, size, sort.as_deref()).await {
         return Ok(value);
     }
-    let sort = match sort.as_deref() {
-        Some(s) if !s.trim().is_empty() => format!("&sort={s}"),
-        _ => String::new(),
+    let q = sort.as_deref().map(str::trim).filter(|s| !s.is_empty()).map_or_else(String::new, |s| format!("&sort={s}"));
+    let path = match cate.as_str() {
+        "newest" => format!("/api/videos?page={page}&size={size}&sort=new"),
+        "recommend" => format!("/api/videos?page={page}&size={size}&sort=hot"),
+        _ => format!("/api/videos/category/{cate}?page={page}&size={size}{q}"),
     };
-    state
-        .get(&format!(
-            "/api/videos/category/{cate}?page={page}&size={size}{sort}"
-        ))
-        .await
+    state.get(&path).await
 }
 
 #[tauri::command]

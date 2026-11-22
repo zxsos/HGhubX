@@ -8,6 +8,7 @@ const MAX_HTML_BYTES: usize = 2 * 1024 * 1024;
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(12);
 const JS_MAX_SAFE_INTEGER: i64 = 9_007_199_254_740_991;
 const DEFAULT_SSR_PAGE_SIZE: u32 = 39;
+const DEFAULT_LIST_SSR_PAGE_SIZE: u32 = 28;
 const DEFAULT_GOSSIP_SSR_PAGE_SIZE: u32 = 12;
 const PREVIEW_TRUNCATE_LIMIT: u32 = 20;
 
@@ -150,32 +151,29 @@ fn extract_cover(card: &Selection<'_>) -> String {
     String::new()
 }
 
-fn parse_channel_html(
-    html: &str,
-    panel: &str,
+fn parse_total_count(raw: &str) -> u64 {
+    let digits: String = raw
+        .split_once('共')
+        .map(|(_, rest)| rest)
+        .unwrap_or(raw)
+        .trim_start()
+        .chars()
+        .take_while(|c| c.is_ascii_digit() || *c == ',')
+        .filter(|c| c.is_ascii_digit())
+        .collect();
+    digits.parse::<u64>().unwrap_or(0)
+}
+
+fn parse_drama_grid(
+    scope: &Selection<'_>,
+    grid: &Selection<'_>,
     page: u32,
     requested_size: u32,
+    total_hint: u64,
+    default_page_size: u32,
+    empty_err: String,
 ) -> Result<Value, String> {
-    let document = Document::from(html);
-    let section = document.select("section.hg-channel-page");
-    if section.is_empty() {
-        return Err("官网频道页缺少频道主体区域".into());
-    }
-
-    let grid_selector = format!(".hg-card-grid[data-channel-panel=\"{panel}\"]");
-    let grid = section.select(&grid_selector);
-    if grid.is_empty() {
-        return Err(format!("官网频道页缺少 {panel} 面板"));
-    }
-    if grid.attr("hidden").is_some() {
-        return Err(format!("官网频道页 {panel} 面板处于隐藏状态"));
-    }
-
-    let panel_total = grid
-        .attr("data-panel-total")
-        .and_then(|value| value.trim().parse::<u64>().ok())
-        .unwrap_or(0);
-
+    let page = page.max(1);
     let mut seen = HashSet::new();
     let mut items = Vec::new();
     for card_node in grid.select(".hg-drama-card").iter() {
@@ -269,19 +267,22 @@ fn parse_channel_html(
     }
 
     if items.is_empty() {
-        return Err(format!("官网频道页 {panel} 面板没有可用条目"));
+        return Err(empty_err);
     }
 
     let full_page_len = items.len() as u32;
-    let mut pages = section
-        .select(".hg-pager__jump")
+    let mut pages = scope
+        .select(".hg-pager__jump, [data-hg-pager-jump]")
         .attr("data-pages")
         .and_then(|value| value.trim().parse::<u32>().ok())
         .filter(|value| *value > 0)
         .unwrap_or(0);
 
     if pages == 0 {
-        for pager_link in section.select(".hg-pager a.hg-pager__page, .hg-pager span.hg-pager__page").iter() {
+        for pager_link in scope
+            .select(".hg-pager a.hg-pager__page, .hg-pager span.hg-pager__page")
+            .iter()
+        {
             if let Ok(num) = normalized_text(Selection::from(pager_link)).parse::<u32>() {
                 if num > pages {
                     pages = num;
@@ -290,14 +291,14 @@ fn parse_channel_html(
         }
     }
 
-    let total = panel_total.max(items.len() as u64);
+    let total = total_hint.max(items.len() as u64);
     if pages == 0 {
-        let per_page = full_page_len.max(DEFAULT_SSR_PAGE_SIZE) as u64;
+        let per_page = full_page_len.max(default_page_size) as u64;
         pages = ((total + per_page - 1) / per_page).max(page as u64) as u32;
     }
 
     // 仅分类总览预览行（page=1 且 size < 20）按需截断；频道分页页保留整页卡片，
-    // 防止官网每页 39 条在前端翻到第 2 页时跳过第 21..39 条。
+    // 防止官网每页条数多于 20 时前端翻到第 2 页跳过尾部条目。
     if page == 1 && requested_size > 0 && requested_size < PREVIEW_TRUNCATE_LIMIT {
         items.truncate(requested_size as usize);
     }
@@ -312,6 +313,71 @@ fn parse_channel_html(
             "total": total,
         }
     }))
+}
+
+fn parse_channel_html(
+    html: &str,
+    panel: &str,
+    page: u32,
+    requested_size: u32,
+) -> Result<Value, String> {
+    let document = Document::from(html);
+    let section = document.select("section.hg-channel-page");
+    if section.is_empty() {
+        return Err("官网频道页缺少频道主体区域".into());
+    }
+
+    let grid_selector = format!(".hg-card-grid[data-channel-panel=\"{panel}\"]");
+    let grid = section.select(&grid_selector);
+    if grid.is_empty() {
+        return Err(format!("官网频道页缺少 {panel} 面板"));
+    }
+    if grid.attr("hidden").is_some() {
+        return Err(format!("官网频道页 {panel} 面板处于隐藏状态"));
+    }
+
+    let panel_total = grid
+        .attr("data-panel-total")
+        .and_then(|value| value.trim().parse::<u64>().ok())
+        .unwrap_or(0);
+
+    parse_drama_grid(
+        &section,
+        &grid,
+        page,
+        requested_size,
+        panel_total,
+        DEFAULT_SSR_PAGE_SIZE,
+        format!("官网频道页 {panel} 面板没有可用条目"),
+    )
+}
+
+pub(crate) fn parse_list_page_html(
+    html: &str,
+    page: u32,
+    requested_size: u32,
+) -> Result<Value, String> {
+    let document = Document::from(html);
+    let section = document.select("section.hg-list-page");
+    if section.is_empty() {
+        return Err("官网列表页缺少主体区域".into());
+    }
+
+    let grid = section.select(".hg-card-grid").first();
+    if grid.is_empty() {
+        return Err("官网列表页缺少卡片网格".into());
+    }
+
+    let total_hint = parse_total_count(&normalized_text(section.select(".hg-page-header__extra")));
+    parse_drama_grid(
+        &section,
+        &grid,
+        page,
+        requested_size,
+        total_hint,
+        DEFAULT_LIST_SSR_PAGE_SIZE,
+        "官网列表页没有可用条目".into(),
+    )
 }
 
 async fn fetch_html(path: &str) -> Result<String, String> {
@@ -389,6 +455,20 @@ fn original_route(cate: &str, page: u32) -> Option<(String, &'static str)> {
     Some((path, panel))
 }
 
+fn list_route(cate: &str, page: u32) -> Option<String> {
+    let prefix = match cate.trim() {
+        "newest" => "/newest/",
+        "recommend" => "/recommend/",
+        _ => return None,
+    };
+    let page = page.max(1);
+    Some(if page == 1 {
+        prefix.to_string()
+    } else {
+        format!("{prefix}{page}/")
+    })
+}
+
 pub async fn fetch_category(
     cate: &str,
     page: u32,
@@ -396,6 +476,10 @@ pub async fn fetch_category(
     sort: Option<&str>,
 ) -> Result<Value, String> {
     let page = page.max(1);
+    if let Some(path) = list_route(cate, page) {
+        let html = fetch_html(&path).await?;
+        return parse_list_page_html(&html, page, size);
+    }
     let (path, panel) = category_route(cate, page, sort)
         .ok_or_else(|| format!("不支持的官网频道映射：{cate}"))?;
     let html = fetch_html(&path).await?;

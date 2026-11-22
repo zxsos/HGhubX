@@ -11,7 +11,7 @@ import { AUTO_LOAD_EMPTY_PAGE_LIMIT, useAutoLoadMore } from "../../shared/lib/us
 import { CollectionLink, CollectionLinks } from "../../shared/ui/CollectionLink";
 import { InplaceSearch } from "../search/InplaceSearch";
 import { Empty } from "../../shared/ui/ui";
-import { IAward, IBack, IChevR, IFilm, IFlame, ILayers, ISearch, ISpark, ITag, ITrophy } from "../../shared/ui/icons";
+import { IAward, IBack, IChevR, IClock, IFilm, IFlame, ILayers, ISearch, ISpark, IStar, ITag } from "../../shared/ui/icons";
 import { tr, N_ } from "../../shared/i18n";
 import { useTabSwipe } from "../../shared/ui/hooks/useTabSwipe";
 
@@ -99,19 +99,18 @@ export default function Category({ wide, active }: { wide: boolean; active: bool
       <div className="ios-page-heading shrink-0">
         <div className="flex items-baseline gap-2.5">
           <h1 className="ios-page-title text-on">{tr("分类")}</h1>
+          {/* 3 个视频频道 + 吃瓜 */}
           <span className="text-[13px] font-medium text-mut">{tr("{0} 个频道", CHANNELS.length + 1)}</span>
         </div>
       </div>
 
       <div className="flex-1 scroll-y pb-24 pt-2">
-        {/* 排行榜入口：只在移动端显示（底部导航没有排行榜，桌面侧栏已有） */}
-        {!wide && (
-          <CollectionLink icon={<ITrophy size={18} />} title={tr("排行榜")}
-            onClick={() => push({ kind: "ranks" })} className="mb-2.5 w-full" />
-        )}
-
-        {/* 专题 + 标签入口 */}
+        {/* 最近上新 + 热门推荐 + 专题 + 标签（双端统一 2×2 快捷入口） */}
         <CollectionLinks className="ios-category-links mb-6">
+          <CollectionLink icon={<IClock size={18} />} title={tr("最近上新")}
+            onClick={() => push({ kind: "channel", cate: "newest", name: tr("最近上新") })} />
+          <CollectionLink icon={<IStar size={18} />} title={tr("热门推荐")}
+            onClick={() => push({ kind: "channel", cate: "recommend", name: tr("热门推荐") })} />
           <CollectionLink icon={<ILayers size={18} />} title={tr("专题")}
             onClick={() => push({ kind: "topics" })} />
           <CollectionLink icon={<ITag size={18} />} title={tr("标签")}
@@ -216,7 +215,9 @@ export function ChannelPage({ cate, name, onBack, wide }: { cate: string; name: 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [emptyStreak, setEmptyStreak] = useState(0);
-  const filterKey = (sort: string, original: string) => `${cate}:${cate === "original" ? original : sort}`;
+  const isSingleList = cate === "newest" || cate === "recommend";
+  const filterKey = (sort: string, original: string) =>
+    `${cate}:${isSingleList ? "default" : cate === "original" ? original : sort}`;
   const [displayedFilter, setDisplayedFilter] = useState(() => filterKey("latest", "all"));
   const [err, setErr] = useState<string | null>(null);
   const busy = useRef(false);
@@ -235,7 +236,7 @@ export function ChannelPage({ cate, name, onBack, wide }: { cate: string; name: 
       const next = reset ? 1 : page + 1;
       const res = cate === "original"
         ? await api.originalVideos(originalCateOverride, next, 20, originalSort(originalCateOverride))
-        : await api.category(cate, next, 20, sortOverride);
+        : await api.category(cate, next, 20, isSingleList ? undefined : sortOverride);
       if (seq !== requestSeq.current) return;
       const incoming = res?.items || [];
       setPageItems((prev) => {
@@ -284,9 +285,10 @@ export function ChannelPage({ cate, name, onBack, wide }: { cate: string; name: 
     : CHANNEL_SORTS.findIndex(s => s.value === serverSort);
   const channelTabSwipe = useTabSwipe<HTMLDivElement>({
     rootRef: scrollContainer,
-    tabIndex: channelTabIndex,
-    tabCount: cate === "original" ? ORIGINAL_CATES.length : CHANNEL_SORTS.length,
+    tabIndex: isSingleList ? 0 : channelTabIndex,
+    tabCount: isSingleList ? 1 : cate === "original" ? ORIGINAL_CATES.length : CHANNEL_SORTS.length,
     onTabChange: index => {
+      if (isSingleList) return;
       if (cate === "original") {
         const next = ORIGINAL_CATES[index];
         if (next) changeOriginalCate(next.value);
@@ -317,7 +319,11 @@ export function ChannelPage({ cate, name, onBack, wide }: { cate: string; name: 
     rootMargin: "300px",
   });
 
-  const ChannelGlyph = CHANNELS.find(c => c.cate === cate)?.Icon ?? IFilm;
+  const ChannelGlyph = cate === "newest"
+    ? IClock
+    : cate === "recommend"
+      ? IStar
+      : CHANNELS.find(c => c.cate === cate)?.Icon ?? IFilm;
   return (
     <div className="ios-page absolute inset-0 bg-bg flex flex-col">
       <div className="ios-subpage-header shrink-0" style={{ paddingTop: "var(--sat, 0px)" }}>
@@ -326,7 +332,7 @@ export function ChannelPage({ cate, name, onBack, wide }: { cate: string; name: 
           <span className="w-9 h-9 rounded-[12px] bg-pc text-on-pc flex items-center justify-center shrink-0"><ChannelGlyph size={18} strokeWidth={1.9} /></span>
           <div className="flex-1 min-w-0">
             <h1 className="text-[17px] font-bold text-on leading-tight truncate">{name}</h1>
-            <div role="status" className="text-[12px] text-mut leading-tight mt-0.5">{replacing ? (loading ? tr("正在更新筛选结果…") : tr("筛选更新失败")) : tr("已加载 {0} 部 · {1}/{2} 页", items.length, page, Math.max(pages, 1))}</div>
+            <div role="status" className="text-[12px] text-mut leading-tight mt-0.5">{replacing ? (isSingleList ? (loading ? tr("加载中…") : tr("加载失败")) : (loading ? tr("正在更新筛选结果…") : tr("筛选更新失败"))) : tr("已加载 {0} 部 · {1}/{2} 页", items.length, page, Math.max(pages, 1))}</div>
           </div>
           <Button onClick={() => setSearching(true)} aria-label={cate === "original" ? tr("搜索原创") : tr("搜索短剧")} className="ios-nav-btn"><ISearch size={18} /></Button>
         </div>
@@ -338,7 +344,7 @@ export function ChannelPage({ cate, name, onBack, wide }: { cate: string; name: 
             ))}
           </div>
         )}
-        {cate !== "original" && (
+        {!isSingleList && cate !== "original" && (
           <div className="ios-subpage-inner pb-3 flex flex-wrap gap-2">
             {CHANNEL_SORTS.map((s) => (
               <Button aria-pressed={serverSort === s.value} key={s.value} onClick={() => changeServerSort(s.value)}
@@ -359,7 +365,7 @@ export function ChannelPage({ cate, name, onBack, wide }: { cate: string; name: 
           <Empty icon={<ChannelGlyph size={26} />} title={tr("加载失败")} sub={err} action={tr("重试")} onAction={() => void loadMore(true)} />
         ) : loading ? (
           <div className="flex justify-center py-10"><Loader className="w-8 h-8 spinner" /></div>
-        ) : <Empty icon={<ChannelGlyph size={26} />} title={tr("该筛选下暂无内容")} sub={tr("换个筛选试试")} />}
+        ) : <Empty icon={<ChannelGlyph size={26} />} title={isSingleList ? tr("暂无内容") : tr("该筛选下暂无内容")} sub={isSingleList ? undefined : tr("换个筛选试试")} />}
         <div ref={sentinel} className="h-10" aria-hidden="true" />
         {loading && items.length > 0 && <div className="flex justify-center py-3"><Loader className="w-6 h-6 spinner" /></div>}
         {!loading && !err && !replacing && page < pages && autoLoadPaused && (

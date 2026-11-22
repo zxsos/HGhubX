@@ -788,6 +788,8 @@ const en: Record<string, string> = {
   "微光效果": "Ambient glow",
   "平衡音量": "Balance volume",
   "自动压低突然变大的音效，让台词更稳；音乐和现场内容可能被轻微压缩": "Lowers sudden loud effects to keep dialogue steady; music and live audio may be slightly compressed",
+  "最近上新": "New Releases",
+  "热门推荐": "Recommended",
 };
 
 export default en;
