@@ -21,10 +21,6 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: test-preview-build
-  cancel-in-progress: true
-
 env:
   CI: "true"
 
@@ -105,6 +101,9 @@ jobs:
     if: >-
       needs.prepare.outputs.should_build == 'true' &&
       (github.event_name != 'workflow_dispatch' || inputs.platforms == 'all' || inputs.platforms == 'windows')
+    concurrency:
+      group: test-preview-windows
+      cancel-in-progress: true
     runs-on: windows-latest
     timeout-minutes: 60
     env:
@@ -156,6 +155,9 @@ jobs:
     if: >-
       needs.prepare.outputs.should_build == 'true' &&
       (github.event_name != 'workflow_dispatch' || inputs.platforms == 'all' || inputs.platforms == 'android')
+    concurrency:
+      group: test-preview-android
+      cancel-in-progress: true
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
@@ -211,6 +213,9 @@ jobs:
     if: >-
       needs.prepare.outputs.should_build == 'true' &&
       (github.event_name != 'workflow_dispatch' || inputs.platforms == 'all' || inputs.platforms == 'android-tv')
+    concurrency:
+      group: test-preview-android-tv
+      cancel-in-progress: true
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
@@ -269,6 +274,9 @@ jobs:
     if: >-
       needs.prepare.outputs.should_build == 'true' &&
       (github.event_name != 'workflow_dispatch' || inputs.platforms == 'all' || inputs.platforms == 'macos')
+    concurrency:
+      group: test-preview-macos
+      cancel-in-progress: true
     runs-on: macos-latest
     timeout-minutes: 60
     env:
@@ -317,6 +325,9 @@ jobs:
     if: >-
       needs.prepare.outputs.should_build == 'true' &&
       (github.event_name != 'workflow_dispatch' || inputs.platforms == 'all' || inputs.platforms == 'ios')
+    concurrency:
+      group: test-preview-ios
+      cancel-in-progress: true
     runs-on: macos-latest
     timeout-minutes: 60
     env:
@@ -362,6 +373,9 @@ jobs:
     if: >-
       needs.prepare.outputs.should_build == 'true' &&
       (github.event_name != 'workflow_dispatch' || inputs.platforms == 'all' || inputs.platforms == 'linux')
+    concurrency:
+      group: test-preview-linux
+      cancel-in-progress: true
     runs-on: ubuntu-22.04
     timeout-minutes: 60
     env:
@@ -427,6 +441,9 @@ jobs:
         (github.event_name == 'workflow_dispatch' && inputs.platforms == 'ios' && needs.ios.result == 'success') ||
         (github.event_name == 'workflow_dispatch' && inputs.platforms == 'linux' && needs.linux.result == 'success')
       )
+    concurrency:
+      group: test-preview-publish
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 25
     permissions:

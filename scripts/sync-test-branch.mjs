@@ -112,6 +112,18 @@ async function revokeAuthorTestLabels(author) {
   }
 }
 
+async function hasActivePreviewBuild() {
+  if (dryRun || !token) return false;
+  const res = await ghApi("GET", `/repos/${owner}/${repo}/actions/workflows/test-preview.yml/runs?per_page=10`);
+  if (!res.ok || !Array.isArray(res.data?.workflow_runs)) return false;
+  const selfRunId = String(process.env.GITHUB_RUN_ID || "");
+  return res.data.workflow_runs.some(
+    (run) =>
+      String(run.id) !== selfRunId &&
+      ["in_progress", "queued", "waiting", "pending", "requested"].includes(run.status),
+  );
+}
+
 let autoLabeledPrNumber = null;
 let revokedAuthor = null;
 
@@ -196,8 +208,15 @@ async function main() {
 
   git(["fetch", "origin", "main"]);
   const hasRemoteTest = git(["fetch", "origin", "refs/heads/test:refs/remotes/origin/test"], { allowFail: true }).ok;
+  const oldSha = hasRemoteTest
+    ? git(["rev-parse", "refs/remotes/origin/test"], { allowFail: true }).stdout
+    : "";
   const oldTree = hasRemoteTest
     ? git(["rev-parse", "refs/remotes/origin/test^{tree}"], { allowFail: true }).stdout
+    : "";
+  const hasTestPreTag = git(["fetch", "origin", "refs/tags/test-pre:refs/remotes/origin/tags/test-pre"], { allowFail: true }).ok;
+  const publishedTree = hasTestPreTag
+    ? git(["rev-parse", "refs/remotes/origin/tags/test-pre^{tree}"], { allowFail: true }).stdout
     : "";
 
   const openRes = await ghApi("GET", `/repos/${owner}/${repo}/pulls?state=open&base=main&per_page=100`);
@@ -263,6 +282,7 @@ async function main() {
   const testSha = git(["rev-parse", "HEAD"]).stdout;
   const newTree = git(["rev-parse", "HEAD^{tree}"]).stdout;
   let shouldBuild = false;
+  let effectiveSha = testSha;
 
   if (merged.length === 0) {
     if (oldTree && oldTree !== newTree && !dryRun) {
@@ -271,10 +291,24 @@ async function main() {
     }
     shouldBuild = eventName === "workflow_dispatch";
   } else if (newTree === oldTree && eventName !== "workflow_dispatch") {
-    console.log("[test-preview] test 分支合并结果与远端一致，无需重复构建");
-    shouldBuild = false;
+    effectiveSha = oldSha || testSha;
+    if (publishedTree === newTree) {
+      console.log("[test-preview] test 分支与 test-pre 产物树一致，无需重复构建");
+      shouldBuild = false;
+    } else if (await hasActivePreviewBuild()) {
+      console.log("[test-preview] 当前已有 Test Preview 构建进行中，保持原构建不中断");
+      shouldBuild = false;
+    } else {
+      console.log("[test-preview] test 分支尚未发布到 test-pre 且无运行中构建，触发补建");
+      if (!oldSha && !dryRun) {
+        git(["push", "--force", "origin", "HEAD:refs/heads/test"]);
+      }
+      shouldBuild = true;
+    }
   } else {
-    if (!dryRun) {
+    if (newTree === oldTree && oldSha) {
+      effectiveSha = oldSha;
+    } else if (!dryRun) {
       git(["push", "--force", "origin", "HEAD:refs/heads/test"]);
     }
     shouldBuild = true;
@@ -284,7 +318,7 @@ async function main() {
   const lines = [
     `# HGhubX Test Preview`,
     ``,
-    `基于 \`main\`（\`${mainSha.slice(0, 7)}\`）自动合成的全平台预览构建（更新时间：\`${nowUtc}\`，测试提交：\`${testSha.slice(0, 7)}\`）。`,
+    `基于 \`main\`（\`${mainSha.slice(0, 7)}\`）自动合成的全平台预览构建（更新时间：\`${nowUtc}\`，测试提交：\`${effectiveSha.slice(0, 7)}\`）。`,
     `> 此预发布仅供功能尝鲜与真机回归验证，不抢占正式版 Latest，也不会触发正式版客户端自动更新提示。`,
     ``,
     `## 本次已合入的测试 PR（${merged.length}）`,
@@ -299,8 +333,8 @@ async function main() {
   appendSummary(notes);
 
   setOutput("should_build", shouldBuild ? "true" : "false");
-  setOutput("commit_sha", testSha);
-  setOutput("short_sha", testSha.slice(0, 7));
+  setOutput("commit_sha", effectiveSha);
+  setOutput("short_sha", effectiveSha.slice(0, 7));
   setOutput("merged_count", String(merged.length));
 }
 
