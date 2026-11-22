@@ -137,8 +137,8 @@ export const api = {
   topics: () => call<{ items: TopicCard[] }>("api_topics"),
   topic: (slug: string, page = 1, size = 20) => call<TopicDetail>("api_topic", { slug, page, size }),
   tags: () => call<{ categories: TagGroup[] }>("api_tags"),
-  tagVideos: (tag: string, page = 1, size = 20) =>
-    call<Paged<VideoCard>>("api_tag_videos", { tag, page, size }),
+  tagVideos: (tag: string, page = 1, size = 20, sort: "latest" | "hot" = "latest") =>
+    call<Paged<VideoCard>>("api_tag_videos", { tag, page, size, sort }),
   postTag: (tag: string, page = 1, size = 20) =>
     call<Paged<Post>>("api_post_tag", { tag, page, size }),
   category: (cate: string, page = 1, size = 20, sort?: string) =>

@@ -62,17 +62,22 @@ pub async fn api_tags(state: State<'_, Api>) -> Result<Value, String> {
     state.get("/api/tags").await
 }
 
-/// 按标签取短剧：后端按中文标签名匹配；社区标签需使用 api_post_tag。
+/// 按标签取短剧：后端按中文标签名匹配；默认按官网标签页 `latest` 排序，社区标签需使用 api_post_tag。
 #[tauri::command]
 pub async fn api_tag_videos(
     state: State<'_, Api>,
     tag: String,
     page: u32,
     size: u32,
+    sort: Option<String>,
 ) -> Result<Value, String> {
     let encoded: String = url::form_urlencoded::byte_serialize(tag.as_bytes()).collect();
+    let sort = match sort.as_deref() {
+        Some("hot") => "hot",
+        _ => "latest",
+    };
     state
-        .get(&format!("/api/videos/tag/{encoded}?page={page}&size={size}"))
+        .get(&format!("/api/videos/tag/{encoded}?page={page}&size={size}&sort={sort}"))
         .await
 }
 
