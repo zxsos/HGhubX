@@ -152,17 +152,15 @@ export default function Search({ active, wide }: { active: boolean; wide: boolea
     : hotVideos.map(v => ({ ...v, tags: undefined as readonly string[] | undefined }));
 
   const renderHotList = (list: typeof verifiedHotVideos) => list.length > 0 ? (
-    <ol className="ios-search-hot-grid mt-3" aria-busy={hotLoading || hotTagPending}>
+    <ol className="ios-search-hot-grid mt-2.5" aria-busy={hotLoading || hotTagPending}>
       {list.map((video, i) => (
         <li key={video.video_id} className="min-w-0">
           <Button aria-label={tr("播放 {0}", video.title)} title={video.title} className="ios-search-hot-item"
             onClick={() => push({ kind: "feed", videoIds: list.map(item => item.video_id), index: i, title: tr("热搜榜") })}>
             <span aria-hidden="true" className={`ios-search-hot-rank ${i < 3 ? "text-primary" : "text-mut"}`}>{String(i + 1).padStart(2, "0")}</span>
-            <span className="ios-search-hot-content">
-              <span className="ios-search-hot-title">{video.title}</span>
-              {video.plays && <span className="ios-search-hot-plays"><IPlayF size={10} />{video.plays}</span>}
-            </span>
-            <IChevR size={15} className="text-mut" />
+            <span className="ios-search-hot-title">{video.title}</span>
+            {video.plays && <span className="ios-search-hot-plays"><IPlayF size={9} />{video.plays}</span>}
+            <IChevR size={14} className="ios-search-hot-arrow text-mut" />
           </Button>
         </li>
       ))}

@@ -564,14 +564,15 @@ html.theme-light {
   .ios-settings-panel:not([hidden]),.ios-settings-frame[data-open=true]::after { animation:none; }
   .ios-settings-chevron { transition:none; }
 }
-.ios-search-hot-grid { display:grid; grid-template-columns:minmax(0,1fr); gap:8px; }
-.ios-search-hot-item.ios-button { display:flex; align-items:center; gap:12px; width:100%; min-height:60px; padding:10px 12px; text-align:left; background:var(--p-s3); }
-.ios-search-hot-rank { flex-shrink:0; min-width:24px; font-size:15px; font-weight:750; font-variant-numeric:tabular-nums; }
-.ios-search-hot-content { display:flex; flex:1; flex-direction:column; gap:4px; min-width:0; }
-.ios-search-hot-title { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; overflow-wrap:anywhere; font-size:14px; font-weight:600; line-height:1.4; color:var(--p-on); }
-.ios-search-hot-plays { display:flex; align-items:center; gap:4px; font-size:12px; line-height:1.4; color:var(--p-mut); }
+.ios-search-hot-grid { display:grid; grid-template-columns:minmax(0,1fr); gap:2px; }
+.ios-search-hot-item.ios-button { display:flex; align-items:center; gap:8px; width:100%; min-height:36px; padding:6px 6px; border-radius:10px; text-align:left; background:transparent; }
+.ios-search-hot-rank { flex-shrink:0; min-width:22px; font-size:14px; font-weight:700; line-height:1.4; font-variant-numeric:tabular-nums; }
+.ios-search-hot-title { flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:14px; font-weight:600; line-height:1.4; color:var(--p-on); }
+.ios-search-hot-plays { display:inline-flex; align-items:center; gap:3px; flex-shrink:0; margin-left:auto; white-space:nowrap; font-size:12px; line-height:1.4; font-variant-numeric:tabular-nums; color:var(--p-mut); }
+.ios-search-hot-arrow { flex-shrink:0; margin-left:-2px; }
 @container (min-width:560px) {
-  .ios-search-hot-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .ios-search-hot-grid { grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px 14px; }
+  .ios-search-hot-item.ios-button { min-height:42px; padding:8px 12px; background:var(--p-s3); }
   .ios-collection-links { gap:12px; }
 }
 .ios-topic-card.ios-button { display:flex; flex-direction:column; align-items:stretch; border-radius:18px; border:1px solid var(--ios-edge); background:var(--p-s1); box-shadow:var(--surface-shadow); overflow:hidden; }
