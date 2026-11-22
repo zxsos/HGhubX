@@ -13,6 +13,7 @@ import { useSearchResults } from "./useSearchResults";
 import { SearchTags } from "./SearchTags";
 import { SearchHistory } from "./SearchHistory";
 import { useRankSwipe } from "./useRankSwipe";
+import { useTabSwipe } from "../../shared/ui/hooks/useTabSwipe";
 import { IBack, IChevR, IClose, IFireF, IPlayF, IRefresh, ISearch, ITrophy } from "../../shared/ui/icons";
 import { tr, N_ } from "../../shared/i18n";
 
@@ -104,6 +105,12 @@ export default function Search({ active, wide }: { active: boolean; wide: boolea
   };
 
   const querying = submitted.length > 0;
+  const tabSwipe = useTabSwipe<HTMLDivElement>({
+    rootRef: scrollRef,
+    tabIndex: querying && tab === "post" ? 1 : 0,
+    tabCount: querying ? 2 : 1,
+    onTabChange: index => changeTab(index === 0 ? "video" : "post"),
+  });
   const currentHotTags = hotTagState.epoch === lineEpoch ? hotTagState.tags : {};
   const currentHotFailed = hotTagState.epoch === lineEpoch ? hotTagState.failed : [];
   const hotFailedSet = new Set(currentHotFailed);
@@ -206,7 +213,7 @@ export default function Search({ active, wide }: { active: boolean; wide: boolea
         </Button>
       </div>
 
-      <div ref={scrollRef} className="flex-1 scroll-y pb-24">
+      <div ref={scrollRef} {...tabSwipe} style={{ touchAction: "pan-y" }} className="flex-1 scroll-y pb-24">
         {!querying ? (
           <>
             <Surface role="region" aria-label={tr("热搜榜")} className="mt-1 rounded-(--r-md) bg-s2 p-3.5 a-rise">
