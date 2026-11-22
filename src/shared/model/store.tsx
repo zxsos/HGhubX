@@ -242,6 +242,10 @@ function updateToasts(updater: (prev: Toast[]) => Toast[]) {
 function scheduleToastRemoval(id: number, durationMs: number) {
   const prev = toastTimers.get(id);
   if (prev !== undefined) window.clearTimeout(prev);
+  if (durationMs <= 0) {
+    toastTimers.delete(id);
+    return;
+  }
   toastTimers.set(id, window.setTimeout(() => {
     toastTimers.delete(id);
     updateToasts((list) => list.filter((x) => x.id !== id));
@@ -265,6 +269,56 @@ const subscribeToasts = (fn: () => void) => {
 };
 const getToasts = () => toastList;
 export const useToasts = () => useSyncExternalStore(subscribeToasts, getToasts);
+
+/** Show a toast that stays until explicitly dismissed or replaced by another same-tag toast. */
+export function showStickyToast(msg: string, icon?: Toast["icon"], tag?: string) {
+  pushToastItem({ msg, icon, tag }, 0);
+}
+
+/** Remove toasts with the given tag and optional exact message, and cancel their expiry timers. */
+export function dismissToast(tag: string, msg?: string) {
+  const matches = (item: Toast) => item.tag === tag && (msg === undefined || item.msg === msg);
+  const removed = toastList.filter(matches);
+  if (!removed.length) return;
+  for (const item of removed) {
+    const timer = toastTimers.get(item.id);
+    if (timer !== undefined) {
+      window.clearTimeout(timer);
+      toastTimers.delete(item.id);
+    }
+  }
+  updateToasts((list) => list.filter((item) => !matches(item)));
+}
+
+/**
+ * Keep a tagged sticky toast in sync with a transient visible condition.
+ * The toast stays mounted while visible, updates in place when the message
+ * changes, and is removed when the condition or its owner goes away.
+ */
+export function useStickyToast(visible: boolean, msg: string, tag: string, icon?: Toast["icon"]) {
+  const active = useRef(false);
+  const text = useRef<string | null>(null);
+  useEffect(() => {
+    if (!visible) {
+      if (!active.current) return;
+      active.current = false;
+      const previous = text.current;
+      text.current = null;
+      dismissToast(tag, previous ?? undefined);
+      return;
+    }
+    active.current = true;
+    text.current = msg;
+    showStickyToast(msg, icon, tag);
+  }, [icon, msg, tag, visible]);
+  useEffect(() => () => {
+    if (!active.current) return;
+    active.current = false;
+    const previous = text.current;
+    text.current = null;
+    dismissToast(tag, previous ?? undefined);
+  }, [tag]);
+}
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [p, setP] = useState<Persist>(loadPersist);

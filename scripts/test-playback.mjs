@@ -336,7 +336,7 @@ async function gestureChecks(page) {
 // Switching episodes within the same landscape series in fullscreen must keep
 // .fs-landscape active and keep episode/boundary hints anchored at the landscape
 // bottom on every frame — including while distinct episode URLs are loading.
-async function episodeToastChecks(page) {
+async function episodeToastChecks(page, dir) {
   await page.addInitScript(() => {
     const g2 = Promise.withResolvers();
     const g3 = Promise.withResolvers();
@@ -380,6 +380,32 @@ async function episodeToastChecks(page) {
   await page.getByRole("button", { name: "全屏", exact: true }).click();
   await page.waitForFunction(() => document.querySelector(".player-root")?.classList.contains("fs-landscape"));
   assert.equal(await page.locator(".mobile-video-episode").count(), 0, "Fullscreen must not render the portrait episode badge");
+
+  // Double-tap pause must expose the current episode in the same playback-hint
+  // toast slot used by episode swipes, and keep it mounted while the center
+  // play/pause affordance is visible. Resuming must remove it immediately.
+  const tapCenter = () => page.evaluate(() => {
+    const surface = document.querySelector("[data-mobile-hold-target]");
+    const box = surface.getBoundingClientRect();
+    const at = { bubbles: true, pointerId: 130, pointerType: "touch", isPrimary: true, button: 0, buttons: 1, clientX: box.x + box.width / 2, clientY: box.y + box.height / 2 };
+    surface.dispatchEvent(new PointerEvent("pointerdown", at));
+    surface.dispatchEvent(new PointerEvent("pointerup", { ...at, buttons: 0 }));
+  });
+  await tapCenter();
+  await tapCenter();
+  await page.waitForFunction(() => document.querySelector("video")?.paused);
+  const pauseHint = page.locator(".a-toast").filter({ hasText: /第 1 ?集 \/ 3/ });
+  await pauseHint.waitFor({ timeout: 3000 });
+  assert.equal(await page.locator(".a-toast").count(), 1, "Pause hint must occupy the single playback-hint slot");
+  await assertRotatedBottom(pauseHint);
+  await page.waitForTimeout(2400);
+  assert.equal(await page.locator(".a-toast").count(), 1, "Pause hint must outlive the normal toast TTL while paused");
+  const pauseHintText = (await pauseHint.innerText()).trim();
+  await page.screenshot({ path: join(dir, "pause-episode-hint.png") });
+  await page.getByRole("button", { name: "播放", exact: true }).first().click();
+  await page.waitForFunction(() => !document.querySelector("video")?.paused);
+  await page.waitForFunction(() => document.querySelectorAll(".a-toast").length === 0);
+  assert.equal(await pauseHint.count(), 0, "Resuming playback must dismiss the pause hint with the center affordance");
 
   // Continuously observe DOM mutations + animation frames while in landscape fullscreen:
   // neither the rotated stage nor any visible toast may ever drop to portrait coordinates.
@@ -463,7 +489,7 @@ async function episodeToastChecks(page) {
   assert(portraitAfterExit, "Active toast must still be visible right after exiting fullscreen");
   assert.equal(portraitAfterExit.inPlayerRoot, false, "Exiting fullscreen must move active ToastHost out of .player-root");
   assert(portraitAfterExit.w > portraitAfterExit.h && portraitAfterExit.y > portraitAfterExit.vh / 2, "Toast after exiting fullscreen must sit horizontally at portrait bottom");
-  return { stageDropped: audit.stageDropped, portraitFlashes: audit.portraitToasts.length, boundaryReplaces: true, rotatedBottom: true, noPortraitEpisodeBadge: true, host: "rotated-stage", text: (await lastToast.innerText().catch(() => "当前已是最后一集")).trim(), box: lastBox, portraitAfterExit };
+  return { stageDropped: audit.stageDropped, portraitFlashes: audit.portraitToasts.length, boundaryReplaces: true, rotatedBottom: true, noPortraitEpisodeBadge: true, host: "rotated-stage", pauseHint: { text: pauseHintText, sticky: true, dismissOnResume: true, rotatedBottom: true }, text: (await lastToast.innerText().catch(() => "当前已是最后一集")).trim(), box: lastBox, portraitAfterExit };
 }
 
 // Ambient glow is a sampled color wash behind the video. It must follow the
@@ -1131,7 +1157,7 @@ try {
     const result = { name, status: "running", started: new Date().toISOString() }; report.cases.push(result);
     let deadline;
     try {
-      const action = name === "recovery" ? explicitRecoveryCheck(page) : name === "proxy" ? proxyRecoveryCheck(page) : name === "gesture" ? gestureChecks(page) : name === "portrait-fit" ? portraitFitChecks(page, dir) : name === "episode-toast" ? episodeToastChecks(page) : name === "ambient" ? ambientGlowChecks(page) : name === "balance-volume" ? balanceVolumeChecks(page) : name === "seek" || name === "legacy" ? seekChecks(page, name === "legacy") : lifecycleCheck(page);
+      const action = name === "recovery" ? explicitRecoveryCheck(page) : name === "proxy" ? proxyRecoveryCheck(page) : name === "gesture" ? gestureChecks(page) : name === "portrait-fit" ? portraitFitChecks(page, dir) : name === "episode-toast" ? episodeToastChecks(page, dir) : name === "ambient" ? ambientGlowChecks(page) : name === "balance-volume" ? balanceVolumeChecks(page) : name === "seek" || name === "legacy" ? seekChecks(page, name === "legacy") : lifecycleCheck(page);
       result.metrics = await Promise.race([action, new Promise((_, reject) => { deadline = setTimeout(() => reject(new Error("Scenario exceeded 45 seconds")), 45000); })]);
       assert.deepEqual(pageErrors, [], "Browser script errors");
       assert.deepEqual(externalRequests, [], "Unexpected external network requests");
