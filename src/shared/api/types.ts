@@ -49,6 +49,9 @@ export type Detail = {
   video_type?: number;
   duration?: number;
   created_at?: string;
+  updated_at?: string;
+  last_ep_at?: number;
+  tracking_episodes?: Record<string, { video_id?: string | number }>;
 };
 
 export type PlayInfo = {

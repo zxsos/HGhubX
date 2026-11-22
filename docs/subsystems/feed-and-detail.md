@@ -112,12 +112,10 @@ Feed 负责列表播放页的条目位置、详情/帖子读取、标签门、�
 - 标签短剧列表（`api_tag_videos`）默认向 `/api/videos/tag/{tag}` 显式传 `sort=latest`（仅显式请求 `"hot"` 时用 `sort=hot`），使标准版标签页与 TV 端标签筛选同官网 `/tag/{slug}/` 默认 `latest` 排序保持一致。
 - 吃瓜频道最新列表（`api_post_category("remen-chigua", page, size, "latest" | "new")`）优先抓取并解析官网服务端渲染吃瓜页 `/blog/gossip/` 与 `/blog/gossip/{page}/`（[`src-tauri/src/channel_page.rs`](../../src-tauri/src/channel_page.rs) 的 `parse_gossip_posts_html` / `fetch_gossip_posts`），与官网 `created_at` 倒序及实时阅读数保持一致，并发请求邻近窗口 `/api/posts/category/remen-chigua` 补全 `tags`、`created_at` 与 `publish_time` 供 `FilteredContent` 标签过滤使用；`Category` 首屏预览（`page=1 && size < 12`）按 `size` 截断，`PostsPage` 分页保留官网整页 12 条防止跨页跳项；抓取或解析失败时自动回退既有 JSON 接口。
 - 分页列表（频道页、吃瓜列表、专题/标签详情、关注/创作者作品与全局/栏目搜索）统一使用 [`src/shared/lib/useAutoLoadMore.ts`](../../src/shared/lib/useAutoLoadMore.ts)（`IntersectionObserver` + 滚动位置检查）在接近底部哨兵时自动加载下一页，正常态不再展示手动「加载更多」按钮；开启标签屏蔽时同样保持上滑自动加载，仅当连续 2 页过滤后均无可见条目（`AUTO_LOAD_EMPTY_PAGE_LIMIT = 2`）才暂停自动续载并显示手动「加载更多」兜底按钮，点击手动加载或调整筛选会重置计数。
-- 视频卡片（[`src/shared/ui/cards.tsx`](../../src/shared/ui/cards.tsx) 的 `WaterfallCard` 与 `RowCard`）在海报左上角按「原创」「热播」「新片」（`new_at` 72 小时窗口）顺序显示角标，与右上角评分保持间距不遮挡；集数状态移至海报底部遮罩左侧（与播放量同排），保留「我的」页 `MediaCard` 的「新更 N 集」单角标展示。
+- 视频卡片（[`src/shared/ui/cards.tsx`](../../src/shared/ui/cards.tsx) 的 `WaterfallCard` 与 `RowCard`）在海报左上角按「原创」「热播」「新片」（`new_at` 72 小时窗口）「完结」（`is_finished`）顺序显示角标，与右上角评分保持间距不遮挡；集数状态位于海报底部遮罩左侧（与播放量同排）；「我的」页 `MediaCard` 对已完结剧使用绿色 `is-finished` 封面标签（若同时有未看新集，则左上角并行显示「新更 N 集」与「完结」角标）。
 - 标准版「我的」收藏与观看历史保持原有网格列数；滚动容器接近底部哨兵（提前 300px）时
   每次扩展 12 项，不再显示「加载更多」按钮。
-- 标准版「我的 → 收藏 → 短剧」重新激活时，按已展现的列表范围后台刷新详情，每批最多 6 部。
-  展开更多时读取新增条目；同一激活期间已刷新的条目不重复请求。旧卡片与观看断点保留，
-  刷新失败不将旧集数当空数据，离开页面或切线后丢弃在途结果。
+- 标准版「我的 → 收藏 → 短剧」提供「最近添加」「最近更新」「完结进度」（点击可切换「已完结优先 ↕」/「更新中优先 ↕」）排序；默认「最近添加」维持按已展现列表范围后台刷新详情（每批最多 6 部），切换至「最近更新」或「完结进度」时按每批最多 6 部渐进补齐未缓存收藏详情并实时重排，播放列表随之按当前排序顺序传给 Feed；同一激活期间已刷新的条目不重复请求，旧卡片与观看断点保留，刷新失败不将旧集数当空数据，离开页面或切线后丢弃在途结果。
 - 吃瓜详情（[`src/features/posts/Posts.tsx`](../../src/features/posts/Posts.tsx) 的
   `PostDetail`）区分「换帖子/账号」与「仅线路代次变化」：`hg:line-changed`/`hg:proxy-changed`
   （自动选线切换、保存代理）推进 `lineEpoch` 时，只有 `id`/`accountScope` 变化才清空重置；

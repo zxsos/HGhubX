@@ -790,6 +790,14 @@ const en: Record<string, string> = {
   "自动压低突然变大的音效，让台词更稳；音乐和现场内容可能被轻微压缩": "Lowers sudden loud effects to keep dialogue steady; music and live audio may be slightly compressed",
   "最近上新": "New Releases",
   "热门推荐": "Recommended",
+  "收藏排序": "Sort Favorites",
+  "最近添加": "Recently Added",
+  "完结进度": "Completion Status",
+  "已完结优先 ↕": "Completed First ↕",
+  "更新中优先 ↕": "Ongoing First ↕",
+  "完结进度：已完结优先，再次点击切换为更新中优先": "Completion status: completed first, tap again for ongoing first",
+  "完结进度：更新中优先，再次点击切换为已完结优先": "Completion status: ongoing first, tap again for completed first",
+  "正在加载全部收藏以完成排序…": "Loading all favorites to sort…",
 };
 
 export default en;

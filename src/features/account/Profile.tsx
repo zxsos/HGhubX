@@ -1,9 +1,12 @@
 import { Button, SegmentedControl, Surface } from "../../shared/ui/ios/controls";
 import { Loader } from "../../shared/ui/ios/effects";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { api, APP_VERSION, fmt, isMobile, platform } from "../../shared/api/api";
 import type { Detail, Post } from "../../shared/api/types";
-import { detailEpisodeCount, formatWatchProgress, resolveResumeTarget, unwatchedNewEpisodes } from "../../shared/model/favoriteProgress";
+import {
+  detailEpisodeCount, formatWatchProgress, resolveResumeTarget, sortFavoriteVideoIds, unwatchedNewEpisodes,
+  type FavoriteSortMode, type FavoriteStatusOrder,
+} from "../../shared/model/favoriteProgress";
 import { useStore } from "../../shared/model/store";
 import { Avatar, Empty, Modal } from "../../shared/ui/ui";
 import { MediaCard } from "../../shared/ui/cards";
@@ -28,6 +31,8 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
   } = useStore();
   const [tab, setTab] = useState<"fav" | "history">("fav");
   const [favKind, setFavKind] = useState<"video" | "post">("video");
+  const [favSort, setFavSort] = useState<FavoriteSortMode>("added");
+  const [statusOrder, setStatusOrder] = useState<FavoriteStatusOrder>("finished");
   const [videoCache, setVideoCache] = useState<Record<number, Detail>>({});
   const videoCacheRef = useRef(videoCache);
   videoCacheRef.current = videoCache;
@@ -82,16 +87,24 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
   }, []);
 
   const showingPosts = tab === "fav" && favKind === "post";
+  const refreshFavorites = tab === "fav" && !showingPosts;
   const selectionMode = selectedIds.length > 0;
   const limitKey = tab === "history" ? "history" : showingPosts ? "favPost" : "favVideo";
-  const ids = tab === "history" ? history.map((h) => h.id) : showingPosts ? postFavs : favs;
+  const sortedFavIds = useMemo(
+    () => (refreshFavorites ? sortFavoriteVideoIds(favs, videoCache, history, favEpCounts, favSort, statusOrder) : favs),
+    [refreshFavorites, favs, videoCache, history, favEpCounts, favSort, statusOrder],
+  );
+  const ids = tab === "history" ? history.map((h) => h.id) : showingPosts ? postFavs : sortedFavIds;
   const visibleIds = ids.slice(0, limits[limitKey]);
   const hasMore = visibleIds.length < ids.length;
   const videoCards = !showingPosts ? visibleIds.map(id => videoCache[id]).filter((card): card is Detail => !!card) : [];
   const postCards = showingPosts ? visibleIds.map(id => postCache[id]).filter((card): card is Post => !!card) : [];
   const cardsCount = showingPosts ? postCards.length : videoCards.length;
   const failed = failedIds.filter(id => visibleIds.includes(id));
-  const idsKey = visibleIds.join(",");
+  const hydrateIds = refreshFavorites && favSort !== "added" ? favs : visibleIds;
+  const hydrateKey = hydrateIds.join(",");
+  const sortingHydrating = refreshFavorites && favSort !== "added" && loading
+    && favs.some(id => !videoCache[id] && !failedIds.includes(id));
   const favoriteStateUnknown = tab === "fav" && !!user && !accountSync.favoritesKnown && favs.length === 0 && postFavs.length === 0;
   const favoriteSyncFailed = favoriteStateUnknown && !accountSync.busy;
   const syncingFavorites = favoriteStateUnknown && !favoriteSyncFailed;
@@ -122,10 +135,10 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
   useEffect(() => {
     if (!active) { refreshedFavorites.current.clear(); return; }
     let alive = true;
-    const refreshFavorites = tab === "fav" && !showingPosts;
+    const targetIds = refreshFavorites && favSort !== "added" ? favs : visibleIds;
     const missing = showingPosts
-      ? visibleIds.filter(id => !postCacheRef.current[id])
-      : visibleIds.filter(id => !videoCacheRef.current[id] || (refreshFavorites && !refreshedFavorites.current.has(id)));
+      ? targetIds.filter(id => !postCacheRef.current[id])
+      : targetIds.filter(id => !videoCacheRef.current[id] || (refreshFavorites && !refreshedFavorites.current.has(id)));
     setFailedIds([]);
     if (!missing.length) { setLoading(false); return; }
     setLoading(true);
@@ -167,12 +180,13 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
       })();
     }
     return () => { alive = false; };
-  }, [active, idsKey, tab, showingPosts, reload]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active, hydrateKey, tab, showingPosts, refreshFavorites, favSort, reload]);
 
   useEffect(() => {
     const sentinel = sentinelRef.current;
     const scroller = scrollRef.current;
-    if (!active || !hasMore || loading || !sentinel || !scroller) return;
+    if (!active || !hasMore || loading || !cardsCount || !sentinel || !scroller) return;
     const observer = new IntersectionObserver(entries => {
       if (!entries[0]?.isIntersecting) return;
       observer.disconnect();
@@ -180,7 +194,7 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
     }, { root: scroller, rootMargin: "300px 0px" });
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [active, hasMore, limitKey, loading, visibleIds.length]);
+  }, [active, cardsCount, hasMore, limitKey, loading, visibleIds.length]);
 
   const confirmLogout = async () => {
     if (logoutPending.current) return;
@@ -332,6 +346,33 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
             )}
           </div>
         )}
+        {tab === "fav" && favKind === "video" && !favoriteStateUnknown && favs.length > 0 && (
+          <div className="mt-2 flex flex-wrap items-center gap-1.5" role="group" aria-label={tr("收藏排序")}>
+            <Button aria-pressed={favSort === "added"} onClick={() => setFavSort("added")}
+              className="ios-filter-pill">{tr("最近添加")}</Button>
+            <Button aria-pressed={favSort === "updated"} onClick={() => setFavSort("updated")}
+              className="ios-filter-pill">{tr("最近更新")}</Button>
+            <Button
+              aria-pressed={favSort === "status"}
+              aria-label={favSort === "status"
+                ? (statusOrder === "finished"
+                  ? tr("完结进度：已完结优先，再次点击切换为更新中优先")
+                  : tr("完结进度：更新中优先，再次点击切换为已完结优先"))
+                : tr("完结进度")}
+              onClick={() => {
+                if (favSort === "status") setStatusOrder(o => (o === "finished" ? "ongoing" : "finished"));
+                else setFavSort("status");
+              }}
+              className="ios-filter-pill">
+              {favSort === "status"
+                ? (statusOrder === "finished" ? tr("已完结优先 ↕") : tr("更新中优先 ↕"))
+                : tr("完结进度")}
+            </Button>
+            {sortingHydrating && (
+              <span role="status" className="text-[12px] text-mut">{tr("正在加载全部收藏以完成排序…")}</span>
+            )}
+          </div>
+        )}
 
         {selectionMode && <div role="region" aria-label={tr("批量管理")} className="sticky top-0 z-20 -mx-1 mt-2 flex items-center gap-2 bg-bg/95 px-1 py-2 text-[13px] backdrop-blur">
           <span className="font-semibold text-on">{tr("已选 {0} 项", selectedIds.length)}</span>
@@ -375,8 +416,9 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
                   ? [c.is_finished ? tr("全 {0} 集", latestCount) : tr("更新至 {0} 集", latestCount), tagLine].filter(Boolean).join(" · ")
                   : tagLine;
                 return <MediaCard key={c.id} blockedReason={reason} title={c.title} cover={c.cover} score={c.score}
+                  cornerBadges={unwatchedNew > 0 && c.is_finished ? [{ label: tr("新更 {0} 集", unwatchedNew), tone: "update" }, { label: tr("完结"), tone: "finished" }] : undefined}
                   badge={unwatchedNew > 0 ? tr("新更 {0} 集", unwatchedNew) : (c.is_finished ? tr("已完结") : tr("{0} 集", latestCount || c.episode_count))}
-                  badgeTone={unwatchedNew > 0 ? "update" : "default"}
+                  badgeTone={unwatchedNew > 0 ? "update" : (c.is_finished ? "finished" : "default")}
                   subtitle={subtitle}
                   progress={formatWatchProgress(progress, latestCount, c.is_finished)}
                   selectionMode={selectionMode} selected={selectedIds.includes(c.id)} onLongPress={() => beginSelection(c.id)}

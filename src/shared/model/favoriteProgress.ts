@@ -70,3 +70,71 @@ export function unwatchedNewEpisodes(
   }
   return 0;
 }
+
+export type FavoriteSortMode = "added" | "updated" | "status";
+export type FavoriteStatusOrder = "finished" | "ongoing";
+
+function parseTimestampMs(raw?: string | number): number {
+  if (typeof raw === "number") {
+    if (!Number.isFinite(raw) || raw <= 0) return 0;
+    return raw < 1e12 ? raw * 1000 : raw;
+  }
+  if (typeof raw !== "string") return 0;
+  const trimmed = raw.trim();
+  if (!trimmed) return 0;
+  const parsed = Date.parse(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(trimmed) ? trimmed.replace(" ", "T") : trimmed);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+}
+
+function detailUpdatedTimestamp(detail: Detail | undefined): number {
+  if (!detail) return 0;
+  return parseTimestampMs(detail.updated_at) || parseTimestampMs(detail.last_ep_at) || parseTimestampMs(detail.created_at);
+}
+
+function detailLatestEpisodeOrder(detail: Detail | undefined): number {
+  if (!detail?.tracking_episodes) return detail?.id ?? 0;
+  let maxId = 0;
+  for (const row of Object.values(detail.tracking_episodes)) {
+    const num = Number(row?.video_id);
+    if (Number.isSafeInteger(num) && num > maxId) maxId = num;
+  }
+  return maxId > 0 ? maxId : (detail.id ?? 0);
+}
+
+/** Sort favorite video IDs by updated recency or completion status; keeps uncached tails in original order. */
+export function sortFavoriteVideoIds(
+  ids: number[],
+  videoCache: Record<number, Detail>,
+  history: WatchProgress[],
+  favEpCounts: Record<number, number>,
+  mode: FavoriteSortMode,
+  statusOrder: FavoriteStatusOrder,
+): number[] {
+  if (mode === "added" || ids.length < 2) return ids;
+  const origIndex = new Map<number, number>(ids.map((id, i) => [id, i]));
+  const progressById = new Map<number, WatchProgress>(history.map(h => [h.id, h]));
+  return [...ids].sort((a, b) => {
+    const da = videoCache[a];
+    const db = videoCache[b];
+    if (!da || !db) {
+      if (!da && !db) return origIndex.get(a)! - origIndex.get(b)!;
+      return da ? -1 : 1;
+    }
+    const newA = unwatchedNewEpisodes(da, progressById.get(a), favEpCounts[a]);
+    const newB = unwatchedNewEpisodes(db, progressById.get(b), favEpCounts[b]);
+    if (mode === "status") {
+      const bucket = (d: Detail) => (statusOrder === "finished" ? (d.is_finished ? 0 : 1) : (d.is_finished ? 1 : 0));
+      const diffBucket = bucket(da) - bucket(db);
+      if (diffBucket !== 0) return diffBucket;
+      if (!da.is_finished && !db.is_finished && (newA > 0) !== (newB > 0)) return newB > 0 ? 1 : -1;
+    } else if ((newA > 0) !== (newB > 0)) {
+      return newB > 0 ? 1 : -1;
+    }
+    const diffTs = detailUpdatedTimestamp(db) - detailUpdatedTimestamp(da);
+    if (diffTs !== 0) return diffTs;
+    if (mode === "updated" && newA !== newB) return newB - newA;
+    const diffEp = detailLatestEpisodeOrder(db) - detailLatestEpisodeOrder(da);
+    if (diffEp !== 0) return diffEp;
+    return origIndex.get(a)! - origIndex.get(b)!;
+  });
+}
