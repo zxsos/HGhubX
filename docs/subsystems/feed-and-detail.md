@@ -125,6 +125,7 @@ Feed 负责列表播放页的条目位置、详情/帖子读取、标签门、�
 - 吃瓜详情的正文仅在正文内容或安全模式改变时重新清洗。渲染时复用同一个
   `dangerouslySetInnerHTML` 属性对象；滚动更新「阅读进度」以及刷新得到同一正文时不替换
   图片节点，避免懒加载图片反复消失、重载和撑开布局（issue #165）。
+- 吃瓜正文链接拦截（[`src/shared/lib/html.ts`](../../src/shared/lib/html.ts) 的 `handleArticleClick` / `parseInternalVideoId`、`PostDetail` 与 `ArticlePanel`）：`store.tsx` 启动/切线读取 `boot().base` 后同步 `setSiteOrigin`，点击正文 `<a>` 时仅对主站或当前激活线路同源的 `/video/{id}/` 链接入栈站内 `feed` 播放页，其余外链与非规范路径仍交 `api.openUrl` 打开（失败回退剪贴板）。
 - 播放页状态提示（上下划切集、剧集边界、上下划切集开关、屏幕锁定/解锁）统一带 `tag="playback-hint"`（`Feed.tsx`、`FeedPlayerShellChrome.tsx`、`useFeedTouchGestures.ts` 与 `useFeedViewport.ts`）；`store.tsx` 的
   `pushToastItem` 对同 tag 原地替换内容并重置 2200ms 计时，快速连续操作只显示一张最新卡片，
   不堆叠、不重放入场动画；无 tag 的普通 toast 仍按原逻辑堆叠（最多 3 张）。同剧同作用域（`permissionKey` 不变）切集过渡期内，

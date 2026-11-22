@@ -6,6 +6,20 @@ export { isStrictSecurity, setStrictSecurity };
 
 /** 站点根地址：正文里的相对路径要补全 */
 const SITE = "https://huangguoai.com";
+const DEFAULT_SITE_ORIGIN = new URL(SITE).origin;
+let activeSiteOrigin = DEFAULT_SITE_ORIGIN;
+
+/** 同步当前生效线路的协议与域名，用于识别正文中的同源站内视频链接 */
+export function setSiteOrigin(base: string): void {
+  try {
+    const u = new URL(base.trim());
+    if (u.protocol === "http:" || u.protocol === "https:") {
+      activeSiteOrigin = u.origin;
+      return;
+    }
+  } catch { /* ignore invalid base */ }
+  activeSiteOrigin = DEFAULT_SITE_ORIGIN;
+}
 
 function isInternalWebviewHost(host: string): boolean {
   const h = host.replace(/\.+$/, "").toLowerCase();
@@ -155,6 +169,33 @@ export function sanitizeHtml(html: string): string {
     FORBID_TAGS: ["svg", "math"],
     ALLOWED_URI_REGEXP: SAFE_FINAL_URI,
   });
+}
+
+/** 识别正文内的同源站内视频链接（`/video/{id}/`），外链与异常路径返回 `null` */
+export function parseInternalVideoId(rawUrl: string, extraOrigins: readonly string[] = []): number | null {
+  const trimmed = rawUrl.trim();
+  if (!trimmed) return null;
+  let parsed: URL;
+  try {
+    parsed = new URL(trimmed, activeSiteOrigin);
+  } catch {
+    return null;
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return null;
+  const allowedOrigins = new Set<string>([DEFAULT_SITE_ORIGIN, activeSiteOrigin]);
+  for (const candidate of extraOrigins) {
+    try {
+      const originUrl = new URL(candidate.trim());
+      if (originUrl.protocol === "http:" || originUrl.protocol === "https:") {
+        allowedOrigins.add(originUrl.origin);
+      }
+    } catch { /* ignore invalid extra origin */ }
+  }
+  if (!allowedOrigins.has(parsed.origin)) return null;
+  const match = /^\/video\/(\d+)\/?$/.exec(parsed.pathname);
+  if (!match) return null;
+  const id = Number(match[1]);
+  return Number.isSafeInteger(id) && id > 0 ? id : null;
 }
 
 /** 拦截正文内链接点击，防止 WebView 原地跳转或弹出无守卫新窗口 */

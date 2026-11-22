@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { api, platform as envPlatform } from "../api/api";
 import { exitDocumentFullscreen, getFullscreenElement } from "../lib/fullscreen";
+import { setSiteOrigin } from "../lib/html";
 import { isStrictSecurity, setStrictSecurity as setHtmlStrictSecurity } from "../lib/securityMode";
 import type { User } from "../api/types";
 import { readStorage, STORAGE_KEYS } from "../storage/storage";
@@ -333,6 +334,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const generation = accountRef.current.generation();
       void api.boot().then((r) => {
         if (!active || current !== request) return;
+        setSiteOrigin(r.base || "");
         accountRef.current.restoreSession(r.user && (r.user as User).id ? r.user as User : null, r.base || "", generation);
         if (typeof r.strict_security === "boolean") {
           setStrictSecurityState(r.strict_security);

@@ -9,7 +9,7 @@ import { copyText } from "../../shared/lib/clipboard";
 import { Empty, Img, Sheet } from "../../shared/ui/ui";
 import { Player } from "../playback";
 import { IBack, ICommentF, IFireF, IFlame, IHeart, IHeartF, IPlayF, ISearch, IStar, IStarF } from "../../shared/ui/icons";
-import { handleArticleClick, sanitizeHtml } from "../../shared/lib/html";
+import { handleArticleClick, parseInternalVideoId, sanitizeHtml } from "../../shared/lib/html";
 import { InplaceSearch } from "../search/InplaceSearch";
 import { FilteredContent } from "../../shared/ui/FilteredContent";
 import { TagBlockMenu } from "../../shared/ui/TagBlockMenu";
@@ -134,6 +134,11 @@ export function PostDetail({ id, onBack, active = true }: { id: number; onBack: 
   // React 会在 HTML 属性对象身份变化时重写 innerHTML；滚动不能让配图重新加载。
   const articleHtml = useMemo(() => ({ __html: sanitizeHtml(content) }), [content, strictSecurity]);
   const openSafeLink = (url: string) => {
+    const videoId = parseInternalVideoId(url);
+    if (videoId !== null) {
+      push({ kind: "feed", videoIds: [videoId], index: 0, title: post?.title || tr("吃瓜") });
+      return;
+    }
     api.openUrl(url).catch(() => {
       copyText(url).then(() => toast(tr("链接已复制"), "ok")).catch(() => toast(tr("复制失败"), "info"));
     });

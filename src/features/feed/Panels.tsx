@@ -2,7 +2,7 @@ import { Button, Form, Image, Input } from "../../shared/ui/ios/controls";
 import { Loader } from "../../shared/ui/ios/effects";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { api, fmt, cover as imageCover } from "../../shared/api/api";
-import { handleArticleClick, sanitizeHtml } from "../../shared/lib/html";
+import { handleArticleClick, parseInternalVideoId, sanitizeHtml } from "../../shared/lib/html";
 import { commentText } from "./commentText";
 import type { Comment, CommentPage, Episode } from "../../shared/api/types";
 import { useStore } from "../../shared/model/store";
@@ -206,9 +206,14 @@ export function CommentsPanel({ videoId, ep, total, kind = "video", onClose }: {
 export function ArticlePanel({ title, html, cover, hot, onClose }: {
   title: string; html: string; cover?: string; hot?: number; onClose: () => void;
 }) {
-  const { toast, strictSecurity } = useStore();
+  const { toast, strictSecurity, push } = useStore();
   const safeHtml = useMemo(() => sanitizeHtml(html), [html, strictSecurity]);
   const openSafeLink = (url: string) => {
+    const videoId = parseInternalVideoId(url);
+    if (videoId !== null) {
+      push({ kind: "feed", videoIds: [videoId], index: 0, title: title || tr("图文详情") });
+      return;
+    }
     api.openUrl(url).catch(() => {
       copyText(url).then(() => toast(tr("链接已复制"), "ok")).catch(() => toast(tr("复制失败"), "info"));
     });
