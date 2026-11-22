@@ -116,10 +116,12 @@ pub async fn api_category(
 
 #[tauri::command]
 pub async fn api_rank(state: State<'_, Api>, kind: String) -> Result<Value, String> {
-    let kind = match kind.as_str() {
-        "recommend" | "potential" => kind,
-        _ => "hot".to_string(),
-    };
+    if !matches!(kind.as_str(), "recommend" | "potential") {
+        if let Ok(rank) = crate::channel_page::fetch_hot_rank().await {
+            return Ok(rank);
+        }
+        return state.get("/api/ranks/hot").await;
+    }
     state.get(&format!("/api/ranks/{kind}")).await
 }
 

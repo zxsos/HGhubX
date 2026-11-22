@@ -105,6 +105,7 @@ Feed 负责列表播放页的条目位置、详情/帖子读取、标签门、�
   随即停止未发送项并抑制旧批次的错误、完成状态与 toast。账号代次检查独立于组件重挂载，避免 cleanup
   执行前队列继续用新账号发起下一项。
 - 分类与原创频道读取（`api_category` / `api_original_videos`）优先解析官网服务端渲染频道页（[`src-tauri/src/channel_page.rs`](../../src-tauri/src/channel_page.rs)）：`ai-duanju` / `ai-manju` 对应 `/{cate}/`（`latest`）、`/{cate}/hot/`（`hot`）、`/{cate}/random/`（`random`），`original` 对应 `/original/`（`drama`）、`/original/manju/`（`comic`）、`/original/duanju/`（`short`），按 `section.hg-channel-page .hg-card-grid[data-channel-panel=...]` 严格读取非隐藏面板并还原标签、集数、播放量、评分与角标字段；分类总览预览行（`page=1 && size < 20`）按 `size` 截断，频道分页保留官网整页卡片防止跳项。任意抓取/解析失败或非预设分类自动回退既有 JSON 接口，保持 `Paged<VideoCard>` 契约不变。
+- 排行榜热播榜读取（`api_rank("hot")`）优先抓取并解析官网服务端渲染热播榜页 `/ranks/hot/`（[`src-tauri/src/channel_page.rs`](../../src-tauri/src/channel_page.rs) 的 `parse_hot_rank_html` / `fetch_hot_rank`），与官网实时热度 TOP20 口径保持一致；抓取或结构校验失败时自动回退 `/api/ranks/hot`，`recommend` 与 `potential` 继续直连 JSON 接口，保持 `{ type, items: RankItem[] }` 契约不变。
 - 分页列表（频道页、吃瓜列表、专题/标签详情、关注/创作者作品与全局/栏目搜索）统一使用 [`src/shared/lib/useAutoLoadMore.ts`](../../src/shared/lib/useAutoLoadMore.ts)（`IntersectionObserver` + 滚动位置检查）在接近底部哨兵时自动加载下一页，正常态不再展示手动「加载更多」按钮；开启标签屏蔽时同样保持上滑自动加载，仅当连续 2 页过滤后均无可见条目（`AUTO_LOAD_EMPTY_PAGE_LIMIT = 2`）才暂停自动续载并显示手动「加载更多」兜底按钮，点击手动加载或调整筛选会重置计数。
 - 视频卡片（[`src/shared/ui/cards.tsx`](../../src/shared/ui/cards.tsx) 的 `WaterfallCard` 与 `RowCard`）在海报左上角按「原创」「热播」「新片」（`new_at` 72 小时窗口）顺序显示角标，与右上角评分保持间距不遮挡；集数状态移至海报底部遮罩左侧（与播放量同排），保留「我的」页 `MediaCard` 的「新更 N 集」单角标展示。
 - 标准版「我的」收藏与观看历史保持原有网格列数；滚动容器接近底部哨兵（提前 300px）时

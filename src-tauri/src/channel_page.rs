@@ -393,6 +393,158 @@ pub async fn fetch_original(cate: &str, page: u32, size: u32) -> Result<Value, S
     parse_channel_html(&html, panel, page, size)
 }
 
+fn extract_img_cover(img: Selection<'_>) -> String {
+    for attr in ["data-src", "src"] {
+        if let Some(raw) = img.attr(attr) {
+            let trimmed = raw.trim();
+            if !trimmed.is_empty() && !trimmed.contains("cover-placeholder") {
+                return trimmed.to_string();
+            }
+        }
+    }
+    String::new()
+}
+
+pub(crate) fn parse_hot_rank_html(html: &str) -> Result<Value, String> {
+    let doc = Document::from(html);
+    let list = doc.select("section.hg-rank-page [data-rank-list]");
+    let scope = if list.length() > 0 {
+        list
+    } else {
+        doc.select("section.hg-rank-page")
+    };
+    if scope.length() == 0 {
+        return Err("官网热播榜容器缺失".to_string());
+    }
+
+    let mut seen = HashSet::new();
+    let mut items = Vec::new();
+    for card_node in scope.select(".hg-rank-item[data-rank-item]").iter() {
+        let card = Selection::from(card_node);
+        let video_id = card
+            .attr("data-track-id")
+            .and_then(|value| video_id_from_str(&value))
+            .or_else(|| {
+                card.select(".hg-rank-item__cover")
+                    .attr("href")
+                    .and_then(|href| video_id_from_href(&href))
+            })
+            .or_else(|| {
+                card.select(".hg-rank-item__title a")
+                    .attr("href")
+                    .and_then(|href| video_id_from_href(&href))
+            });
+        let Some(video_id) = video_id else {
+            continue;
+        };
+        if !seen.insert(video_id) {
+            continue;
+        }
+
+        let title = {
+            let link = normalized_text(card.select(".hg-rank-item__title a"));
+            if !link.is_empty() {
+                link
+            } else {
+                let heading = normalized_text(card.select(".hg-rank-item__title"));
+                if !heading.is_empty() {
+                    heading
+                } else {
+                    card.attr("data-track-title")
+                        .map(|value| normalized_string(&value))
+                        .unwrap_or_default()
+                }
+            }
+        };
+        if title.is_empty() {
+            continue;
+        }
+
+        let rank_digits: String = normalized_text(card.select(".hg-rank-num"))
+            .chars()
+            .filter(|c| c.is_ascii_digit())
+            .collect();
+        let rank = rank_digits
+            .parse::<u32>()
+            .ok()
+            .filter(|value| *value > 0)
+            .unwrap_or_else(|| (items.len() + 1) as u32);
+
+        let cover = extract_img_cover(card.select(".hg-rank-item__cover img"));
+        let cate_name = card
+            .attr("data-track-type-name")
+            .map(|value| normalized_string(&value))
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| normalized_text(card.select(".hg-rank-item__tags > span:first-child")));
+
+        let mut tags = Vec::new();
+        let mut seen_tags = HashSet::new();
+        for tag_node in card.select(".hg-rank-item__tags a[href*='/tag/']").iter() {
+            let tag = normalized_text(Selection::from(tag_node));
+            if !tag.is_empty() && seen_tags.insert(tag.clone()) {
+                tags.push(tag);
+            }
+        }
+
+        let score = parse_score(&normalized_text(card.select(".hg-rank-item__score")));
+        let (is_finished, episode_count, _) =
+            parse_episode(&normalized_text(card.select(".hg-rank-item__ep")));
+
+        let metric_label = {
+            let label = normalized_text(card.select(".hg-rank-item__heat-label"));
+            if !label.is_empty() {
+                label
+            } else {
+                let side = normalized_text(card.select(".hg-rank-item__label"));
+                if !side.is_empty() {
+                    side
+                } else {
+                    "实时热度".to_string()
+                }
+            }
+        };
+        let metric_value = {
+            let raw = normalized_text(card.select(".hg-rank-item__heat-value"));
+            let text = if !raw.is_empty() {
+                raw
+            } else {
+                normalized_text(card.select(".hg-rank-item__value"))
+            };
+            parse_views(&text)
+        };
+
+        items.push(json!({
+            "rank": rank,
+            "video_id": video_id,
+            "title": title,
+            "cover": cover,
+            "tags": tags,
+            "score": score,
+            "cate_name": cate_name,
+            "episode_count": episode_count,
+            "is_finished": is_finished,
+            "intervened": false,
+            "metric_label": metric_label,
+            "metric_value": metric_value,
+            "metrics": { "collect": 0, "comment": 0, "like": 0, "play": 0 }
+        }));
+    }
+
+    if items.is_empty() {
+        return Err("官网热播榜未解析到有效条目".to_string());
+    }
+
+    Ok(json!({
+        "type": "hot",
+        "items": items,
+    }))
+}
+
+pub async fn fetch_hot_rank() -> Result<Value, String> {
+    let html = fetch_html("/ranks/hot/").await?;
+    parse_hot_rank_html(&html)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{category_route, original_route, parse_channel_html};
@@ -518,4 +670,5 @@ mod tests {
         let outside_only = r#"<header><div class="hg-card-grid" data-channel-panel="latest"><div class="hg-drama-card" data-track-id="1"><h3 class="hg-drama-card__title">外部</h3></div></div></header>"#;
         assert!(parse_channel_html(outside_only, "latest", 1, 20).is_err());
     }
+
 }
