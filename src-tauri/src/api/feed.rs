@@ -198,7 +198,7 @@ pub async fn api_post_categories(state: State<'_, Api>) -> Result<Value, String>
     state.get("/api/site/categories/post").await
 }
 
-/// 按分类取吃瓜帖：`/api/posts/category/{route}`；`sort=latest` 走最新排序。
+/// 按分类取吃瓜帖：`remen-chigua` 最新口径优先同步官网 SSR `/blog/gossip/`，其余走 `/api/posts/category/{route}`。
 #[tauri::command]
 pub async fn api_post_category(
     state: State<'_, Api>,
@@ -207,16 +207,14 @@ pub async fn api_post_category(
     size: u32,
     sort: Option<String>,
 ) -> Result<Value, String> {
+    if route == "remen-chigua" && matches!(sort.as_deref().map(str::trim), Some("latest") | Some("new")) {
+        if let Ok(posts) = crate::channel_page::fetch_gossip_posts(page, size).await {
+            return Ok(posts);
+        }
+    }
     let encoded: String = url::form_urlencoded::byte_serialize(route.as_bytes()).collect();
-    let sort = match sort.as_deref() {
-        Some(s) if !s.trim().is_empty() => format!("&sort={s}"),
-        _ => String::new(),
-    };
-    state
-        .get(&format!(
-            "/api/posts/category/{encoded}?page={page}&size={size}{sort}"
-        ))
-        .await
+    let q = sort.as_deref().map(str::trim).filter(|s| !s.is_empty()).map_or_else(String::new, |s| format!("&sort={s}"));
+    state.get(&format!("/api/posts/category/{encoded}?page={page}&size={size}{q}")).await
 }
 
 /// 相关推荐：`/api/videos/{id}/related` 返回 data.items。

@@ -1,13 +1,14 @@
 use dom_query::{Document, Selection};
 use serde::Serialize;
 use serde_json::{json, Value};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
 const MAX_HTML_BYTES: usize = 2 * 1024 * 1024;
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(12);
 const JS_MAX_SAFE_INTEGER: i64 = 9_007_199_254_740_991;
 const DEFAULT_SSR_PAGE_SIZE: u32 = 39;
+const DEFAULT_GOSSIP_SSR_PAGE_SIZE: u32 = 12;
 const PREVIEW_TRUNCATE_LIMIT: u32 = 20;
 
 #[derive(Debug, Serialize)]
@@ -49,6 +50,18 @@ fn video_id_from_str(raw: &str) -> Option<i64> {
 
 fn video_id_from_href(href: &str) -> Option<i64> {
     let id = href.trim().strip_prefix("/video/")?.strip_suffix('/')?;
+    video_id_from_str(id)
+}
+
+fn post_id_from_href(href: &str) -> Option<i64> {
+    let trimmed = href.trim();
+    let without_origin = trimmed
+        .strip_prefix("https://")
+        .or_else(|| trimmed.strip_prefix("http://"))
+        .and_then(|rest| rest.find('/').map(|idx| &rest[idx..]))
+        .unwrap_or(trimmed);
+    let path = without_origin.split(['?', '#']).next().unwrap_or("");
+    let id = path.strip_prefix("/archives/")?.strip_suffix('/')?;
     video_id_from_str(id)
 }
 
@@ -99,7 +112,11 @@ fn parse_views(raw: &str) -> u64 {
         return 0;
     }
     let lower = text.to_ascii_lowercase();
-    let (num_part, multiplier) = if let Some(stripped) = lower.strip_suffix('w') {
+    let (num_part, multiplier) = if let Some(stripped) = lower.strip_suffix('k') {
+        (stripped, 1_000.0)
+    } else if let Some(stripped) = text.strip_suffix('千') {
+        (stripped, 1_000.0)
+    } else if let Some(stripped) = lower.strip_suffix('w') {
         (stripped, 10_000.0)
     } else if let Some(stripped) = text.strip_suffix('万') {
         (stripped, 10_000.0)
@@ -545,6 +562,227 @@ pub async fn fetch_hot_rank() -> Result<Value, String> {
     parse_hot_rank_html(&html)
 }
 
+fn gossip_tag_window(page: u32) -> (u32, u32) {
+    if page <= 1 {
+        return (1, 24);
+    }
+    let m = page - 1;
+    for d in [3, 4, 5, 6, 7, 8] {
+        let r = m % d;
+        if r >= 1 && r <= d - 2 {
+            return (m / d + 1, 12 * d);
+        }
+    }
+    (m / 4 + 1, 48)
+}
+
+fn parse_gossip_total(raw: &str) -> u64 {
+    let after = raw.split('共').nth(1).unwrap_or(raw);
+    let digits: String = after
+        .chars()
+        .skip_while(|ch| !ch.is_ascii_digit())
+        .take_while(|ch| ch.is_ascii_digit())
+        .collect();
+    digits.parse::<u64>().unwrap_or(0)
+}
+
+pub(crate) fn parse_gossip_posts_html(
+    html: &str,
+    page: u32,
+    requested_size: u32,
+    enrichment: &HashMap<i64, Value>,
+) -> Result<Value, String> {
+    let page = page.max(1);
+    let doc = Document::from(html);
+    let section = doc.select("section.hg-community-page");
+    if section.length() == 0 {
+        return Err("官网吃瓜页容器缺失".to_string());
+    }
+    let feed = section.select(".hg-cate-feed");
+    if feed.length() == 0 {
+        return Err("官网吃瓜页列表缺失".to_string());
+    }
+
+    let mut seen = HashSet::new();
+    let mut items = Vec::new();
+    for card_node in feed.select("a.hg-cate-feed__card").iter() {
+        let card = Selection::from(card_node);
+        let id = card
+            .attr("data-track-item-id")
+            .and_then(|value| video_id_from_str(&value))
+            .or_else(|| card.attr("href").and_then(|href| post_id_from_href(&href)));
+        let Some(id) = id else {
+            continue;
+        };
+        if !seen.insert(id) {
+            continue;
+        }
+
+        let title = {
+            let heading = normalized_text(card.select(".hg-cate-feed__title"));
+            if !heading.is_empty() {
+                heading
+            } else {
+                card.attr("data-track-item-name")
+                    .map(|value| normalized_string(&value))
+                    .unwrap_or_default()
+            }
+        };
+        if title.is_empty() {
+            continue;
+        }
+
+        let entry = enrichment.get(&id);
+        let cover = {
+            let ssr_cover = extract_img_cover(card.select(".hg-cate-feed__cover img"));
+            if !ssr_cover.is_empty() {
+                ssr_cover
+            } else {
+                entry
+                    .and_then(|v| v.get("cover"))
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .unwrap_or("")
+                    .to_string()
+            }
+        };
+        let desc = {
+            let intro = normalized_text(card.select(".hg-cate-feed__intro"));
+            if !intro.is_empty() {
+                intro
+            } else {
+                entry
+                    .and_then(|v| v.get("desc"))
+                    .and_then(Value::as_str)
+                    .map(normalized_string)
+                    .unwrap_or_default()
+            }
+        };
+        let hot = {
+            let stats_raw = card
+                .select(".hg-cate-feed__stats span")
+                .iter()
+                .next()
+                .map(|node| normalized_text(Selection::from(node)))
+                .unwrap_or_default();
+            let trimmed = stats_raw
+                .trim_end_matches("次阅读")
+                .trim_end_matches("阅读")
+                .trim_end_matches("次浏览")
+                .trim_end_matches("浏览")
+                .trim();
+            let ssr_hot = parse_views(trimmed);
+            if ssr_hot > 0 {
+                ssr_hot
+            } else {
+                entry.and_then(|v| v.get("hot")).and_then(Value::as_u64).unwrap_or(0)
+            }
+        };
+        let created_at = entry
+            .and_then(|v| v.get("created_at"))
+            .and_then(Value::as_str)
+            .map(normalized_string)
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| normalized_text(card.select(".hg-cate-feed__date")));
+        let publish_time = entry
+            .and_then(|v| v.get("publish_time"))
+            .and_then(Value::as_str)
+            .map(normalized_string)
+            .unwrap_or_default();
+        let tags: Vec<String> = entry
+            .and_then(|v| v.get("tags"))
+            .and_then(Value::as_array)
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(Value::as_str)
+                    .map(normalized_string)
+                    .filter(|s| !s.is_empty())
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        items.push(json!({
+            "id": id,
+            "title": title,
+            "cover": cover,
+            "desc": desc,
+            "tags": tags,
+            "hot": hot,
+            "created_at": created_at,
+            "publish_time": publish_time,
+        }));
+    }
+
+    if items.is_empty() {
+        return Err("官网吃瓜页未解析到有效条目".to_string());
+    }
+
+    let full_page_len = items.len() as u32;
+    let parsed_total = parse_gossip_total(&normalized_text(section.select(".hg-section-title")));
+    let total = parsed_total.max(items.len() as u64);
+
+    let mut pages = section
+        .select("[data-hg-pager-jump]")
+        .attr("data-pages")
+        .and_then(|value| value.trim().parse::<u32>().ok())
+        .unwrap_or(0);
+    for page_node in section.select("nav.hg-pager .hg-pager__page").iter() {
+        if let Ok(num) = normalized_text(Selection::from(page_node)).parse::<u32>() {
+            if num > pages {
+                pages = num;
+            }
+        }
+    }
+    if pages == 0 {
+        let per_page = full_page_len.max(DEFAULT_GOSSIP_SSR_PAGE_SIZE) as u64;
+        pages = ((total + per_page - 1) / per_page).max(page as u64) as u32;
+    }
+
+    if page == 1 && requested_size > 0 && requested_size < DEFAULT_GOSSIP_SSR_PAGE_SIZE {
+        items.truncate(requested_size as usize);
+    }
+
+    let response_size = items.len() as u32;
+    Ok(json!({
+        "items": items,
+        "pagination": {
+            "page": page,
+            "pages": pages.max(page),
+            "size": response_size,
+            "total": total,
+        }
+    }))
+}
+
+pub async fn fetch_gossip_posts(page: u32, size: u32) -> Result<Value, String> {
+    let page = page.max(1);
+    let html_path = if page == 1 {
+        "/blog/gossip/".to_string()
+    } else {
+        format!("/blog/gossip/{page}/")
+    };
+    let (api_page, api_size) = gossip_tag_window(page);
+    let origin = crate::net::base();
+    let api_path = format!(
+        "/api/posts/category/remen-chigua?page={api_page}&size={api_size}&sort=latest"
+    );
+    let (html_res, json_res) = tokio::join!(
+        fetch_html(&html_path),
+        crate::net::edge(&origin, "GET", &api_path, None, None)
+    );
+    let mut enrichment = HashMap::new();
+    if let Ok(val) = json_res {
+        if let Some(arr) = val.get("items").and_then(Value::as_array) {
+            for item in arr {
+                if let Some(id) = item.get("id").and_then(Value::as_i64) {
+                    enrichment.insert(id, item.clone());
+                }
+            }
+        }
+    }
+    parse_gossip_posts_html(&html_res?, page, size, &enrichment)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{category_route, original_route, parse_channel_html};
@@ -670,5 +908,4 @@ mod tests {
         let outside_only = r#"<header><div class="hg-card-grid" data-channel-panel="latest"><div class="hg-drama-card" data-track-id="1"><h3 class="hg-drama-card__title">外部</h3></div></div></header>"#;
         assert!(parse_channel_html(outside_only, "latest", 1, 20).is_err());
     }
-
 }
