@@ -4,15 +4,15 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { api, APP_VERSION, fmt, isMobile, platform } from "../../shared/api/api";
 import type { Detail, Post } from "../../shared/api/types";
 import {
-  detailEpisodeCount, formatWatchProgress, resolveResumeTarget, sortFavoriteVideoIds, unwatchedNewEpisodes,
-  type FavoriteSortMode, type FavoriteStatusOrder,
+  detailEpisodeCount, filterFavoriteVideoIds, formatWatchProgress, resolveResumeTarget,
+  unwatchedEpisodeCount, unwatchedNewEpisodes, type FavoriteFilter,
 } from "../../shared/model/favoriteProgress";
 import { useStore } from "../../shared/model/store";
 import { Avatar, Empty, Modal } from "../../shared/ui/ui";
 import { MediaCard } from "../../shared/ui/cards";
 import { useContentPreferences } from "../../shared/model/contentPreferences";
 import { CollectionLink, CollectionLinks } from "../../shared/ui/CollectionLink";
-import { IChevR, IClock, IHeart, ILogout, ISettings, IStar, IUser, IUserF } from "../../shared/ui/icons";
+import { IChevR, IClock, IHeart, ILogout, ISettings, IStar, IUser, IUserF, IFilter } from "../../shared/ui/icons";
 import { tr } from "../../shared/i18n";
 import { useTabSwipe } from "../../shared/ui/hooks/useTabSwipe";
 
@@ -31,8 +31,10 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
   } = useStore();
   const [tab, setTab] = useState<"fav" | "history">("fav");
   const [favKind, setFavKind] = useState<"video" | "post">("video");
-  const [favSort, setFavSort] = useState<FavoriteSortMode>("added");
-  const [statusOrder, setStatusOrder] = useState<FavoriteStatusOrder>("finished");
+  const [favFilter, setFavFilter] = useState<FavoriteFilter>("all");
+  const [filterMenuOpen, setFilterMenuOpen] = useState(false);
+  const filterMenuRef = useRef<HTMLDivElement>(null);
+  const filterButtonRef = useRef<HTMLButtonElement>(null);
   const [videoCache, setVideoCache] = useState<Record<number, Detail>>({});
   const videoCacheRef = useRef(videoCache);
   videoCacheRef.current = videoCache;
@@ -86,25 +88,67 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
     };
   }, []);
 
+  useEffect(() => {
+    if (!filterMenuOpen) return;
+    const frame = requestAnimationFrame(() => {
+      const menu = filterMenuRef.current;
+      (menu?.querySelector<HTMLButtonElement>('[role="menuitemradio"][aria-checked="true"]')
+        ?? menu?.querySelector<HTMLButtonElement>('[role="menuitemradio"]'))?.focus();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [filterMenuOpen]);
+
+  useEffect(() => {
+    if (!filterMenuOpen) return;
+    const closeOnOutsidePress = (event: PointerEvent) => {
+      if (!filterMenuRef.current?.contains(event.target as Node)) setFilterMenuOpen(false);
+    };
+    document.addEventListener("pointerdown", closeOnOutsidePress, true);
+    return () => document.removeEventListener("pointerdown", closeOnOutsidePress, true);
+  }, [filterMenuOpen]);
+
+  useEffect(() => {
+    setFilterMenuOpen(false);
+  }, [tab, favKind]);
+
   const showingPosts = tab === "fav" && favKind === "post";
   const refreshFavorites = tab === "fav" && !showingPosts;
   const selectionMode = selectedIds.length > 0;
   const limitKey = tab === "history" ? "history" : showingPosts ? "favPost" : "favVideo";
-  const sortedFavIds = useMemo(
-    () => (refreshFavorites ? sortFavoriteVideoIds(favs, videoCache, history, favEpCounts, favSort, statusOrder) : favs),
-    [refreshFavorites, favs, videoCache, history, favEpCounts, favSort, statusOrder],
+  const favoriteUnwatchedCount = (id: number, detail: Detail) =>
+    unwatchedEpisodeCount(detail, history.find(h => h.id === id));
+  const favoriteHasUnwatched = (id: number, detail: Detail) => favoriteUnwatchedCount(id, detail) > 0;
+  const filteredFavIds = useMemo(
+    () => (refreshFavorites ? filterFavoriteVideoIds(favs, videoCache, favFilter, favoriteHasUnwatched) : favs),
+    [refreshFavorites, favs, videoCache, favFilter, history, favEpCounts],
   );
-  const ids = tab === "history" ? history.map((h) => h.id) : showingPosts ? postFavs : sortedFavIds;
+  const favoriteFilterCounts = useMemo(() => ({
+    unwatched: filterFavoriteVideoIds(favs, videoCache, "unwatched", favoriteHasUnwatched).length,
+    ongoing: filterFavoriteVideoIds(favs, videoCache, "ongoing", favoriteHasUnwatched).length,
+    finished: filterFavoriteVideoIds(favs, videoCache, "finished", favoriteHasUnwatched).length,
+  }), [favs, videoCache, history, favEpCounts]);
+  const activeFavoriteFilterLabel = favFilter === "unwatched" ? tr("在追剧")
+    : favFilter === "ongoing" ? tr("连载中") : favFilter === "finished" ? tr("已完结") : "";
+  const activeFavoriteFilterCount = favFilter === "unwatched" ? favoriteFilterCounts.unwatched
+    : favFilter === "ongoing" ? favoriteFilterCounts.ongoing
+      : favFilter === "finished" ? favoriteFilterCounts.finished : 0;
+  const ids = tab === "history" ? history.map((h) => h.id) : showingPosts ? postFavs : filteredFavIds;
   const visibleIds = ids.slice(0, limits[limitKey]);
   const hasMore = visibleIds.length < ids.length;
   const videoCards = !showingPosts ? visibleIds.map(id => videoCache[id]).filter((card): card is Detail => !!card) : [];
   const postCards = showingPosts ? visibleIds.map(id => postCache[id]).filter((card): card is Post => !!card) : [];
   const cardsCount = showingPosts ? postCards.length : videoCards.length;
   const failed = failedIds.filter(id => visibleIds.includes(id));
-  const hydrateIds = refreshFavorites && favSort !== "added" ? favs : visibleIds;
+  // Filter pills show live category counts, so every favorite detail is needed
+  // even before the user selects a filter.
+  const filterNeedsAllDetails = refreshFavorites;
+  const hydrateIds = filterNeedsAllDetails ? favs : visibleIds;
   const hydrateKey = hydrateIds.join(",");
-  const sortingHydrating = refreshFavorites && favSort !== "added" && loading
+  const filteringHydrating = filterNeedsAllDetails && loading
     && favs.some(id => !videoCache[id] && !failedIds.includes(id));
+  const filterFailedIds = filterNeedsAllDetails ? failedIds.filter(id => favs.includes(id)) : [];
+  const filterEmpty = filterNeedsAllDetails && favFilter !== "all" && favs.length > 0 && !loading
+    && !filterFailedIds.length && filteredFavIds.length === 0;
   const favoriteStateUnknown = tab === "fav" && !!user && !accountSync.favoritesKnown && favs.length === 0 && postFavs.length === 0;
   const favoriteSyncFailed = favoriteStateUnknown && !accountSync.busy;
   const syncingFavorites = favoriteStateUnknown && !favoriteSyncFailed;
@@ -126,16 +170,10 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
     if (Object.keys(toSeed).length > 0) seedFavoriteEpisodes(toSeed);
   }, [favs, videoCache, history, favEpCounts, seedFavoriteEpisodes]);
 
-  const updatedFavCount = tab === "fav" && favKind === "video"
-    ? videoCards.reduce((count, c) => (
-      !blockReason(c.tags) && unwatchedNewEpisodes(c, progressOf(c.id), favEpCounts[c.id]) > 0 ? count + 1 : count
-    ), 0)
-    : 0;
-
   useEffect(() => {
     if (!active) { refreshedFavorites.current.clear(); return; }
     let alive = true;
-    const targetIds = refreshFavorites && favSort !== "added" ? favs : visibleIds;
+    const targetIds = filterNeedsAllDetails ? favs : visibleIds;
     const missing = showingPosts
       ? targetIds.filter(id => !postCacheRef.current[id])
       : targetIds.filter(id => !videoCacheRef.current[id] || (refreshFavorites && !refreshedFavorites.current.has(id)));
@@ -181,7 +219,7 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
     }
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active, hydrateKey, tab, showingPosts, refreshFavorites, favSort, reload]);
+  }, [active, hydrateKey, tab, showingPosts, refreshFavorites, filterNeedsAllDetails, reload]);
 
   useEffect(() => {
     const sentinel = sentinelRef.current;
@@ -218,6 +256,30 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
   const beginSelection = (id: number) => {
     setSelectedIds(current => current.includes(id) ? current : [...current, id]);
   };
+  const applyFavoriteFilter = (next: FavoriteFilter) => {
+    setFavFilter(next);
+    setFailedIds([]);
+    setSelectedIds([]);
+    setFilterMenuOpen(false);
+    requestAnimationFrame(() => filterButtonRef.current?.focus());
+  };
+
+  /* Re-tapping the active Profile tab restores the default favorites landing. */
+  useEffect(() => {
+    const reset = () => {
+      setTab("fav");
+      setFavKind("video");
+      setFavFilter("all");
+      setFilterMenuOpen(false);
+      setSelectedIds([]);
+      setRemoveOpen(false);
+      setRemoveError("");
+      setFailedIds([]);
+      scrollRef.current?.scrollTo({ top: 0 });
+    };
+    window.addEventListener("hg:profile-reset", reset);
+    return () => window.removeEventListener("hg:profile-reset", reset);
+  }, []);
   const allSelected = ids.length > 0 && ids.every((id) => selectedIds.includes(id));
   const selectAll = () => setSelectedIds([...ids]);
   const confirmRemoveSelected = async () => {
@@ -339,39 +401,58 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
 
         {tab === "fav" && !favoriteStateUnknown && (favs.length > 0 || postFavs.length > 0 || favKind === "post") && (
           <div className="mt-2.5 flex items-center gap-2" role="group" aria-label={tr("收藏内容类型")}>
-            <Button aria-pressed={favKind === "video"} onClick={() => { setFavKind("video"); setSelectedIds([]); }} className="ios-filter-pill">{tr("短剧{0}", favs.length ? ` ${favs.length}` : "")}</Button>
-            <Button aria-pressed={favKind === "post"} onClick={() => { setFavKind("post"); setSelectedIds([]); }} className="ios-filter-pill">{tr("帖子{0}", postFavs.length ? ` ${postFavs.length}` : "")}</Button>
-            {updatedFavCount > 0 && (
-              <span role="status" className="ml-auto text-[12px] font-semibold text-primary">{tr("{0} 部有新集", updatedFavCount)}</span>
+            <div className="flex items-center gap-2">
+              <Button aria-pressed={favKind === "video"} onClick={() => { setFavKind("video"); setSelectedIds([]); }} className="ios-filter-pill">{tr("短剧{0}", favs.length ? ` ${favs.length}` : "")}</Button>
+              <Button aria-pressed={favKind === "post"} onClick={() => { setFavKind("post"); setFavFilter("all"); setSelectedIds([]); }} className="ios-filter-pill">{tr("帖子{0}", postFavs.length ? ` ${postFavs.length}` : "")}</Button>
+            </div>
+            {favKind === "video" && favs.length > 0 && (
+              <div ref={filterMenuRef} className="relative ml-auto" role="group" aria-label={tr("收藏状态筛选")}>
+                <Button ref={filterButtonRef}
+                  aria-label={favFilter === "all" ? tr("收藏状态筛选") : `${tr("收藏状态筛选")}: ${activeFavoriteFilterLabel} ${activeFavoriteFilterCount}`}
+                  aria-haspopup="menu" aria-expanded={filterMenuOpen} aria-pressed={favFilter !== "all"}
+                  className={`ios-filter-pill ${favFilter === "all" ? "is-icon" : "is-labeled"}`}
+                  onClick={() => setFilterMenuOpen(current => !current)}>
+                  {favFilter !== "all" && (
+                    <span className="ios-filter-active-label">{activeFavoriteFilterLabel} {activeFavoriteFilterCount}</span>
+                  )}
+                  <IFilter size={19} strokeWidth={1.8} />
+                </Button>
+                {filterMenuOpen && (
+                  <div className="ios-filter-menu" role="menu" aria-label={tr("追剧状态")} onKeyDownCapture={event => {
+                    const entries = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')];
+                    const index = entries.indexOf(document.activeElement as HTMLButtonElement);
+                    if (event.key === "Escape") {
+                      event.preventDefault(); event.stopPropagation(); setFilterMenuOpen(false);
+                      filterButtonRef.current?.focus();
+                    } else if (event.key === "Tab") {
+                      setFilterMenuOpen(false);
+                    } else if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
+                      event.preventDefault(); event.stopPropagation();
+                      const next = event.key === "Home" ? 0 : event.key === "End" ? entries.length - 1
+                        : (index + (event.key === "ArrowDown" ? 1 : -1) + entries.length) % entries.length;
+                      entries[next]?.focus();
+                    }
+                  }}>
+                    <span className="ios-filter-menu-title">{tr("追剧状态")}</span>
+                    {([
+                      ["unwatched", tr("在追剧"), favoriteFilterCounts.unwatched],
+                      ["ongoing", tr("连载中"), favoriteFilterCounts.ongoing],
+                      ["finished", tr("已完结"), favoriteFilterCounts.finished],
+                    ] as const).map(([key, label, count]) => (
+                      <Button key={key} role="menuitemradio" aria-checked={favFilter === key}
+                        onClick={() => applyFavoriteFilter(key)}>
+                        <span>{label}</span>
+                        <span className="ios-filter-menu-count">{count}</span>
+                      </Button>
+                    ))}
+                  </div>
+                )}
+              </div>
             )}
           </div>
         )}
-        {tab === "fav" && favKind === "video" && !favoriteStateUnknown && favs.length > 0 && (
-          <div className="mt-2 flex flex-wrap items-center gap-1.5" role="group" aria-label={tr("收藏排序")}>
-            <Button aria-pressed={favSort === "added"} onClick={() => setFavSort("added")}
-              className="ios-filter-pill">{tr("最近添加")}</Button>
-            <Button aria-pressed={favSort === "updated"} onClick={() => setFavSort("updated")}
-              className="ios-filter-pill">{tr("最近更新")}</Button>
-            <Button
-              aria-pressed={favSort === "status"}
-              aria-label={favSort === "status"
-                ? (statusOrder === "finished"
-                  ? tr("完结进度：已完结优先，再次点击切换为更新中优先")
-                  : tr("完结进度：更新中优先，再次点击切换为已完结优先"))
-                : tr("完结进度")}
-              onClick={() => {
-                if (favSort === "status") setStatusOrder(o => (o === "finished" ? "ongoing" : "finished"));
-                else setFavSort("status");
-              }}
-              className="ios-filter-pill">
-              {favSort === "status"
-                ? (statusOrder === "finished" ? tr("已完结优先 ↕") : tr("更新中优先 ↕"))
-                : tr("完结进度")}
-            </Button>
-            {sortingHydrating && (
-              <span role="status" className="text-[12px] text-mut">{tr("正在加载全部收藏以完成排序…")}</span>
-            )}
-          </div>
+        {filteringHydrating && (
+          <span role="status" className="mt-1 block text-[12px] text-mut">{tr("正在加载全部收藏详情…")}</span>
         )}
 
         {selectionMode && <div role="region" aria-label={tr("批量管理")} className="sticky top-0 z-20 -mx-1 mt-2 flex items-center gap-2 bg-bg/95 px-1 py-2 text-[13px] backdrop-blur">
@@ -411,15 +492,17 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
                 const reason = blockReason(c.tags);
                 const latestCount = detailEpisodeCount(c);
                 const unwatchedNew = tab === "fav" ? unwatchedNewEpisodes(c, progress, favEpCounts[c.id]) : 0;
+                const unwatchedLeft = tab === "fav" ? favoriteUnwatchedCount(c.id, c) : 0;
                 const tagLine = c.tags?.slice(0, 2).join(" · ");
-                const subtitle = unwatchedNew > 0
-                  ? [c.is_finished ? tr("全 {0} 集", latestCount) : tr("更新至 {0} 集", latestCount), tagLine].filter(Boolean).join(" · ")
-                  : tagLine;
+                const episodeTotal = latestCount || c.episode_count;
+                const cardBadge = tab === "fav" && favFilter === "unwatched"
+                  ? tr("未看 {0} 集", unwatchedLeft)
+                  : tab === "fav" && favFilter === "finished" ? tr("全 {0} 集", episodeTotal)
+                  : tab === "fav" && favFilter === "ongoing" ? tr("更新至 {0} 集", episodeTotal)
+                  : c.is_finished ? tr("全 {0} 集", episodeTotal) : tr("更新至 {0} 集", episodeTotal);
                 return <MediaCard key={c.id} blockedReason={reason} title={c.title} cover={c.cover} score={c.score}
-                  cornerBadges={unwatchedNew > 0 && c.is_finished ? [{ label: tr("新更 {0} 集", unwatchedNew), tone: "update" }, { label: tr("完结"), tone: "finished" }] : undefined}
-                  badge={unwatchedNew > 0 ? tr("新更 {0} 集", unwatchedNew) : (c.is_finished ? tr("已完结") : tr("{0} 集", latestCount || c.episode_count))}
-                  badgeTone={unwatchedNew > 0 ? "update" : (c.is_finished ? "finished" : "default")}
-                  subtitle={subtitle}
+                  badge={cardBadge} badgeTone={tab === "fav" && favFilter === "unwatched" ? "update" : "default"}
+                  subtitle={tagLine}
                   progress={formatWatchProgress(progress, latestCount, c.is_finished)}
                   selectionMode={selectionMode} selected={selectedIds.includes(c.id)} onLongPress={() => beginSelection(c.id)}
                   onOpen={() => {
@@ -444,6 +527,16 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
                   }} />;
               })}
             </div>
+          ) : filterFailedIds.length ? (
+            <Empty icon={<IStar size={24} />} title={tr("收藏加载失败")}
+              sub={tr("部分收藏未能加载，筛选结果可能不完整。")} action={tr("重试")} onAction={() => setReload(n => n + 1)} />
+          ) : filterEmpty ? (
+            <Empty icon={<IStar size={24} />}
+              title={favFilter === "unwatched" ? tr("没有在追的短剧")
+                : favFilter === "ongoing" ? tr("没有连载中的收藏") : tr("没有已完结的收藏")}
+              sub={favFilter === "unwatched" ? tr("当前收藏都已看完。")
+                : favFilter === "ongoing" ? tr("当前收藏都已完结。") : tr("当前收藏里还没有已完结的视频。")}
+              action={tr("查看全部收藏")} onAction={() => setFavFilter("all")} />
           ) : failed.length ? (
             <Empty icon={tab === "fav" ? <IStar size={24} /> : <IClock size={24} />}
               title={tab === "fav" ? tr("收藏加载失败") : tr("观看记录加载失败")}
@@ -458,8 +551,12 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
               sub={tab === "fav" ? tr("在剧集页点收藏，之后就能在这里找到") : tr("看过的剧集会出现在这里")}
               action={tr("去逛逛")} onAction={() => push({ kind: "ranks" })} />
           )}
-          {cardsCount > 0 && failed.length > 0 && <div role="status" className="mt-3 flex flex-wrap items-center gap-2 text-[13px] text-mut">
-            <span>{tr("{0} 项内容加载失败，已加载内容仍可浏览。", failed.length)}</span>
+          {cardsCount > 0 && (filterFailedIds.length > 0 || failed.length > 0) && <div role="status" className="mt-3 flex flex-wrap items-center gap-2 text-[13px] text-mut">
+            <span>{filterFailedIds.length > 0
+              ? favFilter === "all"
+                ? tr("{0} 项收藏详情未能加载，分类计数可能不完整。", filterFailedIds.length)
+                : tr("{0} 项收藏未能加载，筛选结果可能不完整。", filterFailedIds.length)
+              : tr("{0} 项内容加载失败，已加载内容仍可浏览。", failed.length)}</span>
             <Button disabled={loading} onClick={() => setReload(n => n + 1)} className="px-3 text-primary">{tr("重试失败内容")}</Button>
           </div>}
           {cardsCount > 0 && loading && <div className="flex justify-center py-3"><Loader label={tr("加载更多内容")} /></div>}

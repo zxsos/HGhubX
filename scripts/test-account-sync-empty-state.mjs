@@ -208,7 +208,7 @@ try {
   {
     const { context, page } = await openProfile({ favoriteIds: [1], firstEpisodeCount: 12 });
     const card = page.getByRole("button").filter({ hasText: "城市与晚风" }).first();
-    await card.getByText("12 集", { exact: true }).waitFor();
+    await card.getByText("更新至 12 集", { exact: true }).waitFor();
     await page.waitForFunction(() => JSON.parse(localStorage.getItem("hghubx_accounts_v1") || "{}")
       .accounts?.[JSON.stringify(["https://fixture.invalid", 9])]?.favEpCounts?.[1] === 12);
     const nav = page.getByRole("navigation", { name: "主导航" });
@@ -216,7 +216,7 @@ try {
     await page.getByRole("heading", { name: "我的", exact: true }).waitFor({ state: "hidden" });
     await page.evaluate(() => { window.__FAVORITE_EPISODE_COUNT__ = 13; });
     await nav.getByRole("button", { name: "我的", exact: true }).click();
-    await card.getByText("新更 1 集", { exact: true }).waitFor();
+    await card.getByText("更新至 13 集", { exact: true }).waitFor();
     report.checks.push("returning to cached favorites shows a newly added episode");
     await context.close();
   }

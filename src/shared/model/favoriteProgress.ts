@@ -53,6 +53,16 @@ export function formatWatchProgress(
   return progress.t >= 1 ? tr("第 {0} 集 · {1}", progress.ep, fmtTime(progress.t)) : tr("第 {0} 集", progress.ep);
 }
 
+/** Episodes still unwatched from the recorded position, regardless of finish state. */
+export function unwatchedEpisodeCount(
+  detail: Detail,
+  progress: WatchProgress | undefined,
+): number {
+  const latest = detailEpisodeCount(detail);
+  if (latest <= 0) return 0;
+  return Math.max(0, latest - (progress?.ep ?? 0));
+}
+
 export function unwatchedNewEpisodes(
   detail: Detail,
   progress: WatchProgress | undefined,
@@ -71,8 +81,7 @@ export function unwatchedNewEpisodes(
   return 0;
 }
 
-export type FavoriteSortMode = "added" | "updated" | "status";
-export type FavoriteStatusOrder = "finished" | "ongoing";
+export type FavoriteFilter = "all" | "unwatched" | "ongoing" | "finished";
 
 function parseTimestampMs(raw?: string | number): number {
   if (typeof raw === "number") {
@@ -91,50 +100,30 @@ function detailUpdatedTimestamp(detail: Detail | undefined): number {
   return parseTimestampMs(detail.updated_at) || parseTimestampMs(detail.last_ep_at) || parseTimestampMs(detail.created_at);
 }
 
-function detailLatestEpisodeOrder(detail: Detail | undefined): number {
-  if (!detail?.tracking_episodes) return detail?.id ?? 0;
-  let maxId = 0;
-  for (const row of Object.values(detail.tracking_episodes)) {
-    const num = Number(row?.video_id);
-    if (Number.isSafeInteger(num) && num > maxId) maxId = num;
-  }
-  return maxId > 0 ? maxId : (detail.id ?? 0);
-}
-
-/** Sort favorite video IDs by updated recency or completion status; keeps uncached tails in original order. */
-export function sortFavoriteVideoIds(
+/**
+ * Keep the server/local favorite order for the unfiltered list, which is the
+ * order items were added. Detail filters need every detail loaded: unknown
+ * entries are omitted rather than guessed, and matching entries sort by the
+ * latest update time. Unwatched is a viewing state, so it applies to both
+ * ongoing and finished favorites and intentionally overlaps the other two.
+ */
+export function filterFavoriteVideoIds(
   ids: number[],
   videoCache: Record<number, Detail>,
-  history: WatchProgress[],
-  favEpCounts: Record<number, number>,
-  mode: FavoriteSortMode,
-  statusOrder: FavoriteStatusOrder,
+  filter: FavoriteFilter,
+  hasUnwatched?: (id: number, detail: Detail) => boolean,
 ): number[] {
-  if (mode === "added" || ids.length < 2) return ids;
+  if (filter === "all") return ids;
   const origIndex = new Map<number, number>(ids.map((id, i) => [id, i]));
-  const progressById = new Map<number, WatchProgress>(history.map(h => [h.id, h]));
-  return [...ids].sort((a, b) => {
-    const da = videoCache[a];
-    const db = videoCache[b];
-    if (!da || !db) {
-      if (!da && !db) return origIndex.get(a)! - origIndex.get(b)!;
-      return da ? -1 : 1;
-    }
-    const newA = unwatchedNewEpisodes(da, progressById.get(a), favEpCounts[a]);
-    const newB = unwatchedNewEpisodes(db, progressById.get(b), favEpCounts[b]);
-    if (mode === "status") {
-      const bucket = (d: Detail) => (statusOrder === "finished" ? (d.is_finished ? 0 : 1) : (d.is_finished ? 1 : 0));
-      const diffBucket = bucket(da) - bucket(db);
-      if (diffBucket !== 0) return diffBucket;
-      if (!da.is_finished && !db.is_finished && (newA > 0) !== (newB > 0)) return newB > 0 ? 1 : -1;
-    } else if ((newA > 0) !== (newB > 0)) {
-      return newB > 0 ? 1 : -1;
-    }
-    const diffTs = detailUpdatedTimestamp(db) - detailUpdatedTimestamp(da);
+  const matches = ids.filter(id => {
+    const detail = videoCache[id];
+    if (!detail) return false;
+    if (filter === "unwatched") return !!hasUnwatched?.(id, detail);
+    return filter === "finished" ? detail.is_finished : !detail.is_finished;
+  });
+  return matches.sort((a, b) => {
+    const diffTs = detailUpdatedTimestamp(videoCache[b]) - detailUpdatedTimestamp(videoCache[a]);
     if (diffTs !== 0) return diffTs;
-    if (mode === "updated" && newA !== newB) return newB - newA;
-    const diffEp = detailLatestEpisodeOrder(db) - detailLatestEpisodeOrder(da);
-    if (diffEp !== 0) return diffEp;
     return origIndex.get(a)! - origIndex.get(b)!;
   });
 }

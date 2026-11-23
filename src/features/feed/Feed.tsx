@@ -625,7 +625,7 @@ export default function Feed({
       onPointerMove={() => { if (isDesktop) wake(); }}>
       <div className="absolute inset-0" inert={controlsLocked}>
         {/* 氛围背景 */}
-        {active && !isDesktop && posterUrl && (
+        {active && !isDesktop && !ambientGlow && store.platform !== "android" && posterUrl && (
           <div className="absolute inset-0 scale-110 blur-3xl opacity-25 pointer-events-none">
             <Image src={posterUrl} alt="" className="w-full h-full object-cover" />
           </div>
@@ -654,7 +654,7 @@ export default function Feed({
                     {playUrl ? (
                       <>
                         {/* 老 WebView 不认识 inset 简写；四边写法保证缩放舞台铺满（#138）。 */}
-                    <div style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0, transform: isDesktop ? undefined : `translate3d(${zoom.x}px, ${zoom.y}px, 0) scale(${zoom.s})`, transformOrigin: "center center", transition: isDesktop || zoom.g ? "none" : "transform .18s ease-out" }}>
+                    <div style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0, transform: isDesktop || (zoom.s === 1 && zoom.x === 0 && zoom.y === 0) ? undefined : `translate3d(${zoom.x}px, ${zoom.y}px, 0) scale(${zoom.s})`, transformOrigin: "center center", transition: isDesktop || zoom.g ? "none" : "transform .18s ease-out" }}>
                       <VideoSurface ref={videoRef} src={playUrl} poster={posterUrl} autoPlay active={active && !tagMenu && !showHoldGuide && !searching} muted={muted} balanceVolume={!isDesktop && store.balanceVolume}
                         diagnosticContext={{ active: active && !tagMenu && !showHoldGuide && !searching, view: mode, kind, video_id: curId, episode: curEp }}
                         volume={volume} rate={effRate}
@@ -699,7 +699,7 @@ export default function Feed({
                   </div>
                 )}
 
-                <FeedItemChrome
+                {isActive && <FeedItemChrome
                   isActive={isActive} isDesktop={isDesktop} fs={fs} clean={clean} controlsLocked={controlsLocked} idle={idle} rotated={rotated} mode={mode} kind={kind}
                   title={title} index={index} effectiveLength={effectiveVideoIds.length} bottomInset={bottomInset}
                   curEp={curEp} duration={duration} meta={meta} post={post} hevcUrl={hevcUrl}
@@ -720,7 +720,7 @@ export default function Feed({
                     else setProxyRetry(value => value + 1);
                   }}
                   toast={toast}
-                />
+                />}
               </section>
             );
           })}
