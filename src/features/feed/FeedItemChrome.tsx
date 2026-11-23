@@ -145,23 +145,17 @@ export default function FeedItemChrome({
 
       {/* Pinch-zoom reset stays available; fill and rotate shortcuts are intentionally removed
           because fill lives in playback settings and fullscreen has its own bottom-right control. */}
-      {!isDesktop && (
-        <div className="absolute z-30" aria-hidden={!(isActive && capsuleOn)}
+      {!isDesktop && isActive && capsuleOn && zoom.s > 1.05 && (
+        <div className="absolute z-30"
           style={{
             right: "calc(var(--sar, 0px) + 12px)",
             top: "calc(var(--sat, 0px) + 56px)",
-            transform: `translateY(${isActive && capsuleOn ? 0 : -6}px)`,
-            opacity: isActive && capsuleOn ? 1 : 0,
-            pointerEvents: isActive && capsuleOn ? "auto" : "none",
-            transition: "opacity .38s cubic-bezier(.4,0,.2,1), transform .38s cubic-bezier(.4,0,.2,1)",
           }}>
           <div className="flex flex-col items-stretch gap-1 p-1 rounded-[18px] backdrop-blur-xl elev-2"
             style={{ background: "rgba(12,15,22,.58)", boxShadow: "inset 0 0 0 1px rgba(255,255,255,.09)" }}>
-            {zoom.s > 1.05 && (
-              <Button type="button" onClick={() => setZoom({ s: 1, x: 0, y: 0, g: false })}
-                className="whitespace-nowrap flex items-center justify-center gap-1 min-h-0 h-[26px] px-3 rounded-full text-[12px] font-semibold pressable transition-colors duration-150"
-                style={{ color: "rgba(255,255,255,.9)" }}>{tr("还原 {0}x", zoom.s.toFixed(1))}</Button>
-            )}
+            <Button type="button" onClick={() => setZoom({ s: 1, x: 0, y: 0, g: false })}
+              className="whitespace-nowrap flex items-center justify-center gap-1 min-h-0 h-[26px] px-3 rounded-full text-[12px] font-semibold pressable transition-colors duration-150"
+              style={{ color: "rgba(255,255,255,.9)" }}>{tr("还原 {0}x", zoom.s.toFixed(1))}</Button>
           </div>
         </div>
       )}

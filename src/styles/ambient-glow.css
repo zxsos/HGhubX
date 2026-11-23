@@ -31,3 +31,13 @@
   left: 0;
   background: radial-gradient(ellipse at 50% 50%, transparent 50%, rgb(4 6 10 / .32) 100%);
 }
+
+.plat-android .hg-ambient-glow-canvas {
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  filter: none;
+  transform: none;
+  opacity: .38;
+}

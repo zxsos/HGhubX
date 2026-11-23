@@ -118,11 +118,21 @@ function LayerBox({
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const scrollOffsetsRef = useRef<Map<HTMLElement, number>>(new Map());
-  const hadHiddenRef = useRef(hidden);
   const hiddenRef = useRef(hidden);
   hiddenRef.current = hidden;
-  if (hidden) hadHiddenRef.current = true;
+  const [entered, setEntered] = useState(() => !enterClass || hidden);
   const [hasPip, setHasPip] = useState(false);
+
+  useEffect(() => {
+    if (hidden) setEntered(true);
+  }, [hidden]);
+
+  useEffect(() => {
+    if (hidden || entered || !enterClass) return undefined;
+    // Fallback for prefers-reduced-motion or interrupted animations where animationend never fires.
+    const timer = window.setTimeout(() => setEntered(true), 480);
+    return () => window.clearTimeout(timer);
+  }, [hidden, entered, enterClass]);
 
   useEffect(() => {
     const root = ref.current;
@@ -162,16 +172,21 @@ function LayerBox({
     }
   }, [hidden]);
 
-  const boxStyle: CSSProperties | undefined = hidden && hasPip
-    ? { ...style, visibility: "hidden", pointerEvents: "none" }
+  const entering = !hidden && !entered && !!enterClass;
+  const baseStyle: CSSProperties | undefined = entering
+    ? { ...style, boxShadow: "-18px 0 40px rgba(0,0,0,.5)" }
     : style;
+  const boxStyle: CSSProperties | undefined = hidden && hasPip
+    ? { ...baseStyle, visibility: "hidden", pointerEvents: "none" }
+    : baseStyle;
   const boxClass = hidden
     ? (hasPip ? `${className} pointer-events-none` : `${className} hidden pointer-events-none`)
-    : `${className}${enterClass && !hadHiddenRef.current ? ` ${enterClass}` : ""}`;
+    : `${className}${entering ? ` ${enterClass}` : ""}`;
 
   return (
     <PageCoveredContext.Provider value={hidden}>
-      <div ref={ref} inert={inert} aria-hidden={ariaHidden} className={boxClass} style={boxStyle}>
+      <div ref={ref} inert={inert} aria-hidden={ariaHidden} className={boxClass} style={boxStyle}
+        onAnimationEnd={entering ? (e) => { if (e.target === ref.current) setEntered(true); } : undefined}>
         {children}
       </div>
     </PageCoveredContext.Provider>
@@ -249,8 +264,9 @@ function AppBody() {
           const top = i === stack.length - 1;
           return (
             <LayerBox key={p.key} hidden={!top} inert={!top} ariaHidden={!top || loginOpen}
-              className="absolute inset-0 bg-bg isolate" enterClass="a-page-in"
-              style={{ zIndex: 30 + i, boxShadow: "-18px 0 40px rgba(0,0,0,.5)" }}>
+              className="absolute inset-0 bg-bg isolate"
+              enterClass={platform === "android" && p.kind === "feed" ? undefined : "a-page-in"}
+              style={{ zIndex: 30 + i }}>
               <StackPage page={p} onBack={pop} wide={wide} top={top} bottomInset={stackInset} loginOpen={loginOpen} />
             </LayerBox>
           );
@@ -336,7 +352,7 @@ function ShellInner({ collapsed, theater }: { collapsed: boolean; theater: boole
           return (
             <LayerBox key={p.key} hidden={!top} inert={!top} ariaHidden={!top || loginOpen}
               className="absolute inset-0 bg-bg isolate" enterClass="win-page-in"
-              style={{ zIndex: 30 + i, boxShadow: "-18px 0 40px rgba(0,0,0,.5)" }}>
+              style={{ zIndex: 30 + i }}>
               <StackPage page={p} onBack={pop} wide={wide} top={top} bottomInset={14} loginOpen={loginOpen} />
             </LayerBox>
           );

@@ -85,3 +85,21 @@
   .playback-settings-header { padding-top:max(14px,var(--native-sat,0px)); }
   .playback-settings-group>.playback-setting-row { min-height:56px; padding:10px 16px; }
 }
+/* Android WebView (Skia/Viz) flickers or drops tiles when backdrop-filter reads back
+   live hardware <video> surfaces inside scroll-snap containers (#240). */
+.plat-android .player-root .mobile-playback-episodes.ios-button,
+.plat-android .player-root .mobile-playback-fullscreen.ios-button,
+.plat-android .player-root .mobile-playback-quick.ios-button,
+.plat-android .player-root .mobile-clean-lock.ios-button,
+.plat-android .player-root .feed-current-quality,
+.plat-android .player-root .feed-context-search,
+.plat-android .player-root .backdrop-blur-md,
+.plat-android .player-root .backdrop-blur-xl,
+.plat-android .player-root .backdrop-blur-sm,
+.plat-android .post-player .backdrop-blur-sm {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+.plat-android .player-root .mobile-playback-dock-home>.ios-button { background: rgba(18, 22, 29, .62); }
+.plat-android .player-root .feed-current-quality,
+.plat-android .player-root .feed-context-search { background: rgba(12, 15, 22, .72); }

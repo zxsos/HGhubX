@@ -162,9 +162,10 @@ loopback、Windows 的自定义标题栏与注册表代理判断、Android 的 W
 内容过长时在安全区内滚动。老 WebView 用原生变量回退，无需新增布局依赖。
 `App.tsx` 的 `LayerBox` 对被压栈覆盖的 `MainTabs` 与非顶层栈页统一从合成器隐藏（常规用 `hidden pointer-events-none`，
 仅在容器内存在活跃 `document.pictureInPictureElement` 时退回 `visibility: hidden`），为每层栈页分配递增
-`zIndex: 30 + i` 与 `isolate`，同时记录并同步恢复返回时的滚动位置，避免重新播放入场动画；`store.tsx` 将页面栈上限
-控制在 8 层，`.ios-poster-art` 使用 `isolation: isolate` 替代逐卡片 `transform: translateZ(0)`，防止 Android WebView
-在多次「标签 → 播放」跳转后因合成层与瓦片预算溢出出现错层遮盖与闪烁（#240）。
+`zIndex: 30 + i` 与 `isolate`，同时记录并同步恢复返回时的滚动位置，入场动画结束（`onAnimationEnd` 或 480ms 兜底）后
+立即移除 `a-page-in`/`win-page-in` 与过渡阴影，且 Android 进入 `feed` 栈页直接跳过变换/透明度入场动画；
+`store.tsx` 将页面栈上限控制在 8 层，`.ios-poster-art` 使用 `isolation: isolate` 替代逐卡片 `transform: translateZ(0)`，
+防止 Android WebView 在跳转播放后因合成层、动画节点与瓦片预算溢出出现错层遮盖与闪烁（#240）。
 
 `scripts/test-ui-feedback.mjs` 的同一组几何断言覆盖 320/390px 竖屏、667px 横屏
 （模拟左右非对称安全区）、768/1024px 平板及 1280px 桌面视口。Chromium 模拟不等同于原生设备验收。

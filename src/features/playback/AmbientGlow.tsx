@@ -1,9 +1,13 @@
 import { useEffect, useRef, type RefObject } from "react";
+import { platform } from "../../shared/api/api";
 import "../../styles/ambient-glow.css";
 
-const SAMPLE_WIDTH = 32;
-const SAMPLE_HEIGHT = 18;
-const SAMPLE_INTERVAL_MS = 90;
+// Android WebView skips the full-screen 44px CSS blur pass and relies on GPU bilinear
+// upscaling of an 8x5 sample grid at 4 Hz to avoid Skia tile corruption over <video> (#240).
+const ANDROID_GLOW = platform === "android";
+const SAMPLE_WIDTH = ANDROID_GLOW ? 8 : 32;
+const SAMPLE_HEIGHT = ANDROID_GLOW ? 5 : 18;
+const SAMPLE_INTERVAL_MS = ANDROID_GLOW ? 250 : 90;
 
 type VideoFrameCallback = (now: number, metadata: unknown) => void;
 type FrameVideo = HTMLVideoElement & {
