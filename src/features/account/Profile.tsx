@@ -12,7 +12,7 @@ import { Avatar, Empty, Modal } from "../../shared/ui/ui";
 import { MediaCard } from "../../shared/ui/cards";
 import { useContentPreferences } from "../../shared/model/contentPreferences";
 import { CollectionLink, CollectionLinks } from "../../shared/ui/CollectionLink";
-import { ICheck, IChevR, IClock, IHeart, ILogout, ISettings, IStar, IUser, IUserF, IFilter } from "../../shared/ui/icons";
+import { IChevR, IClock, IHeart, ILogout, ISettings, IStar, IUser, IUserF, IFilter } from "../../shared/ui/icons";
 import { tr } from "../../shared/i18n";
 import { useTabSwipe } from "../../shared/ui/hooks/useTabSwipe";
 
@@ -127,6 +127,11 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
     ongoing: filterFavoriteVideoIds(favs, videoCache, "ongoing", favoriteHasUnwatched).length,
     finished: filterFavoriteVideoIds(favs, videoCache, "finished", favoriteHasUnwatched).length,
   }), [favs, videoCache, history, favEpCounts]);
+  const activeFavoriteFilterLabel = favFilter === "unwatched" ? tr("在追剧")
+    : favFilter === "ongoing" ? tr("连载中") : favFilter === "finished" ? tr("已完结") : "";
+  const activeFavoriteFilterCount = favFilter === "unwatched" ? favoriteFilterCounts.unwatched
+    : favFilter === "ongoing" ? favoriteFilterCounts.ongoing
+      : favFilter === "finished" ? favoriteFilterCounts.finished : 0;
   const ids = tab === "history" ? history.map((h) => h.id) : showingPosts ? postFavs : filteredFavIds;
   const visibleIds = ids.slice(0, limits[limitKey]);
   const hasMore = visibleIds.length < ids.length;
@@ -384,9 +389,15 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
               <Button aria-pressed={favKind === "post"} onClick={() => { setFavKind("post"); setFavFilter("all"); setSelectedIds([]); }} className="ios-filter-pill">{tr("帖子{0}", postFavs.length ? ` ${postFavs.length}` : "")}</Button>
             </div>
             {favKind === "video" && favs.length > 0 && (
-              <div ref={filterMenuRef} className="relative ml-auto" role="group" aria-label={tr("收藏状态筛选")}>
-                <Button ref={filterButtonRef} aria-label={tr("收藏状态筛选")} aria-haspopup="menu"
-                  aria-expanded={filterMenuOpen} aria-pressed={favFilter !== "all"}
+              <div ref={filterMenuRef} className="relative ml-auto flex items-center gap-1.5" role="group" aria-label={tr("收藏状态筛选")}>
+                {favFilter !== "all" && (
+                  <span className="ios-filter-active-label" aria-live="polite">
+                    {activeFavoriteFilterLabel} {activeFavoriteFilterCount}
+                  </span>
+                )}
+                <Button ref={filterButtonRef}
+                  aria-label={favFilter === "all" ? tr("收藏状态筛选") : `${tr("收藏状态筛选")}: ${activeFavoriteFilterLabel} ${activeFavoriteFilterCount}`}
+                  aria-haspopup="menu" aria-expanded={filterMenuOpen} aria-pressed={favFilter !== "all"}
                   className="ios-filter-pill is-icon"
                   onClick={() => {
                     if (filterMenuOpen) { applyFavoriteFilter("all"); return; }
@@ -419,10 +430,7 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
                       <Button key={key} role="menuitemradio" aria-checked={favFilter === key}
                         onClick={() => applyFavoriteFilter(key)}>
                         <span>{label}</span>
-                        <span className="ios-filter-menu-side">
-                          <span className="ios-filter-menu-count">{count}</span>
-                          {favFilter === key && <ICheck size={14} />}
-                        </span>
+                        <span className="ios-filter-menu-count">{count}</span>
                       </Button>
                     ))}
                   </div>

@@ -51,6 +51,7 @@ try {
   await page.locator(".ios-page-body").waitFor();
   const filterButton = page.locator('[aria-label="收藏状态筛选"] button[aria-haspopup="menu"]');
   const menu = page.getByRole("menu", { name: "追剧状态" });
+  const activeLabel = page.locator(".ios-filter-active-label");
   const openMenu = async () => {
     if (!(await menu.count())) await filterButton.click();
     await menu.waitFor();
@@ -72,6 +73,10 @@ try {
   await openMenu();
   assert.deepEqual(await optionTexts(), ["在追剧 2", "连载中 3", "已完结 3"]);
   assert.equal(await options.nth(0).getAttribute("aria-checked"), "false");
+  assert.equal(await page.locator(".ios-filter-menu svg").count(), 0, "menu has no trailing check icon");
+  const countRightEdges = await page.locator(".ios-filter-menu-count").evaluateAll(elements =>
+    elements.map(element => Math.round(element.getBoundingClientRect().right)));
+  assert.ok(Math.max(...countRightEdges) - Math.min(...countRightEdges) <= 1, "menu counts share one right edge");
   assert.equal(await page.locator('[aria-label="收藏内容类型"] button').first().innerText(), "短剧 6");
   const footer = page.locator('[role="status"]').filter({ hasText: "已显示" }).last();
   assert.equal(await footer.innerText(), "已显示 6 / 6 项本机记录");
@@ -90,12 +95,14 @@ try {
   assert.deepEqual(await page.locator(".ios-poster-title").allInnerTexts(), ["更新一", "完结二"]);
   assert.deepEqual(await page.locator(".ios-poster-badge").allInnerTexts(), ["未看 9 集", "未看 8 集"]);
   assert.equal(await filterButton.getAttribute("aria-pressed"), "true");
+  assert.equal(await activeLabel.innerText(), "在追剧 2");
   await page.screenshot({ path: fileURLToPath(new URL("favorite-unwatched.png", output)), animations: "disabled" });
   await choose("连载中 3");
   await page.waitForFunction(() => document.querySelectorAll(".ios-poster-title").length === 3);
   assert.equal(await footer.innerText(), "已显示 3 / 3 项本机记录");
   assert.deepEqual(await page.locator(".ios-poster-title").allInnerTexts(), ["更新一", "更新三", "更新五"]);
   assert.deepEqual(await page.locator(".ios-poster-badge").allInnerTexts(), ["更新至 12 集", "更新至 12 集", "更新至 12 集"]);
+  assert.equal(await activeLabel.innerText(), "连载中 3");
   await page.screenshot({ path: fileURLToPath(new URL("favorite-ongoing.png", output)), animations: "disabled" });
   await openMenu();
   assert.equal(await page.getByRole("menuitemradio", { name: "连载中 3" }).getAttribute("aria-checked"), "true");
@@ -108,11 +115,13 @@ try {
   assert.equal(await footer.innerText(), "已显示 3 / 3 项本机记录");
   assert.deepEqual(await page.locator(".ios-poster-title").allInnerTexts(), ["完结二", "完结四", "完结六"]);
   assert.deepEqual(await page.locator(".ios-poster-badge").allInnerTexts(), ["全 10 集", "全 12 集", "全 12 集"]);
+  assert.equal(await activeLabel.innerText(), "已完结 3");
   await page.screenshot({ path: fileURLToPath(new URL("favorite-finished.png", output)), animations: "disabled" });
   await backToAll();
   await page.waitForFunction(() => document.querySelectorAll(".ios-poster-title").length === 6);
   assert.equal(await footer.innerText(), "已显示 6 / 6 项本机记录");
   assert.equal(await filterButton.getAttribute("aria-pressed"), "false");
+  assert.equal(await activeLabel.count(), 0);
   await page.screenshot({ path: fileURLToPath(new URL("favorite-default.png", output)), animations: "disabled" });
   console.log("PASS: category counts and footer totals stay consistent");
 } catch (error) {
