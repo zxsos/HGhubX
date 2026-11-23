@@ -263,6 +263,23 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
     setFilterMenuOpen(false);
     requestAnimationFrame(() => filterButtonRef.current?.focus());
   };
+
+  /* Re-tapping the active Profile tab restores the default favorites landing. */
+  useEffect(() => {
+    const reset = () => {
+      setTab("fav");
+      setFavKind("video");
+      setFavFilter("all");
+      setFilterMenuOpen(false);
+      setSelectedIds([]);
+      setRemoveOpen(false);
+      setRemoveError("");
+      setFailedIds([]);
+      scrollRef.current?.scrollTo({ top: 0 });
+    };
+    window.addEventListener("hg:profile-reset", reset);
+    return () => window.removeEventListener("hg:profile-reset", reset);
+  }, []);
   const allSelected = ids.length > 0 && ids.every((id) => selectedIds.includes(id));
   const selectAll = () => setSelectedIds([...ids]);
   const confirmRemoveSelected = async () => {
@@ -394,10 +411,7 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
                   aria-label={favFilter === "all" ? tr("收藏状态筛选") : `${tr("收藏状态筛选")}: ${activeFavoriteFilterLabel} ${activeFavoriteFilterCount}`}
                   aria-haspopup="menu" aria-expanded={filterMenuOpen} aria-pressed={favFilter !== "all"}
                   className={`ios-filter-pill ${favFilter === "all" ? "is-icon" : "is-labeled"}`}
-                  onClick={() => {
-                    if (filterMenuOpen) { applyFavoriteFilter("all"); return; }
-                    setFilterMenuOpen(true);
-                  }}>
+                  onClick={() => setFilterMenuOpen(current => !current)}>
                   {favFilter !== "all" && (
                     <span className="ios-filter-active-label">{activeFavoriteFilterLabel} {activeFavoriteFilterCount}</span>
                   )}

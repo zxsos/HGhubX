@@ -64,6 +64,10 @@ function TabBar() {
               window.dispatchEvent(new Event("hg:search-reset"));
               return;
             }
+            if (key === "profile" && tab === "profile") {
+              window.dispatchEvent(new Event("hg:profile-reset"));
+              return;
+            }
             setTab(key);
           }}
             aria-current={tab === key ? "page" : undefined}>

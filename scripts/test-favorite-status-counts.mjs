@@ -62,9 +62,8 @@ try {
     await menu.waitFor({ state: "detached" });
   };
   const backToAll = async () => {
-    await openMenu();
-    await filterButton.click();
-    await menu.waitFor({ state: "detached" });
+    await page.evaluate(() => window.dispatchEvent(new Event("hg:profile-reset")));
+    await page.waitForFunction(() => document.querySelector('[aria-label="收藏状态筛选"] button')?.getAttribute("aria-pressed") === "false");
   };
   await page.waitForFunction(() => document.querySelectorAll(".ios-poster-title").length === 6);
   await page.waitForFunction(() => document.querySelector('[aria-label="收藏状态筛选"] button')?.getAttribute("aria-expanded") === "false");
@@ -102,6 +101,15 @@ try {
   assert.ok(activeFilterBox && catBox && Math.abs(activeFilterBox.height - catBox.height) <= 1, "active filter pill matches the category pill height");
   assert.ok(activeFilterBox.x + activeFilterBox.width <= 390 - 16, "expanded filter pill stays inside the page");
   await page.screenshot({ path: fileURLToPath(new URL("favorite-unwatched.png", output)), animations: "disabled" });
+  await openMenu();
+  await filterButton.click();
+  await menu.waitFor({ state: "detached" });
+  assert.equal(await activeLabel.innerText(), "在追剧 2", "closing the menu must not reset the selected status");
+  assert.equal(await filterButton.getAttribute("aria-pressed"), "true");
+  await openMenu();
+  await page.waitForFunction(() => document.activeElement?.closest('[role="menu"]') !== null);
+  await page.keyboard.press("Escape");
+  await menu.waitFor({ state: "detached" });
   await choose("连载中 3");
   await page.waitForFunction(() => document.querySelectorAll(".ios-poster-title").length === 3);
   assert.equal(await footer.innerText(), "已显示 3 / 3 项本机记录");
