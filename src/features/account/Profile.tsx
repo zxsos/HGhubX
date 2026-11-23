@@ -389,20 +389,18 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
               <Button aria-pressed={favKind === "post"} onClick={() => { setFavKind("post"); setFavFilter("all"); setSelectedIds([]); }} className="ios-filter-pill">{tr("帖子{0}", postFavs.length ? ` ${postFavs.length}` : "")}</Button>
             </div>
             {favKind === "video" && favs.length > 0 && (
-              <div ref={filterMenuRef} className="relative ml-auto flex items-center gap-1.5" role="group" aria-label={tr("收藏状态筛选")}>
-                {favFilter !== "all" && (
-                  <span className="ios-filter-active-label" aria-live="polite">
-                    {activeFavoriteFilterLabel} {activeFavoriteFilterCount}
-                  </span>
-                )}
+              <div ref={filterMenuRef} className="relative ml-auto" role="group" aria-label={tr("收藏状态筛选")}>
                 <Button ref={filterButtonRef}
                   aria-label={favFilter === "all" ? tr("收藏状态筛选") : `${tr("收藏状态筛选")}: ${activeFavoriteFilterLabel} ${activeFavoriteFilterCount}`}
                   aria-haspopup="menu" aria-expanded={filterMenuOpen} aria-pressed={favFilter !== "all"}
-                  className="ios-filter-pill is-icon"
+                  className={`ios-filter-pill ${favFilter === "all" ? "is-icon" : "is-labeled"}`}
                   onClick={() => {
                     if (filterMenuOpen) { applyFavoriteFilter("all"); return; }
                     setFilterMenuOpen(true);
                   }}>
+                  {favFilter !== "all" && (
+                    <span className="ios-filter-active-label">{activeFavoriteFilterLabel} {activeFavoriteFilterCount}</span>
+                  )}
                   <IFilter size={19} strokeWidth={1.8} />
                 </Button>
                 {filterMenuOpen && (

@@ -96,6 +96,11 @@ try {
   assert.deepEqual(await page.locator(".ios-poster-badge").allInnerTexts(), ["未看 9 集", "未看 8 集"]);
   assert.equal(await filterButton.getAttribute("aria-pressed"), "true");
   assert.equal(await activeLabel.innerText(), "在追剧 2");
+  assert.ok(await filterButton.evaluate(el => el.classList.contains("is-labeled")), "active state expands the filter pill to include the label");
+  assert.ok(await activeLabel.evaluate(el => el.parentElement === document.querySelector('[aria-label="收藏状态筛选"] button[aria-haspopup="menu"]')), "active label sits inside the filter pill");
+  const activeFilterBox = await filterButton.boundingBox();
+  assert.ok(activeFilterBox && catBox && Math.abs(activeFilterBox.height - catBox.height) <= 1, "active filter pill matches the category pill height");
+  assert.ok(activeFilterBox.x + activeFilterBox.width <= 390 - 16, "expanded filter pill stays inside the page");
   await page.screenshot({ path: fileURLToPath(new URL("favorite-unwatched.png", output)), animations: "disabled" });
   await choose("连载中 3");
   await page.waitForFunction(() => document.querySelectorAll(".ios-poster-title").length === 3);
