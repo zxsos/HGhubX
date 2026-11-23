@@ -20,6 +20,7 @@ const tests = [
   ["search-tab-swipe", "scripts/test-search-tab-swipe.mjs"],
   ["search-nav-reset", "scripts/test-search-nav-reset.mjs"],
   ["account-sync", "scripts/test-account-sync-empty-state.mjs"],
+  ["favorite-status-counts", "scripts/test-favorite-status-counts.mjs"],
   ["i18n", "scripts/test-i18n.mjs"],
 ];
 
