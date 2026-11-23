@@ -12,7 +12,7 @@ import { Avatar, Empty, Modal } from "../../shared/ui/ui";
 import { MediaCard } from "../../shared/ui/cards";
 import { useContentPreferences } from "../../shared/model/contentPreferences";
 import { CollectionLink, CollectionLinks } from "../../shared/ui/CollectionLink";
-import { IChevR, IClock, IHeart, ILogout, ISettings, IStar, IUser, IUserF } from "../../shared/ui/icons";
+import { ICheck, IChevR, IClock, IHeart, ILogout, ISettings, IStar, IUser, IUserF, IFilter } from "../../shared/ui/icons";
 import { tr } from "../../shared/i18n";
 import { useTabSwipe } from "../../shared/ui/hooks/useTabSwipe";
 
@@ -32,6 +32,9 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
   const [tab, setTab] = useState<"fav" | "history">("fav");
   const [favKind, setFavKind] = useState<"video" | "post">("video");
   const [favFilter, setFavFilter] = useState<FavoriteFilter>("all");
+  const [filterMenuOpen, setFilterMenuOpen] = useState(false);
+  const filterMenuRef = useRef<HTMLDivElement>(null);
+  const filterButtonRef = useRef<HTMLButtonElement>(null);
   const [videoCache, setVideoCache] = useState<Record<number, Detail>>({});
   const videoCacheRef = useRef(videoCache);
   videoCacheRef.current = videoCache;
@@ -84,6 +87,29 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
       window.removeEventListener("hg:proxy-changed", invalidate);
     };
   }, []);
+
+  useEffect(() => {
+    if (!filterMenuOpen) return;
+    const frame = requestAnimationFrame(() => {
+      const menu = filterMenuRef.current;
+      (menu?.querySelector<HTMLButtonElement>('[role="menuitemradio"][aria-checked="true"]')
+        ?? menu?.querySelector<HTMLButtonElement>('[role="menuitemradio"]'))?.focus();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [filterMenuOpen]);
+
+  useEffect(() => {
+    if (!filterMenuOpen) return;
+    const closeOnOutsidePress = (event: PointerEvent) => {
+      if (!filterMenuRef.current?.contains(event.target as Node)) setFilterMenuOpen(false);
+    };
+    document.addEventListener("pointerdown", closeOnOutsidePress, true);
+    return () => document.removeEventListener("pointerdown", closeOnOutsidePress, true);
+  }, [filterMenuOpen]);
+
+  useEffect(() => {
+    setFilterMenuOpen(false);
+  }, [tab, favKind]);
 
   const showingPosts = tab === "fav" && favKind === "post";
   const refreshFavorites = tab === "fav" && !showingPosts;
@@ -225,10 +251,12 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
   const beginSelection = (id: number) => {
     setSelectedIds(current => current.includes(id) ? current : [...current, id]);
   };
-  const chooseFavoriteFilter = (next: Exclude<FavoriteFilter, "all">) => {
-    setFavFilter(current => current === next ? "all" : next);
+  const applyFavoriteFilter = (next: FavoriteFilter) => {
+    setFavFilter(next);
     setFailedIds([]);
     setSelectedIds([]);
+    setFilterMenuOpen(false);
+    requestAnimationFrame(() => filterButtonRef.current?.focus());
   };
   const allSelected = ids.length > 0 && ids.every((id) => selectedIds.includes(id));
   const selectAll = () => setSelectedIds([...ids]);
@@ -356,25 +384,49 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
               <Button aria-pressed={favKind === "post"} onClick={() => { setFavKind("post"); setFavFilter("all"); setSelectedIds([]); }} className="ios-filter-pill">{tr("帖子{0}", postFavs.length ? ` ${postFavs.length}` : "")}</Button>
             </div>
             {favKind === "video" && favs.length > 0 && (
-              <div className="ml-auto flex items-center gap-1.5" role="group" aria-label={tr("收藏状态筛选")}>
-                <Button aria-pressed={favFilter === "unwatched"}
-                  aria-label={favFilter === "unwatched"
-                    ? tr("未看：仅显示未看完的收藏，再次点击显示全部收藏")
-                    : tr("未看：仅显示未看完的收藏")}
-                  onClick={() => chooseFavoriteFilter("unwatched")}
-                  className="ios-filter-pill is-compact">{tr("未看 {0}", favoriteFilterCounts.unwatched)}</Button>
-                <Button aria-pressed={favFilter === "ongoing"}
-                  aria-label={favFilter === "ongoing"
-                    ? tr("连载：仅显示未完结的收藏，再次点击显示全部收藏")
-                    : tr("连载：仅显示未完结的收藏")}
-                  onClick={() => chooseFavoriteFilter("ongoing")}
-                  className="ios-filter-pill is-compact">{tr("连载 {0}", favoriteFilterCounts.ongoing)}</Button>
-                <Button aria-pressed={favFilter === "finished"}
-                  aria-label={favFilter === "finished"
-                    ? tr("完结：仅显示已完结收藏，再次点击显示全部收藏")
-                    : tr("完结：仅显示已完结收藏")}
-                  onClick={() => chooseFavoriteFilter("finished")}
-                  className="ios-filter-pill is-compact">{tr("完结 {0}", favoriteFilterCounts.finished)}</Button>
+              <div ref={filterMenuRef} className="relative ml-auto" role="group" aria-label={tr("收藏状态筛选")}>
+                <Button ref={filterButtonRef} aria-label={tr("收藏状态筛选")} aria-haspopup="menu"
+                  aria-expanded={filterMenuOpen} aria-pressed={favFilter !== "all"}
+                  className="ios-filter-pill is-icon"
+                  onClick={() => {
+                    if (filterMenuOpen) { applyFavoriteFilter("all"); return; }
+                    setFilterMenuOpen(true);
+                  }}>
+                  <IFilter size={19} strokeWidth={1.8} />
+                </Button>
+                {filterMenuOpen && (
+                  <div className="ios-filter-menu" role="menu" aria-label={tr("追剧状态")} onKeyDownCapture={event => {
+                    const entries = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')];
+                    const index = entries.indexOf(document.activeElement as HTMLButtonElement);
+                    if (event.key === "Escape") {
+                      event.preventDefault(); event.stopPropagation(); setFilterMenuOpen(false);
+                      filterButtonRef.current?.focus();
+                    } else if (event.key === "Tab") {
+                      setFilterMenuOpen(false);
+                    } else if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
+                      event.preventDefault(); event.stopPropagation();
+                      const next = event.key === "Home" ? 0 : event.key === "End" ? entries.length - 1
+                        : (index + (event.key === "ArrowDown" ? 1 : -1) + entries.length) % entries.length;
+                      entries[next]?.focus();
+                    }
+                  }}>
+                    <span className="ios-filter-menu-title">{tr("追剧状态")}</span>
+                    {([
+                      ["unwatched", tr("在追剧"), favoriteFilterCounts.unwatched],
+                      ["ongoing", tr("连载中"), favoriteFilterCounts.ongoing],
+                      ["finished", tr("已完结"), favoriteFilterCounts.finished],
+                    ] as const).map(([key, label, count]) => (
+                      <Button key={key} role="menuitemradio" aria-checked={favFilter === key}
+                        onClick={() => applyFavoriteFilter(key)}>
+                        <span>{label}</span>
+                        <span className="ios-filter-menu-side">
+                          <span className="ios-filter-menu-count">{count}</span>
+                          {favFilter === key && <ICheck size={14} />}
+                        </span>
+                      </Button>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -460,7 +512,7 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
               sub={tr("部分收藏未能加载，筛选结果可能不完整。")} action={tr("重试")} onAction={() => setReload(n => n + 1)} />
           ) : filterEmpty ? (
             <Empty icon={<IStar size={24} />}
-              title={favFilter === "unwatched" ? tr("没有未看的收藏")
+              title={favFilter === "unwatched" ? tr("没有在追的短剧")
                 : favFilter === "ongoing" ? tr("没有连载中的收藏") : tr("没有已完结的收藏")}
               sub={favFilter === "unwatched" ? tr("当前收藏都已看完。")
                 : favFilter === "ongoing" ? tr("当前收藏都已完结。") : tr("当前收藏里还没有已完结的视频。")}

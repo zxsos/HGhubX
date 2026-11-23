@@ -493,7 +493,14 @@ html.theme-light {
 .ios-collection-link { border:1px solid var(--glass-edge); border-radius:20px; min-height:60px; }
 .ios-poster { border-radius:22px; }
 .ios-filter-pill { display:inline-flex; align-items:center; justify-content:center; min-height:36px; height:auto; padding:7px 14px; border:1px solid var(--ios-edge); border-radius:999px; background:var(--p-s3); color:var(--p-mut); font-size:13px; font-weight:600; line-height:1.35; transition:background-color .16s ease,color .16s ease,border-color .16s ease,scale .24s var(--motion-spring); }
-.ios-filter-pill.is-compact { padding-left:10px; padding-right:10px; font-size:12px; }
+.ios-filter-pill.is-icon { width:36px; min-width:36px; padding:0; }
+.ios-filter-menu { position:absolute; z-index:40; top:calc(100% + 8px); right:0; width:184px; padding:6px; border:1px solid var(--ios-edge); border-radius:16px; background:var(--p-s2); box-shadow:0 12px 32px rgb(0 0 0 / .24); backdrop-filter:blur(24px); -webkit-backdrop-filter:blur(24px); }
+.ios-filter-menu-title { display:block; padding:5px 9px 4px; font-size:11px; font-weight:600; color:var(--p-mut); }
+.ios-filter-menu button { display:flex; align-items:center; justify-content:space-between; gap:12px; width:100%; min-height:38px; padding:0 9px; border:0; border-radius:10px; background:transparent; color:var(--p-on); font-size:13px; font-weight:600; }
+.ios-filter-menu button[aria-checked=true] { background:var(--p-s3); color:var(--p-primary); }
+.ios-filter-menu-side { display:inline-flex; align-items:center; gap:6px; color:var(--p-mut); }
+.ios-filter-menu-count { font-size:12px; font-variant-numeric:tabular-nums; }
+.ios-filter-menu button[aria-checked=true] .ios-filter-menu-side { color:var(--p-primary); }
 .ios-filter-pill[aria-pressed=true] { background:var(--p-primary); border-color:var(--p-primary); color:var(--p-on-primary); box-shadow:var(--control-shadow); }
 .ios-filter-pill[aria-pressed=true]:active { scale:.96; }
 .ios-history-actions { display:flex; align-items:center; gap:2px; margin-right:-8px; }

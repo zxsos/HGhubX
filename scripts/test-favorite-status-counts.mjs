@@ -49,37 +49,71 @@ try {
   await page.route("**/*", route => new URL(route.request().url()).origin === new URL(origin).origin ? route.continue() : route.abort());
   await page.goto(new URL("/tests/ui-feedback.html", origin).href, { waitUntil: "networkidle" });
   await page.locator(".ios-page-body").waitFor();
-  const status = page.locator('[aria-label="收藏状态筛选"] button');
+  const filterButton = page.locator('[aria-label="收藏状态筛选"] button[aria-haspopup="menu"]');
+  const menu = page.getByRole("menu", { name: "追剧状态" });
+  const openMenu = async () => {
+    if (!(await menu.count())) await filterButton.click();
+    await menu.waitFor();
+  };
+  const choose = async (name) => {
+    await openMenu();
+    await page.getByRole("menuitemradio", { name }).click();
+    await menu.waitFor({ state: "detached" });
+  };
+  const backToAll = async () => {
+    await openMenu();
+    await filterButton.click();
+    await menu.waitFor({ state: "detached" });
+  };
   await page.waitForFunction(() => document.querySelectorAll(".ios-poster-title").length === 6);
-  await page.waitForFunction(() => document.querySelector('[aria-label="收藏状态筛选"] button')?.textContent === "未看 2")
-    .catch(async () => { console.log("status texts:", await status.allInnerTexts()); throw new Error("counts did not settle"); });
-  assert.deepEqual(await status.allInnerTexts(), ["未看 2", "连载 3", "完结 3"]);
+  await page.waitForFunction(() => document.querySelector('[aria-label="收藏状态筛选"] button')?.getAttribute("aria-expanded") === "false");
+  const options = page.locator('.ios-filter-menu [role="menuitemradio"]');
+  const optionTexts = async () => (await options.allInnerTexts()).map(text => text.replace(/\s+/g, " ").trim());
+  await openMenu();
+  assert.deepEqual(await optionTexts(), ["在追剧 2", "连载中 3", "已完结 3"]);
+  assert.equal(await options.nth(0).getAttribute("aria-checked"), "false");
   assert.equal(await page.locator('[aria-label="收藏内容类型"] button').first().innerText(), "短剧 6");
   const footer = page.locator('[role="status"]').filter({ hasText: "已显示" }).last();
   assert.equal(await footer.innerText(), "已显示 6 / 6 项本机记录");
   assert.equal(await page.locator(".ios-poster-badge.is-update").count(), 0, "all view never shows the blue unwatched badge");
-  const [catBox, uwBox, onBox, finBox] = await Promise.all([
-    page.locator('[aria-label="收藏内容类型"] button').first().boundingBox(), status.nth(0).boundingBox(), status.nth(1).boundingBox(), status.nth(2).boundingBox()]);
-  assert.ok(catBox && uwBox && onBox && finBox && Math.abs(catBox.y - uwBox.y) <= 1 && Math.abs(catBox.height - uwBox.height) <= 1);
-  assert.ok(finBox.x + finBox.width <= 390 - 16, "three counted filters stay inside the page");
-  await page.screenshot({ path: fileURLToPath(new URL("favorite-default.png", output)), animations: "disabled" });
-  await status.nth(0).click();
+  const [catBox, filterBox] = await Promise.all([
+    page.locator('[aria-label="收藏内容类型"] button').first().boundingBox(), filterButton.boundingBox()]);
+  assert.ok(catBox && filterBox && Math.abs(catBox.y - filterBox.y) <= 1 && Math.abs(catBox.height - filterBox.height) <= 1);
+  assert.ok(filterBox.x + filterBox.width <= 390 - 16, "filter icon stays inside the page");
+  const menuBox = await page.locator(".ios-filter-menu").boundingBox();
+  assert.ok(menuBox && menuBox.x >= 0 && menuBox.x + menuBox.width <= 390, "menu stays inside the page");
+  await page.screenshot({ path: fileURLToPath(new URL("favorite-filter-menu.png", output)), animations: "disabled" });
+  await page.getByRole("menuitemradio", { name: "在追剧 2" }).click();
+  await menu.waitFor({ state: "detached" });
   await page.waitForFunction(() => document.querySelectorAll(".ios-poster-title").length === 2);
   assert.equal(await footer.innerText(), "已显示 2 / 2 项本机记录");
   assert.deepEqual(await page.locator(".ios-poster-title").allInnerTexts(), ["更新一", "完结二"]);
   assert.deepEqual(await page.locator(".ios-poster-badge").allInnerTexts(), ["未看 9 集", "未看 8 集"]);
+  assert.equal(await filterButton.getAttribute("aria-pressed"), "true");
   await page.screenshot({ path: fileURLToPath(new URL("favorite-unwatched.png", output)), animations: "disabled" });
-  await status.nth(1).click();
+  await choose("连载中 3");
   await page.waitForFunction(() => document.querySelectorAll(".ios-poster-title").length === 3);
   assert.equal(await footer.innerText(), "已显示 3 / 3 项本机记录");
   assert.deepEqual(await page.locator(".ios-poster-title").allInnerTexts(), ["更新一", "更新三", "更新五"]);
   assert.deepEqual(await page.locator(".ios-poster-badge").allInnerTexts(), ["更新至 12 集", "更新至 12 集", "更新至 12 集"]);
   await page.screenshot({ path: fileURLToPath(new URL("favorite-ongoing.png", output)), animations: "disabled" });
-  await status.nth(2).click();
+  await openMenu();
+  assert.equal(await page.getByRole("menuitemradio", { name: "连载中 3" }).getAttribute("aria-checked"), "true");
+  await page.screenshot({ path: fileURLToPath(new URL("favorite-filter-menu-selected.png", output)), animations: "disabled" });
+  await page.keyboard.press("Escape");
+  await menu.waitFor({ state: "detached" });
+  assert.equal(await footer.innerText(), "已显示 3 / 3 项本机记录");
+  await choose("已完结 3");
   await page.waitForFunction(() => document.querySelectorAll(".ios-poster-title").length === 3);
   assert.equal(await footer.innerText(), "已显示 3 / 3 项本机记录");
+  assert.deepEqual(await page.locator(".ios-poster-title").allInnerTexts(), ["完结二", "完结四", "完结六"]);
   assert.deepEqual(await page.locator(".ios-poster-badge").allInnerTexts(), ["全 10 集", "全 12 集", "全 12 集"]);
   await page.screenshot({ path: fileURLToPath(new URL("favorite-finished.png", output)), animations: "disabled" });
+  await backToAll();
+  await page.waitForFunction(() => document.querySelectorAll(".ios-poster-title").length === 6);
+  assert.equal(await footer.innerText(), "已显示 6 / 6 项本机记录");
+  assert.equal(await filterButton.getAttribute("aria-pressed"), "false");
+  await page.screenshot({ path: fileURLToPath(new URL("favorite-default.png", output)), animations: "disabled" });
   console.log("PASS: category counts and footer totals stay consistent");
 } catch (error) {
   console.error(error); process.exitCode = 1;
