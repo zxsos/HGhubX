@@ -798,6 +798,14 @@ const en: Record<string, string> = {
   "完结进度：已完结优先，再次点击切换为更新中优先": "Completion status: completed first, tap again for ongoing first",
   "完结进度：更新中优先，再次点击切换为已完结优先": "Completion status: ongoing first, tap again for completed first",
   "正在加载全部收藏以完成排序…": "Loading all favorites to sort…",
+  "排序": "Sort",
+  "排序方式": "Sort by",
+  "排序：{0}": "Sort: {0}",
+  "默认排序": "Default",
+  "点赞数": "Likes",
+  "收藏数": "Collects",
+  "播放数": "Plays",
+  "正在加载全部结果以排序…": "Loading all results to sort…",
 };
 
 export default en;

@@ -141,10 +141,10 @@ export const api = {
     call<Paged<VideoCard>>("api_tag_videos", { tag, page, size, sort }),
   postTag: (tag: string, page = 1, size = 20) =>
     call<Paged<Post>>("api_post_tag", { tag, page, size }),
-  category: (cate: string, page = 1, size = 20, sort?: string) =>
-    call<Paged<VideoCard>>("api_category", { cate, page, size, sort: sort ?? null }),
-  originalVideos: (cate: string, page = 1, size = 20, sort?: string) =>
-    call<Paged<VideoCard>>("api_original_videos", { cate, page, size, sort: sort ?? null }),
+  category: (cate: string, page = 1, size = 20, sort?: string, jsonOnly = false) =>
+    call<Paged<VideoCard>>("api_category", { cate, page, size, sort: sort ?? null, jsonOnly }),
+  originalVideos: (cate: string, page = 1, size = 20, sort?: string, jsonOnly = false) =>
+    call<Paged<VideoCard>>("api_original_videos", { cate, page, size, sort: sort ?? null, jsonOnly }),
   rank: (kind: "hot" | "recommend" | "potential") =>
     call<{ type: string; items: RankItem[] }>("api_rank", { kind }),
   /** 全站搜索。`kind` 省略时后端只搜短剧；吃瓜帖要显式传 "post"（issue #34）。 */

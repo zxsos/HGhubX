@@ -1,6 +1,6 @@
 import { Button } from "../../shared/ui/ios/controls";
 import { Loader } from "../../shared/ui/ios/effects";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, fmt } from "../../shared/api/api";
 import type { Post, VideoCard } from "../../shared/api/types";
 import { useStore } from "../../shared/model/store";
@@ -14,6 +14,8 @@ import { Empty } from "../../shared/ui/ui";
 import { IAward, IBack, IChevR, IClock, IFilm, IFlame, ILayers, ISearch, ISpark, IStar, ITag } from "../../shared/ui/icons";
 import { tr, N_ } from "../../shared/i18n";
 import { useTabSwipe } from "../../shared/ui/hooks/useTabSwipe";
+import { VideoSortMenu } from "../../shared/ui/VideoSortMenu";
+import { sortVideosByMetric, type VideoSortMetric } from "../../shared/model/videoSort";
 
 export const CHANNELS = [
   { cate: "ai-duanju", name: N_("AI成人短剧"), Icon: IFilm },
@@ -197,6 +199,9 @@ const ORIGINAL_CATES = [
 const originalSort = (cate: (typeof ORIGINAL_CATES)[number]["value"]) =>
   cate === "all" ? "new" : "latest";
 
+const METRIC_PAGE_SIZE = 100;
+const METRIC_MAX_PAGES = 30;
+
 export function ChannelPage({ cate, name, onBack, wide }: { cate: string; name: string; onBack: () => void; wide: boolean }) {
   const { push, lineEpoch } = useStore();
   const { preferences, blockReason } = useContentPreferences();
@@ -208,22 +213,91 @@ export function ChannelPage({ cate, name, onBack, wide }: { cate: string; name: 
   const [searching, setSearching] = useState(false);
   const [serverSort, setServerSort] = useState<(typeof CHANNEL_SORTS)[number]["value"]>("latest");
   const [originalCate, setOriginalCate] = useState<(typeof ORIGINAL_CATES)[number]["value"]>("all");
+  const [metricSort, setMetricSort] = useState<VideoSortMetric>("default");
+  const [metricVisible, setMetricVisible] = useState(20);
+  const metricLoaded = useRef(false);
   const [pageItems, setPageItems] = useState<VideoCard[][]>([]);
   const items = pageItems.flat();
+  const sortedItems = useMemo(() => sortVideosByMetric(items, metricSort), [items, metricSort]);
+  const visibleItems = metricSort === "default" ? sortedItems : sortedItems.slice(0, metricVisible);
   const [page, setPage] = useState(0);
   const [pages, setPages] = useState(1);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [emptyStreak, setEmptyStreak] = useState(0);
   const isSingleList = cate === "newest" || cate === "recommend";
-  const filterKey = (sort: string, original: string) =>
-    `${cate}:${isSingleList ? "default" : cate === "original" ? original : sort}`;
+  const filterKey = (sort: string, original: string, metric: VideoSortMetric = "default") =>
+    `${cate}:${isSingleList ? "default" : cate === "original" ? original : sort}:${metric}`;
   const [displayedFilter, setDisplayedFilter] = useState(() => filterKey("latest", "all"));
   const [err, setErr] = useState<string | null>(null);
   const busy = useRef(false);
   const requestSeq = useRef(0);
   const sentinel = useRef<HTMLDivElement>(null);
   const scrollContainer = useRef<HTMLDivElement>(null);
+
+  const fetchChannelPage = (targetPage: number, size: number, sortValue: string,
+    originalCateValue: typeof originalCate, jsonOnly = false) => cate === "original"
+    ? api.originalVideos(originalCateValue, targetPage, size, originalSort(originalCateValue), jsonOnly)
+    : api.category(cate, targetPage, size, isSingleList ? undefined : sortValue, jsonOnly);
+
+  /**
+   * Metric sorting has to see every page, otherwise appending page 2 would
+   * reorder the cards the user is already looking at. Fetch the JSON list in
+   * large pages (it carries like/collect/play counts) and sort once at the end.
+   */
+  const loadMetricPages = async (metric: VideoSortMetric) => {
+    if (metric === "default") return;
+    const seq = ++requestSeq.current;
+    busy.current = true;
+    setLoading(true);
+    setRefreshing(true);
+    setErr(null);
+    setMetricVisible(20);
+    let all: VideoCard[] = [];
+    let totalPages = 1;
+    let requestedPages = 1;
+    try {
+      const first = await fetchChannelPage(1, METRIC_PAGE_SIZE, serverSort, originalCate, true);
+      if (seq !== requestSeq.current) return;
+      totalPages = Math.max(1, first?.pagination?.pages || 1);
+      requestedPages = Math.min(totalPages, METRIC_MAX_PAGES);
+      all = first?.items || [];
+      for (let start = 2; start <= requestedPages; start += 4) {
+        const batch: Promise<Awaited<ReturnType<typeof fetchChannelPage>>>[] = [];
+        for (let p = start; p < Math.min(start + 4, requestedPages + 1); p += 1) {
+          batch.push(fetchChannelPage(p, METRIC_PAGE_SIZE, serverSort, originalCate, true));
+        }
+        const results = await Promise.all(batch);
+        if (seq !== requestSeq.current) return;
+        for (const result of results) all.push(...(result?.items || []));
+      }
+      if (seq !== requestSeq.current) return;
+      const seen = new Set<number>();
+      const unique = all.filter((item) => !seen.has(item.id) && !!seen.add(item.id));
+      setPageItems([unique]);
+      setPage(requestedPages);
+      setPages(totalPages);
+      setDisplayedFilter(filterKey(serverSort, originalCate, metric));
+      metricLoaded.current = true;
+      setEmptyStreak(0);
+    } catch (e) {
+      if (seq !== requestSeq.current) return;
+      if (all.length) {
+        const seen = new Set<number>();
+        setPageItems([all.filter((item) => !seen.has(item.id) && !!seen.add(item.id))]);
+        setPage(requestedPages);
+        setPages(totalPages);
+        setDisplayedFilter(filterKey(serverSort, originalCate, metric));
+      }
+      setErr((e as Error).message || tr("加载失败"));
+    } finally {
+      if (seq === requestSeq.current) {
+        busy.current = false;
+        setLoading(false);
+        setRefreshing(false);
+      }
+    }
+  };
 
   const loadMore = async (reset = false, sortOverride: string = serverSort, originalCateOverride = originalCate) => {
     const seq = reset ? ++requestSeq.current : requestSeq.current;
@@ -234,9 +308,7 @@ export function ChannelPage({ cate, name, onBack, wide }: { cate: string; name: 
     if (reset) { setRefreshing(true); setEmptyStreak(0); }
     try {
       const next = reset ? 1 : page + 1;
-      const res = cate === "original"
-        ? await api.originalVideos(originalCateOverride, next, 20, originalSort(originalCateOverride))
-        : await api.category(cate, next, 20, isSingleList ? undefined : sortOverride);
+      const res = await fetchChannelPage(next, 20, sortOverride, originalCateOverride);
       if (seq !== requestSeq.current) return;
       const incoming = res?.items || [];
       setPageItems((prev) => {
@@ -265,9 +337,35 @@ export function ChannelPage({ cate, name, onBack, wide }: { cate: string; name: 
     }
   };
 
+  const changeMetricSort = (value: VideoSortMetric) => {
+    if (value === metricSort) return;
+    if (scrollContainer.current) scrollContainer.current.scrollTop = 0;
+    setErr(null);
+    setMetricVisible(20);
+    if (value === "default") {
+      metricLoaded.current = false;
+      setMetricSort("default");
+      void loadMore(true, serverSort, originalCate);
+      return;
+    }
+    setMetricSort(value);
+    if (metricLoaded.current) {
+      setDisplayedFilter(filterKey(serverSort, originalCate, value));
+      return;
+    }
+    void loadMetricPages(value);
+  };
+
+  const resetMetricSort = () => {
+    if (metricSort === "default") return;
+    metricLoaded.current = false;
+    setMetricSort("default");
+  };
+
   const changeServerSort = (value: (typeof CHANNEL_SORTS)[number]["value"]) => {
     if (value === serverSort) return;
     if (scrollContainer.current) scrollContainer.current.scrollTop = 0;
+    resetMetricSort();
     setServerSort(value);
     setErr(null);
     void loadMore(true, value);
@@ -276,6 +374,7 @@ export function ChannelPage({ cate, name, onBack, wide }: { cate: string; name: 
   const changeOriginalCate = (value: (typeof ORIGINAL_CATES)[number]["value"]) => {
     if (value === originalCate) return;
     if (scrollContainer.current) scrollContainer.current.scrollTop = 0;
+    resetMetricSort();
     setOriginalCate(value);
     setErr(null);
     void loadMore(true, originalSort(value), value);
@@ -302,20 +401,28 @@ export function ChannelPage({ cate, name, onBack, wide }: { cate: string; name: 
   useEffect(() => {
     setPageItems([]); setPage(0); setPages(1);
     setServerSort("latest"); setOriginalCate("all"); setSearching(false);
+    setMetricSort("default"); setMetricVisible(20); metricLoaded.current = false;
     void loadMore(true, "latest", "all");
     return () => { requestSeq.current++; busy.current = false; };
     /* eslint-disable-next-line */
   }, [cate, lineEpoch]);
-  const filterPending = displayedFilter !== filterKey(serverSort, originalCate);
+  const filterPending = displayedFilter !== filterKey(serverSort, originalCate, metricSort);
   const replacing = refreshing || filterPending;
   useEffect(() => { setEmptyStreak(0); }, [filtering, preferences.blockedTags, preferences.hideUntagged]);
   const autoLoadPaused = filtering && emptyStreak >= AUTO_LOAD_EMPTY_PAGE_LIMIT;
   useAutoLoadMore({
     scrollRef: scrollContainer,
     sentinelRef: sentinel,
-    enabled: !loading && !err && !replacing && page < pages && !autoLoadPaused,
-    watchKey: `${page}:${pages}:${items.length}`,
-    onLoadMore: () => { void loadMore(); },
+    enabled: !loading && !err && !replacing
+      && (metricSort === "default" ? page < pages && !autoLoadPaused : metricVisible < sortedItems.length),
+    watchKey: `${page}:${pages}:${items.length}:${metricSort}:${metricVisible}`,
+    onLoadMore: () => {
+      if (metricSort !== "default") {
+        setMetricVisible(count => Math.min(count + 20, sortedItems.length));
+      } else {
+        void loadMore();
+      }
+    },
     rootMargin: "300px",
   });
 
@@ -332,46 +439,48 @@ export function ChannelPage({ cate, name, onBack, wide }: { cate: string; name: 
           <span className="w-9 h-9 rounded-[12px] bg-pc text-on-pc flex items-center justify-center shrink-0"><ChannelGlyph size={18} strokeWidth={1.9} /></span>
           <div className="flex-1 min-w-0">
             <h1 className="text-[17px] font-bold text-on leading-tight truncate">{name}</h1>
-            <div role="status" className="text-[12px] text-mut leading-tight mt-0.5">{replacing ? (isSingleList ? (loading ? tr("加载中…") : tr("加载失败")) : (loading ? tr("正在更新筛选结果…") : tr("筛选更新失败"))) : tr("已加载 {0} 部 · {1}/{2} 页", items.length, page, Math.max(pages, 1))}</div>
+            <div role="status" className="text-[12px] text-mut leading-tight mt-0.5">{replacing ? (isSingleList ? (loading ? tr("加载中…") : tr("加载失败")) : (loading && metricSort !== "default" ? tr("正在加载全部结果以排序…") : (loading ? tr("正在更新筛选结果…") : tr("筛选更新失败")))) : tr("已加载 {0} 部 · {1}/{2} 页", sortedItems.length, page, Math.max(pages, 1))}</div>
           </div>
           <Button onClick={() => setSearching(true)} aria-label={cate === "original" ? tr("搜索原创") : tr("搜索短剧")} className="ios-nav-btn"><ISearch size={18} /></Button>
         </div>
         {cate === "original" && (
-          <div className="ios-subpage-inner pb-3 flex flex-wrap gap-2">
+          <div className="ios-subpage-inner ios-channel-tabs pb-3 flex flex-wrap items-center gap-1.5">
             {ORIGINAL_CATES.map((s) => (
               <Button aria-pressed={originalCate === s.value} key={s.value} onClick={() => changeOriginalCate(s.value)}
                 className="ios-filter-pill">{tr(s.label)}</Button>
             ))}
+            <VideoSortMenu className="ml-auto" value={metricSort} onChange={changeMetricSort} />
           </div>
         )}
         {!isSingleList && cate !== "original" && (
-          <div className="ios-subpage-inner pb-3 flex flex-wrap gap-2">
+          <div className="ios-subpage-inner ios-channel-tabs pb-3 flex flex-wrap items-center gap-1.5">
             {CHANNEL_SORTS.map((s) => (
               <Button aria-pressed={serverSort === s.value} key={s.value} onClick={() => changeServerSort(s.value)}
                 className="ios-filter-pill">{tr(s.label)}</Button>
             ))}
+            <VideoSortMenu className="ml-auto" value={metricSort} onChange={changeMetricSort} />
           </div>
         )}
       </div>
       <div ref={scrollContainer} {...channelTabSwipe} style={{ touchAction: "pan-y" }}
         className="flex-1 scroll-y pt-3.5 pb-8" aria-busy={loading}>
-        {items.length > 0 && replacing && <p role="status" className="mb-3 text-[12px] text-mut">{loading ? tr("正在更新，暂时保留上次结果…") : tr("当前显示上次结果，请重试以更新筛选。")}</p>}
-        {items.length > 0 && err && <div role="status" className="mb-3 flex flex-wrap items-center gap-2 text-[12px] text-mut"><span>{err}</span><Button className="px-3 text-primary" onClick={() => void loadMore(replacing)}>{tr("重试")}</Button></div>}
-        {items.length ? (
+        {sortedItems.length > 0 && replacing && <p role="status" className="mb-3 text-[12px] text-mut">{loading ? tr("正在更新，暂时保留上次结果…") : tr("当前显示上次结果，请重试以更新筛选。")}</p>}
+        {sortedItems.length > 0 && err && <div role="status" className="mb-3 flex flex-wrap items-center gap-2 text-[12px] text-mut"><span>{err}</span><Button className="px-3 text-primary" onClick={() => void (metricSort === "default" ? loadMore(replacing) : loadMetricPages(metricSort))}>{tr("重试")}</Button></div>}
+        {visibleItems.length ? (
           <div inert={replacing || undefined} className={replacing ? "opacity-60" : undefined}>
-            <Masonry videos={items} scopeKey={filterKey(serverSort, originalCate)} wide={wide} onOpen={(v, visible) => { if (!replacing) push({ kind: "feed", videoIds: visible.map((x) => x.id), index: visible.findIndex((x) => x.id === v.id), title: name }); }} />
+            <Masonry videos={visibleItems} scopeKey={filterKey(serverSort, originalCate, metricSort)} wide={wide} onOpen={(v, visible) => { if (!replacing) push({ kind: "feed", videoIds: visible.map((x) => x.id), index: visible.findIndex((x) => x.id === v.id), title: name }); }} />
           </div>
         ) : err ? (
-          <Empty icon={<ChannelGlyph size={26} />} title={tr("加载失败")} sub={err} action={tr("重试")} onAction={() => void loadMore(true)} />
+          <Empty icon={<ChannelGlyph size={26} />} title={tr("加载失败")} sub={err} action={tr("重试")} onAction={() => void (metricSort === "default" ? loadMore(true) : loadMetricPages(metricSort))} />
         ) : loading ? (
           <div className="flex justify-center py-10"><Loader className="w-8 h-8 spinner" /></div>
         ) : <Empty icon={<ChannelGlyph size={26} />} title={isSingleList ? tr("暂无内容") : tr("该筛选下暂无内容")} sub={isSingleList ? undefined : tr("换个筛选试试")} />}
         <div ref={sentinel} className="h-10" aria-hidden="true" />
-        {loading && items.length > 0 && <div className="flex justify-center py-3"><Loader className="w-6 h-6 spinner" /></div>}
-        {!loading && !err && !replacing && page < pages && autoLoadPaused && (
+        {loading && visibleItems.length > 0 && <div className="flex justify-center py-3"><Loader className="w-6 h-6 spinner" /></div>}
+        {!loading && !err && !replacing && metricSort === "default" && page < pages && autoLoadPaused && (
           <div className="flex justify-center"><Button onClick={() => { setEmptyStreak(0); void loadMore(); }} className="my-3 px-4 text-primary">{tr("加载更多")}</Button></div>
         )}
-        {!loading && !replacing && !err && page >= pages && items.length > 0 && (
+        {!loading && !replacing && !err && (metricSort === "default" ? page >= pages : metricVisible >= sortedItems.length) && visibleItems.length > 0 && (
           <div className="text-center text-[12px] text-dim py-3">{tr("— 已经到底啦 —")}</div>
         )}
       </div>

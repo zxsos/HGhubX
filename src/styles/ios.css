@@ -495,6 +495,16 @@ html.theme-light {
 .ios-filter-pill { display:inline-flex; align-items:center; justify-content:center; min-height:36px; height:auto; padding:7px 14px; border:1px solid var(--ios-edge); border-radius:999px; background:var(--p-s3); color:var(--p-mut); font-size:13px; font-weight:600; line-height:1.35; transition:background-color .16s ease,color .16s ease,border-color .16s ease,scale .24s var(--motion-spring); }
 .ios-filter-pill[aria-pressed=true] { background:var(--p-primary); border-color:var(--p-primary); color:var(--p-on-primary); box-shadow:var(--control-shadow); }
 .ios-filter-pill[aria-pressed=true]:active { scale:.96; }
+.ios-sort-control { position:relative; display:inline-flex; flex:none; }
+.ios-sort-pill.is-icon { width:36px; min-width:36px; height:36px; min-height:36px; padding:0; }
+.ios-sort-pill.is-labeled { gap:6px; padding:0 11px 0 12px; white-space:nowrap; }
+.ios-sort-pill.is-active { background:var(--p-primary); border-color:var(--p-primary); color:var(--p-on-primary); box-shadow:var(--control-shadow); }
+.ios-sort-pill.is-active:active { scale:.96; }
+.ios-channel-tabs > .ios-filter-pill:not(.ios-sort-pill) { padding-inline:11px; }
+.ios-sort-menu { position:absolute; z-index:40; top:calc(100% + 8px); right:0; width:156px; padding:6px; border:1px solid var(--ios-edge); border-radius:16px; background:var(--p-s2); box-shadow:0 12px 32px rgb(0 0 0 / .24); backdrop-filter:blur(24px); -webkit-backdrop-filter:blur(24px); }
+.ios-sort-menu-title { display:block; padding:5px 9px 4px; font-size:11px; font-weight:600; color:var(--p-mut); }
+.ios-sort-menu button { display:flex; align-items:center; width:100%; min-height:38px; padding:0 9px; border:0; border-radius:10px; background:transparent; color:var(--p-on); font-size:13px; font-weight:600; text-align:left; }
+.ios-sort-menu button[aria-checked=true] { background:var(--p-s3); color:var(--p-primary); }
 .ios-history-actions { display:flex; align-items:center; gap:2px; margin-right:-8px; }
 .ios-history-action { min-height:32px; height:32px; padding:0 6px; border:0; background:transparent; box-shadow:none; color:var(--p-mut); font-size:12px; }
 .ios-history-action:active { color:var(--p-on); }

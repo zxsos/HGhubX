@@ -22,9 +22,12 @@ pub async fn api_original_videos(
     page: u32,
     size: u32,
     sort: Option<String>,
+    json_only: Option<bool>,
 ) -> Result<Value, String> {
-    if let Ok(value) = crate::channel_page::fetch_original(&cate, page, size).await {
-        return Ok(value);
+    if !json_only.unwrap_or(false) {
+        if let Ok(value) = crate::channel_page::fetch_original(&cate, page, size).await {
+            return Ok(value);
+        }
     }
     let sort = match sort.as_deref() {
         Some(s) if !s.trim().is_empty() => format!("&sort={s}"),
@@ -104,9 +107,12 @@ pub async fn api_category(
     page: u32,
     size: u32,
     sort: Option<String>,
+    json_only: Option<bool>,
 ) -> Result<Value, String> {
-    if let Ok(value) = crate::channel_page::fetch_category(&cate, page, size, sort.as_deref()).await {
-        return Ok(value);
+    if !json_only.unwrap_or(false) {
+        if let Ok(value) = crate::channel_page::fetch_category(&cate, page, size, sort.as_deref()).await {
+            return Ok(value);
+        }
     }
     let q = sort.as_deref().map(str::trim).filter(|s| !s.is_empty()).map_or_else(String::new, |s| format!("&sort={s}"));
     let path = match cate.as_str() {
