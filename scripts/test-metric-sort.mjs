@@ -86,7 +86,15 @@ try {
   await page.keyboard.press("Escape");
   for (const label of ["点赞数", "收藏数", "播放数"]) {
     await selectSort(label);
-    if (label === "点赞数") await page.screenshot({ path: fileURLToPath(new URL("channel-like-sort.png", output)), animations: "disabled" });
+    if (label === "点赞数") {
+      await page.screenshot({ path: fileURLToPath(new URL("channel-like-sort.png", output)), animations: "disabled" });
+      await page.getByRole("button", { name: "原创漫剧", exact: true }).click();
+      await waitOrder(expected.点赞数);
+      assert.match(await page.locator("[data-video-sort-trigger]").innerText(), /点赞数/);
+      report.checks.push("original channel: switching category tab keeps the active metric sort");
+      await page.getByRole("button", { name: "全部原创", exact: true }).click();
+      await waitOrder(expected.点赞数);
+    }
   }
   await resetSort();
   report.checks.push("original channel: all three metrics reorder globally; active pill is labeled; second click on the open menu resets default");

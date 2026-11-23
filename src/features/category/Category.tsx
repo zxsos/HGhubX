@@ -245,7 +245,7 @@ export function ChannelPage({ cate, name, onBack, wide }: { cate: string; name: 
    * reorder the cards the user is already looking at. Fetch the JSON list in
    * large pages (it carries like/collect/play counts) and sort once at the end.
    */
-  const loadMetricPages = async (metric: VideoSortMetric) => {
+  const loadMetricPages = async (metric: VideoSortMetric, sortOverride: string = serverSort, originalCateOverride: typeof originalCate = originalCate) => {
     if (metric === "default") return;
     const seq = ++requestSeq.current;
     busy.current = true;
@@ -257,7 +257,7 @@ export function ChannelPage({ cate, name, onBack, wide }: { cate: string; name: 
     let totalPages = 1;
     let requestedPages = 1;
     try {
-      const first = await fetchChannelPage(1, METRIC_PAGE_SIZE, serverSort, originalCate, true);
+      const first = await fetchChannelPage(1, METRIC_PAGE_SIZE, sortOverride, originalCateOverride, true);
       if (seq !== requestSeq.current) return;
       totalPages = Math.max(1, first?.pagination?.pages || 1);
       requestedPages = Math.min(totalPages, METRIC_MAX_PAGES);
@@ -265,7 +265,7 @@ export function ChannelPage({ cate, name, onBack, wide }: { cate: string; name: 
       for (let start = 2; start <= requestedPages; start += 4) {
         const batch: Promise<Awaited<ReturnType<typeof fetchChannelPage>>>[] = [];
         for (let p = start; p < Math.min(start + 4, requestedPages + 1); p += 1) {
-          batch.push(fetchChannelPage(p, METRIC_PAGE_SIZE, serverSort, originalCate, true));
+          batch.push(fetchChannelPage(p, METRIC_PAGE_SIZE, sortOverride, originalCateOverride, true));
         }
         const results = await Promise.all(batch);
         if (seq !== requestSeq.current) return;
@@ -277,7 +277,7 @@ export function ChannelPage({ cate, name, onBack, wide }: { cate: string; name: 
       setPageItems([unique]);
       setPage(requestedPages);
       setPages(totalPages);
-      setDisplayedFilter(filterKey(serverSort, originalCate, metric));
+      setDisplayedFilter(filterKey(sortOverride, originalCateOverride, metric));
       metricLoaded.current = true;
       setEmptyStreak(0);
     } catch (e) {
@@ -287,7 +287,7 @@ export function ChannelPage({ cate, name, onBack, wide }: { cate: string; name: 
         setPageItems([all.filter((item) => !seen.has(item.id) && !!seen.add(item.id))]);
         setPage(requestedPages);
         setPages(totalPages);
-        setDisplayedFilter(filterKey(serverSort, originalCate, metric));
+        setDisplayedFilter(filterKey(sortOverride, originalCateOverride, metric));
       }
       setErr((e as Error).message || tr("加载失败"));
     } finally {
@@ -356,28 +356,30 @@ export function ChannelPage({ cate, name, onBack, wide }: { cate: string; name: 
     void loadMetricPages(value);
   };
 
-  const resetMetricSort = () => {
-    if (metricSort === "default") return;
-    metricLoaded.current = false;
-    setMetricSort("default");
-  };
-
   const changeServerSort = (value: (typeof CHANNEL_SORTS)[number]["value"]) => {
     if (value === serverSort) return;
     if (scrollContainer.current) scrollContainer.current.scrollTop = 0;
-    resetMetricSort();
     setServerSort(value);
     setErr(null);
-    void loadMore(true, value);
+    if (metricSort !== "default") {
+      metricLoaded.current = false;
+      void loadMetricPages(metricSort, value, originalCate);
+    } else {
+      void loadMore(true, value);
+    }
   };
 
   const changeOriginalCate = (value: (typeof ORIGINAL_CATES)[number]["value"]) => {
     if (value === originalCate) return;
     if (scrollContainer.current) scrollContainer.current.scrollTop = 0;
-    resetMetricSort();
     setOriginalCate(value);
     setErr(null);
-    void loadMore(true, originalSort(value), value);
+    if (metricSort !== "default") {
+      metricLoaded.current = false;
+      void loadMetricPages(metricSort, originalSort(value), value);
+    } else {
+      void loadMore(true, originalSort(value), value);
+    }
   };
   const channelTabIndex = cate === "original"
     ? ORIGINAL_CATES.findIndex(s => s.value === originalCate)
