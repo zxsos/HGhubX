@@ -51,15 +51,21 @@ function link(gl: WebGL2RenderingContext, vertexSource: string, fragmentSource: 
   return program;
 }
 
-function createTexture(gl: WebGL2RenderingContext, width: number, height: number) {
+type TextureFormat = "rgba8" | "rgba16f";
+
+function createTexture(gl: WebGL2RenderingContext, width: number, height: number, format: TextureFormat, filter: number) {
   const texture = gl.createTexture();
   if (!texture) throw new Error("Unable to create detail texture");
   gl.bindTexture(gl.TEXTURE_2D, texture);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+  if (format === "rgba16f") {
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, width, height, 0, gl.RGBA, gl.HALF_FLOAT, null);
+  } else {
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+  }
   return texture;
 }
 
@@ -68,6 +74,8 @@ export class DetailUpscaler {
   private readonly passes: PassRuntime[];
   private readonly framebuffer: WebGLFramebuffer;
   private readonly targets = new Map<string, TextureTarget>();
+  private readonly textureFormat: TextureFormat;
+  private readonly filter: number;
   private sourceWidth = 0;
   private sourceHeight = 0;
   private outputWidth = 0;
@@ -77,6 +85,14 @@ export class DetailUpscaler {
 
   constructor(gl: WebGL2RenderingContext, vertexSource: string, shaderSource: string) {
     this.gl = gl;
+    // FSRCNNX feature maps contain negative values; RGBA8 clamps them to zero
+    // and visibly brightens/desaturates the network output. Prefer half-float
+    // render targets and fall back to RGBA8 only when the device cannot render
+    // to float textures.
+    const canRenderFloat = Boolean(gl.getExtension("EXT_color_buffer_float") || gl.getExtension("EXT_color_buffer_half_float"));
+    const canFilterFloat = Boolean(gl.getExtension("OES_texture_float_linear") || gl.getExtension("OES_texture_half_float_linear"));
+    this.textureFormat = canRenderFloat ? "rgba16f" : "rgba8";
+    this.filter = canRenderFloat && !canFilterFloat ? gl.NEAREST : gl.LINEAR;
     const passes = parseMpvShader(shaderSource);
     this.passes = passes.map(pass => {
       const program = link(gl, vertexSource, pass.fragment, pass.desc);
@@ -129,7 +145,7 @@ export class DetailUpscaler {
     const existing = this.targets.get(name);
     if (existing && existing.width === width && existing.height === height) return existing;
     if (existing) this.gl.deleteTexture(existing.texture);
-    const target = { texture: createTexture(this.gl, width, height), width, height };
+    const target = { texture: createTexture(this.gl, width, height, this.textureFormat, this.filter), width, height };
     this.targets.set(name, target);
     return target;
   }
@@ -151,7 +167,7 @@ export class DetailUpscaler {
           ? this.outputTexture
           : (() => {
               if (this.outputTexture) gl.deleteTexture(this.outputTexture.texture);
-              this.outputTexture = { texture: createTexture(gl, outSize.width, outSize.height), ...outSize };
+              this.outputTexture = { texture: createTexture(gl, outSize.width, outSize.height, this.textureFormat, this.filter), ...outSize };
               return this.outputTexture;
             })())
         : this.targetFor(targetName, outSize.width, outSize.height);

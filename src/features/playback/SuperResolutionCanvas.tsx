@@ -266,7 +266,11 @@ void main() {
   );
 }`;
 
-/** Adds the FSRCNNX luma detail to the EASU color without changing chroma. */
+/**
+ * Adds only the high-frequency part of the FSRCNNX luma to the EASU color.
+ * Replacing or offsetting all three RGB channels in gamma space brightens the
+ * midtones and washes out saturation, so Cb/Cr are kept untouched here.
+ */
 const DETAIL_COMPOSITE_SHADER = `#version 300 es
 precision highp float;
 
@@ -275,23 +279,51 @@ uniform sampler2D uDetail;
 uniform vec2 uOutputSize;
 out vec4 outColor;
 
-float luma(vec3 c) { return c.r * 0.2126 + c.g * 0.7152 + c.b * 0.0722; }
+vec3 rgbToYcbcr(vec3 c) {
+  float y = dot(c, vec3(0.2126, 0.7152, 0.0722));
+  return vec3(y, (c.b - y) / 1.8556, (c.r - y) / 1.5748);
+}
+
+vec3 ycbcrToRgb(vec3 c) {
+  float y = c.x;
+  float cb = c.y;
+  float cr = c.z;
+  return vec3(
+    y + 1.5748 * cr,
+    y - 0.187324 * cb - 0.468124 * cr,
+    y + 1.8556 * cb
+  );
+}
 
 void main() {
   vec2 uv = gl_FragCoord.xy / uOutputSize;
   vec3 color = texture(uColor, uv).rgb;
+
+  // Remove the local DC term so a network bias cannot shift the whole frame.
+  vec2 texel = 1.0 / vec2(textureSize(uDetail, 0));
   float detail = texture(uDetail, uv).r;
-  float base = luma(color);
-  color += detail - base;
-  outColor = vec4(clamp(color, 0.0, 1.0), 1.0);
+  float blurred = (
+    texture(uDetail, uv + vec2(texel.x, 0.0)).r +
+    texture(uDetail, uv - vec2(texel.x, 0.0)).r +
+    texture(uDetail, uv + vec2(0.0, texel.y)).r +
+    texture(uDetail, uv - vec2(0.0, texel.y)).r
+  ) * 0.25;
+  float high = detail - blurred;
+
+  vec3 ycc = rgbToYcbcr(color);
+  ycc.x = clamp(ycc.x + high, 0.0, 1.0);
+  outColor = vec4(clamp(ycbcrToRgb(ycc), 0.0, 1.0), 1.0);
 }`;
 
 const FULLSCREEN_TRIANGLE = new Float32Array([-1, -1, 3, -1, -1, 3]);
 // FSR 1 is cheap, but a 720p source at 3x would be a 4K output. Cap the work
 // at a 2.5 MP render target so the overlay stays viable on mobile GPUs.
 const MAX_OUTPUT_PIXELS = 2_500_000;
-// FSRCNNX is a 2x luma network; keep its output small enough for mobile GPUs.
-const MAX_DETAIL_OUTPUT_PIXELS = 1_000_000;
+// FSRCNNX is a 2x luma network; keep its composite output small enough for
+// mobile GPUs. The network itself still runs at 2x source resolution, so also
+// reject oversized sources instead of allocating an 8 MP detail pipeline.
+const MAX_DETAIL_OUTPUT_PIXELS = 2_500_000;
+const MAX_DETAIL_SOURCE_PIXELS = 1_500_000;
 
 function compile(gl: WebGL2RenderingContext, type: number, source: string) {
   const shader = gl.createShader(type);
@@ -340,6 +372,7 @@ function outputSize(video: HTMLVideoElement, fit: Fit, variant: SuperResolutionV
   const vw = video.videoWidth;
   const vh = video.videoHeight;
   if (!vw || !vh) return null;
+  if (variant === "detail" && vw * vh > MAX_DETAIL_SOURCE_PIXELS) return null;
   const rect = video.getBoundingClientRect();
   if (!rect.width || !rect.height) return null;
 
