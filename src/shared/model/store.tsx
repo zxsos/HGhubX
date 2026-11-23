@@ -54,6 +54,9 @@ export type PageInput =
   | { kind: "following" }
   | { kind: "user"; id: number; name?: string };
 
+/** Player picture-enhancement mode. CAS only sharpens; detail is the FSRCNNX 2x path. */
+export type EnhanceMode = "off" | "fsr" | "cas" | "detail";
+
 export type Toast = {
   id: number;
   msg: string;
@@ -84,14 +87,20 @@ type Persist = GuestData & {
   startupTab: Tab;
   /** Ambient light around the player, sampled from the current frame. */
   ambientGlow: boolean;
+  /** Experimental picture enhancement for the player; "detail" is the FSRCNNX 2x path. */
+  enhanceMode: EnhanceMode;
 };
 
 const LS = STORAGE_KEYS.app;
 const DEFAULTS: Persist = {
   likes: [], favs: [], history: [], follows: [],
   muted: true, muteOnStartup: true, volume: 0.7, searchHist: [], swipeEp: true, preferHevc: false,
-  balanceVolume: false, fsIdleSecs: 3, startupTab: "home", ambientGlow: true,
+  balanceVolume: false, fsIdleSecs: 3, startupTab: "home", ambientGlow: true, enhanceMode: "off",
 };
+
+function normalizeEnhanceMode(raw: unknown): EnhanceMode | null {
+  return raw === "off" || raw === "fsr" || raw === "cas" || raw === "detail" ? raw : null;
+}
 
 /** 旧版本 history 是 number[]，读出来时升级成带进度的结构 */
 function normalizeHistory(raw: unknown): WatchProgress[] {
@@ -134,7 +143,8 @@ function loadPersist(): Persist {
     const startupTab: Tab = (["home", "search", "category", "profile"] as Tab[]).includes(p.startupTab) ? p.startupTab : "home";
     const ambientGlow = p.ambientGlow !== false;
     const balanceVolume = p.balanceVolume === true;
-    return { ...p, swipeEp, muteOnStartup, muted: muteOnStartup || p.muted === true, balanceVolume, fsIdleSecs, startupTab, ambientGlow, history: normalizeHistory(p.history) };
+    const enhanceMode = normalizeEnhanceMode(p.enhanceMode) ?? "off";
+    return { ...p, swipeEp, muteOnStartup, muted: muteOnStartup || p.muted === true, balanceVolume, fsIdleSecs, startupTab, ambientGlow, enhanceMode, history: normalizeHistory(p.history) };
   } catch {
     return DEFAULTS;
   }
@@ -217,6 +227,7 @@ type Store = {
   fsIdleSecs: number; setFsIdleSecs: (s: number) => void;
   startupTab: Tab; setStartupTab: (t: Tab) => void;
   ambientGlow: boolean; setAmbientGlow: (on: boolean) => void;
+  enhanceMode: EnhanceMode; setEnhanceMode: (mode: EnhanceMode) => void;
   volume: number; setVolume: (v: number) => void;
   searchHist: string[]; addSearch: (q: string) => void; removeSearch: (q: string) => void; clearSearchHist: () => void;
   strictSecurity: boolean; strictSecurityReady: boolean; securityPending: boolean; cliRelaxed: boolean; setStrictSecurity: (on: boolean) => Promise<void>;
@@ -521,6 +532,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const setAmbientGlow = useCallback((on: boolean) => {
     setP((s) => ({ ...s, ambientGlow: on }));
   }, []);
+  const setEnhanceMode = useCallback((mode: EnhanceMode) => {
+    setP((s) => ({ ...s, enhanceMode: normalizeEnhanceMode(mode) ?? "off" }));
+  }, []);
   const setVolume = useCallback((v: number) => {
     const volume = Math.max(0, Math.min(1, v));
     if (volume > 0) lastVolumeRef.current = volume;
@@ -548,12 +562,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     fsIdleSecs: p.fsIdleSecs, setFsIdleSecs,
     startupTab: p.startupTab, setStartupTab,
     ambientGlow: p.ambientGlow, setAmbientGlow,
+    enhanceMode: p.enhanceMode, setEnhanceMode,
     searchHist: p.searchHist, addSearch, removeSearch, clearSearchHist,
     strictSecurity, strictSecurityReady, securityPending, cliRelaxed, setStrictSecurity,
     get toasts() { return toastList; }, toast, lineEpoch,
   }), [theme, themePreference, setTheme, tab, setTab, stack, push, openRootPage, pop, user, loginOpen, logout,
     p, account,
-    setMuted, setMuteOnStartup, setSwipeEp, setPreferHevc, setBalanceVolume, setFsIdleSecs, setStartupTab, setAmbientGlow, setVolume, addSearch, removeSearch, clearSearchHist, strictSecurity, strictSecurityReady, securityPending, cliRelaxed, setStrictSecurity,
+    setMuted, setMuteOnStartup, setSwipeEp, setPreferHevc, setBalanceVolume, setFsIdleSecs, setStartupTab, setAmbientGlow, setEnhanceMode, setVolume, addSearch, removeSearch, clearSearchHist, strictSecurity, strictSecurityReady, securityPending, cliRelaxed, setStrictSecurity,
     toast, lineEpoch, theater, setTheater, fs, setFs, clean, setClean, locked, setLocked]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

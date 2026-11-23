@@ -8,7 +8,8 @@ import { usePlaybackActivity } from "./usePlaybackActivity";
 import { useProxyPlaybackRecovery } from "./useProxyPlaybackRecovery";
 import { createHlsRecovery, type HlsRecovery } from "./hlsRecovery";
 import AmbientGlow from "./AmbientGlow";
-import { superResolutionRequested } from "./superResolutionRequest";
+import { superResolutionRequested, superResolutionVariant, type SuperResolutionVariant } from "./superResolutionRequest";
+import { useStore } from "../../shared/model/store";
 import { setBalanceVolume } from "./balanceVolume";
 import { tr } from "../../shared/i18n";
 
@@ -81,10 +82,18 @@ const VideoSurface = forwardRef<VideoHandle, Props>(function VideoSurface(
   const measurementRef = useRef({ key: measurementKey, onSize });
   measurementRef.current = { key: measurementKey, onSize };
   const [ready, setReady] = useState(false);
-  const superResolution = superResolutionRequested();
+  const store = useStore();
+  const enhanceMode = store?.enhanceMode ?? "off";
+  const querySuperResolution = superResolutionRequested();
+  const superResolution = querySuperResolution || enhanceMode !== "off";
+  const activeSuperResolutionVariant: SuperResolutionVariant = enhanceMode !== "off" ? enhanceMode : superResolutionVariant();
   const [SuperResolutionCanvas, setSuperResolutionCanvas] = useState<SuperResolutionComponent | null>(null);
   useEffect(() => {
-    if (!superResolution || !active || SuperResolutionCanvas) return;
+    if (!superResolution) {
+      setSuperResolutionCanvas(null);
+      return;
+    }
+    if (!active || SuperResolutionCanvas) return;
     let cancelled = false;
     /* A hidden ?sr= opt-in loads the overlay and its shader chunk on demand. */
     void import("./SuperResolutionCanvas")
@@ -288,7 +297,8 @@ const VideoSurface = forwardRef<VideoHandle, Props>(function VideoSurface(
     <div className="relative isolate h-full w-full">
       {ambientGlow && <AmbientGlow videoRef={videoRef} active={active} />}
       {SuperResolutionCanvas && active && (
-        <SuperResolutionCanvas videoRef={videoRef} fit={fit} active={active} />
+        <SuperResolutionCanvas videoRef={videoRef} fit={fit} active={active}
+          enabled={superResolution} variant={activeSuperResolutionVariant} />
       )}
       <video
         ref={(node) => {

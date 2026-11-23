@@ -32,6 +32,8 @@ type Props = {
   videoRef: RefObject<HTMLVideoElement | null>;
   fit?: Fit;
   active?: boolean;
+  enabled?: boolean;
+  variant?: SuperResolutionVariant;
 };
 
 type FrameVideo = HTMLVideoElement & {
@@ -360,11 +362,11 @@ function outputSize(video: HTMLVideoElement, fit: Fit, variant: SuperResolutionV
   return { width: Math.round(vw * scale), height: Math.round(vh * scale), scale };
 }
 
-export default function SuperResolutionCanvas({ videoRef, fit = "contain", active = true }: Props) {
+export default function SuperResolutionCanvas({ videoRef, fit = "contain", active = true, enabled: enabledProp, variant: variantProp }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [failed, setFailed] = useState(false);
-  const [enabled] = useState(superResolutionRequested);
-  const [variant] = useState(superResolutionVariant);
+  const enabled = enabledProp ?? superResolutionRequested();
+  const variant = variantProp ?? superResolutionVariant();
 
   useEffect(() => {
     if (!enabled || !active || failed) return;
@@ -652,7 +654,7 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
     return stop;
   }, [active, enabled, failed, fit, videoRef, variant]);
 
-  if (failed) return null;
+  if (!enabled || failed) return null;
 
   return (
     <div className="hg-super-resolution" aria-hidden="true" data-super-resolution={enabled ? "on" : "off"} data-super-resolution-mode={variant}>
