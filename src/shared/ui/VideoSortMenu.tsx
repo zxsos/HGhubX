@@ -49,10 +49,6 @@ export function VideoSortMenu({ value, onChange, className = "" }: {
   }, [open, value]);
 
   const onTriggerClick = () => {
-    if (open && active) {
-      apply(DEFAULT_SORT);
-      return;
-    }
     setOpen(current => !current);
   };
 

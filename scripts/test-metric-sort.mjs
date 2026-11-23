@@ -15,14 +15,15 @@ const report = {
 };
 const titles = ["甲", "乙", "丙"];
 const metrics = [
-  { hot: 3000, like_count: 10, collect_count: 200 },
-  { hot: 9000, like_count: 90, collect_count: 40 },
-  { hot: 5000, like_count: 50, collect_count: 150 },
+  { hot: 3000, like_count: 10, collect_count: 200, score: 6 },
+  { hot: 9000, like_count: 90, collect_count: 40, score: 8 },
+  { hot: 5000, like_count: 50, collect_count: 150, score: 9 },
 ];
 const expected = {
   点赞数: ["乙", "丙", "甲"],
   收藏数: ["甲", "丙", "乙"],
   播放数: ["乙", "丙", "甲"],
+  评分: ["丙", "乙", "甲"],
   默认排序: ["甲", "乙", "丙"],
 };
 let vite, browser;
@@ -61,17 +62,24 @@ try {
     }, values);
     assert.deepEqual(await cardTitles(), values);
   };
-  const selectSort = async label => {
+  const openSortMenu = async () => {
+    const menu = page.getByRole("menu", { name: "排序方式" });
+    if (await menu.count()) return;
     await page.locator("[data-video-sort-trigger]").click();
+    await menu.waitFor();
+  };
+  const selectSort = async label => {
+    await openSortMenu();
     await page.getByRole("menuitemradio", { name: label, exact: true }).click();
     await waitOrder(expected[label]);
     assert.match(await page.locator("[data-video-sort-trigger]").innerText(), new RegExp(label));
   };
   const resetSort = async () => {
-    await page.locator("[data-video-sort-trigger]").click();
-    await page.locator("[data-video-sort-trigger]").click();
+    await openSortMenu();
+    await page.getByRole("menuitemradio", { name: "默认排序", exact: true }).click();
     await waitOrder(expected.默认排序);
     assert.equal((await page.locator("[data-video-sort-trigger]").innerText()).trim(), "");
+    assert.equal(await page.getByRole("menu").count(), 0);
   };
 
   // Original channel: category pill row plus the metric sorter at the far right.
@@ -82,9 +90,10 @@ try {
   await page.screenshot({ path: fileURLToPath(new URL("channel-default.png", output)), animations: "disabled" });
   await page.locator("[data-video-sort-trigger]").click();
   await page.getByRole("menu", { name: "排序方式" }).waitFor();
+  assert.equal(await page.getByRole("menuitemradio", { name: "默认排序", exact: true }).count(), 1);
   await page.screenshot({ path: fileURLToPath(new URL("channel-menu.png", output)), animations: "disabled" });
   await page.keyboard.press("Escape");
-  for (const label of ["点赞数", "收藏数", "播放数"]) {
+  for (const label of ["点赞数", "收藏数", "播放数", "评分"]) {
     await selectSort(label);
     if (label === "点赞数") {
       await page.screenshot({ path: fileURLToPath(new URL("channel-like-sort.png", output)), animations: "disabled" });
@@ -97,7 +106,7 @@ try {
     }
   }
   await resetSort();
-  report.checks.push("original channel: all three metrics reorder globally; active pill is labeled; second click on the open menu resets default");
+  report.checks.push("original channel: all four metrics reorder globally; active pill is labeled; default menu item resets the order");
 
   // Tag results: the sorter sits on the "短剧 N" heading row and only changes videos.
   await page.goto(new URL("/tests/tag-metric-sort.html?tag=悬疑", origin).href, { waitUntil: "networkidle" });
@@ -106,14 +115,16 @@ try {
   await page.screenshot({ path: fileURLToPath(new URL("tag-default.png", output)), animations: "disabled" });
   await page.locator("[data-video-sort-trigger]").click();
   await page.getByRole("menu", { name: "排序方式" }).waitFor();
+  assert.equal(await page.getByRole("menuitemradio", { name: "默认排序", exact: true }).count(), 1);
   await page.screenshot({ path: fileURLToPath(new URL("tag-menu.png", output)), animations: "disabled" });
   await page.keyboard.press("Escape");
   await selectSort("点赞数");
   await page.screenshot({ path: fileURLToPath(new URL("tag-like-sort.png", output)), animations: "disabled" });
   await selectSort("收藏数");
   await selectSort("播放数");
+  await selectSort("评分");
   await resetSort();
-  report.checks.push("tag page: sorter is on the short-drama heading row; all three metrics reorder the video list");
+  report.checks.push("tag page: sorter is on the short-drama heading row; all four metrics reorder the video list");
 
   // Menu keyboard path: Escape closes and returns focus to the trigger.
   await page.locator("[data-video-sort-trigger]").focus();

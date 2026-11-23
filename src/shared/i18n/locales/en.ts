@@ -805,6 +805,7 @@ const en: Record<string, string> = {
   "点赞数": "Likes",
   "收藏数": "Collects",
   "播放数": "Plays",
+  "评分": "Rating",
   "正在加载全部结果以排序…": "Loading all results to sort…",
 };
 

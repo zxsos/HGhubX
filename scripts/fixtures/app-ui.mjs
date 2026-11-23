@@ -1,6 +1,6 @@
 export function installFixture({ theme, titles, metrics = [], metricPages = 1, metricPageSize = 2 }) {
   const cards = titles.map((title, i) => ({
-    id: i + 1, title, cover: `https://fixture.invalid/poster/${i}`, tags: ["都市", "剧情"], score: i % 2 === 0 ? 8.5 : 0,
+    id: i + 1, title, cover: `https://fixture.invalid/poster/${i}`, tags: ["都市", "剧情"], score: metrics[i]?.score ?? (i % 2 === 0 ? 8.5 : 0),
     episode_count: 24, total_episodes: 24,
     hot: metrics[i]?.hot ?? 286000, like_count: metrics[i]?.like_count ?? 1800, collect_count: metrics[i]?.collect_count ?? 900,
     comment_count: 20, is_finished: true, is_original: 0, description: "界面回归示例数据",

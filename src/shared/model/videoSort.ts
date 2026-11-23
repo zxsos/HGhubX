@@ -1,9 +1,9 @@
 import type { VideoCard } from "../api/types";
 
 /** Metric order for channel and tag video lists. */
-export type VideoSortMetric = "default" | "like_count" | "collect_count" | "hot";
+export type VideoSortMetric = "default" | "like_count" | "collect_count" | "hot" | "score";
 
-export const VIDEO_SORT_METRICS = ["like_count", "collect_count", "hot"] as const;
+export const VIDEO_SORT_METRICS = ["like_count", "collect_count", "hot", "score"] as const;
 
 export function isVideoSortMetric(value: string): value is VideoSortMetric {
   return value === "default" || (VIDEO_SORT_METRICS as readonly string[]).includes(value);
@@ -14,6 +14,7 @@ export function videoSortLabel(metric: VideoSortMetric, tr: (key: string) => str
     case "like_count": return tr("点赞数");
     case "collect_count": return tr("收藏数");
     case "hot": return tr("播放数");
+    case "score": return tr("评分");
     default: return tr("默认排序");
   }
 }
