@@ -54,7 +54,11 @@
    `ERROR` 只把 fatal network/media 交给 `createHlsRecovery`。
 4. `usePlaybackActivity` 在页面失活时暂停并 `stopLoad()`（处于画中画 `pictureInPictureElement`
    时保持播放，退出画中画且页面仍失活时再暂停），在重新激活时按 `wanted` 与 `startPosition`
-   恢复；`play()` 的 Promise 返回后会再次检查页面是否仍激活。
+   恢复；`play()` 的 Promise 返回后会再次检查页面是否仍激活。被页面栈覆盖的底层播放页（经
+   [`src/shared/model/pageVisibility.ts`](../../src/shared/model/pageVisibility.ts) 的 `PageCoveredContext` 感知，
+   且未处于画中画时），`VideoSurface` 通过 `useProxyPlaybackRecovery.stash()` 暂存当前进度、倍速与播放/暂停意图后
+   销毁 `hls.js` 并清空 `<video>` 源以释放硬件解码器，返回顶层时按暂存状态自动续播或保持暂停；非活跃态同时卸载
+   `AmbientGlow` 与移动端 `blur-3xl` 氛围模糊层（#240）。
 5. seek 有两种入口：桌面 `useSeekInput`/`PlayerControls`，移动端
    `useSeekInput`/进度条手势。指针移动只预览，松手提交一次；
    `VideoSurface.seek` 把目标夹到 `duration - 0.15`（避免 iOS 片尾卡死），

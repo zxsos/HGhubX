@@ -19,6 +19,23 @@ export function useProxyPlaybackRecovery(
   const latest = useRef({ src, activity, trace });
   latest.current = { src, activity, trace };
 
+  const stash = useCallback((source = "suspend", playWanted?: boolean) => {
+    const video = videoRef.current;
+    const { src, activity, trace } = latest.current;
+    if (!src || !video) return;
+    const previous = pending.current?.src === src ? pending.current : null;
+    const playing = playWanted ?? previous?.playing
+      ?? (activity.isActive() && video.readyState >= 2 && !video.error ? !video.paused : activity.isPlayWanted());
+    pending.current = {
+      src,
+      time: previous?.time ?? (Number.isFinite(video.currentTime) ? video.currentTime : 0),
+      playing,
+      rate: previous?.rate ?? video.playbackRate,
+    };
+    activity.setPlayWanted(playing);
+    trace("media.suspended", { source, time: pending.current.time, play_wanted: playing });
+  }, [videoRef]);
+
   const retry = useCallback((source = "manual", playWanted?: boolean) => {
     const video = videoRef.current;
     const { src, activity, trace } = latest.current;
@@ -77,5 +94,5 @@ export function useProxyPlaybackRecovery(
     };
   }, [restore, videoRef]);
 
-  return { revision, resume, retry };
+  return { revision, resume, retry, stash };
 }

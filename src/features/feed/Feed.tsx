@@ -625,7 +625,7 @@ export default function Feed({
       onPointerMove={() => { if (isDesktop) wake(); }}>
       <div className="absolute inset-0" inert={controlsLocked}>
         {/* 氛围背景 */}
-        {!isDesktop && posterUrl && (
+        {active && !isDesktop && posterUrl && (
           <div className="absolute inset-0 scale-110 blur-3xl opacity-25 pointer-events-none">
             <Image src={posterUrl} alt="" className="w-full h-full object-cover" />
           </div>

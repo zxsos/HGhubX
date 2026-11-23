@@ -122,7 +122,7 @@ export function useFeedViewport({
         boxRef.current.scrollTop = top;
       }
     }
-  }, [boxRef, effectiveVideoIds, index, position.id, position.index, allowed]);
+  }, [boxRef, effectiveVideoIds, index, position.id, position.index, allowed, active]);
 
   const swipeTimer = useRef(0);
   const resolveSwipe = useCallback((target: number) => {

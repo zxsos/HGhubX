@@ -490,7 +490,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setCleanState(false);
     setLockedState(false);
     if (pg.kind !== "feed") setTheaterState(false);
-    setStack((s) => [...s, { ...pg, key: `p${++seq}` } as Page]);
+    setStack((s) => {
+      const next = [...s, { ...pg, key: `p${++seq}` } as Page];
+      return next.length > 8 ? next.slice(next.length - 8) : next;
+    });
   }, [exitNativeFs]);
   const openRootPage = useCallback((pg: PageInput) => {
     exitNativeFs();
