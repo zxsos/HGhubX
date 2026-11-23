@@ -15,7 +15,7 @@ import { IAward, IBack, IChevR, IClock, IFilm, IFlame, ILayers, ISearch, ISpark,
 import { tr, N_ } from "../../shared/i18n";
 import { useTabSwipe } from "../../shared/ui/hooks/useTabSwipe";
 import { VideoSortMenu } from "../../shared/ui/VideoSortMenu";
-import { sortVideosByMetric, type VideoSortMetric } from "../../shared/model/videoSort";
+import { sortVideosByMetric, type VideoSortDirection, type VideoSortMetric } from "../../shared/model/videoSort";
 
 export const CHANNELS = [
   { cate: "ai-duanju", name: N_("AI成人短剧"), Icon: IFilm },
@@ -214,11 +214,12 @@ export function ChannelPage({ cate, name, onBack, wide }: { cate: string; name: 
   const [serverSort, setServerSort] = useState<(typeof CHANNEL_SORTS)[number]["value"]>("latest");
   const [originalCate, setOriginalCate] = useState<(typeof ORIGINAL_CATES)[number]["value"]>("all");
   const [metricSort, setMetricSort] = useState<VideoSortMetric>("default");
+  const [metricDirection, setMetricDirection] = useState<VideoSortDirection>("desc");
   const [metricVisible, setMetricVisible] = useState(20);
   const metricLoaded = useRef(false);
   const [pageItems, setPageItems] = useState<VideoCard[][]>([]);
   const items = pageItems.flat();
-  const sortedItems = useMemo(() => sortVideosByMetric(items, metricSort), [items, metricSort]);
+  const sortedItems = useMemo(() => sortVideosByMetric(items, metricSort, metricDirection), [items, metricSort, metricDirection]);
   const visibleItems = metricSort === "default" ? sortedItems : sortedItems.slice(0, metricVisible);
   const [page, setPage] = useState(0);
   const [pages, setPages] = useState(1);
@@ -337,18 +338,22 @@ export function ChannelPage({ cate, name, onBack, wide }: { cate: string; name: 
     }
   };
 
-  const changeMetricSort = (value: VideoSortMetric) => {
-    if (value === metricSort) return;
+  const changeMetricSort = (value: VideoSortMetric, direction: VideoSortDirection = "desc") => {
+    if (value === metricSort && direction === metricDirection) return;
     if (scrollContainer.current) scrollContainer.current.scrollTop = 0;
     setErr(null);
     setMetricVisible(20);
     if (value === "default") {
       metricLoaded.current = false;
       setMetricSort("default");
+      setMetricDirection("desc");
       void loadMore(true, serverSort, originalCate);
       return;
     }
+    const metricChanged = value !== metricSort;
     setMetricSort(value);
+    setMetricDirection(direction);
+    if (!metricChanged) return;
     if (metricLoaded.current) {
       setDisplayedFilter(filterKey(serverSort, originalCate, value));
       return;
@@ -403,7 +408,7 @@ export function ChannelPage({ cate, name, onBack, wide }: { cate: string; name: 
   useEffect(() => {
     setPageItems([]); setPage(0); setPages(1);
     setServerSort("latest"); setOriginalCate("all"); setSearching(false);
-    setMetricSort("default"); setMetricVisible(20); metricLoaded.current = false;
+    setMetricSort("default"); setMetricDirection("desc"); setMetricVisible(20); metricLoaded.current = false;
     void loadMore(true, "latest", "all");
     return () => { requestSeq.current++; busy.current = false; };
     /* eslint-disable-next-line */
@@ -417,7 +422,7 @@ export function ChannelPage({ cate, name, onBack, wide }: { cate: string; name: 
     sentinelRef: sentinel,
     enabled: !loading && !err && !replacing
       && (metricSort === "default" ? page < pages && !autoLoadPaused : metricVisible < sortedItems.length),
-    watchKey: `${page}:${pages}:${items.length}:${metricSort}:${metricVisible}`,
+    watchKey: `${page}:${pages}:${items.length}:${metricSort}:${metricDirection}:${metricVisible}`,
     onLoadMore: () => {
       if (metricSort !== "default") {
         setMetricVisible(count => Math.min(count + 20, sortedItems.length));
@@ -451,7 +456,7 @@ export function ChannelPage({ cate, name, onBack, wide }: { cate: string; name: 
               <Button aria-pressed={originalCate === s.value} key={s.value} onClick={() => changeOriginalCate(s.value)}
                 className="ios-filter-pill">{tr(s.label)}</Button>
             ))}
-            <VideoSortMenu className="ml-auto" value={metricSort} onChange={changeMetricSort} />
+            <VideoSortMenu className="ml-auto" value={metricSort} direction={metricDirection} onChange={changeMetricSort} />
           </div>
         )}
         {!isSingleList && cate !== "original" && (
@@ -460,7 +465,7 @@ export function ChannelPage({ cate, name, onBack, wide }: { cate: string; name: 
               <Button aria-pressed={serverSort === s.value} key={s.value} onClick={() => changeServerSort(s.value)}
                 className="ios-filter-pill">{tr(s.label)}</Button>
             ))}
-            <VideoSortMenu className="ml-auto" value={metricSort} onChange={changeMetricSort} />
+            <VideoSortMenu className="ml-auto" value={metricSort} direction={metricDirection} onChange={changeMetricSort} />
           </div>
         )}
       </div>
@@ -470,7 +475,7 @@ export function ChannelPage({ cate, name, onBack, wide }: { cate: string; name: 
         {sortedItems.length > 0 && err && <div role="status" className="mb-3 flex flex-wrap items-center gap-2 text-[12px] text-mut"><span>{err}</span><Button className="px-3 text-primary" onClick={() => void (metricSort === "default" ? loadMore(replacing) : loadMetricPages(metricSort))}>{tr("重试")}</Button></div>}
         {visibleItems.length ? (
           <div inert={replacing || undefined} className={replacing ? "opacity-60" : undefined}>
-            <Masonry videos={visibleItems} scopeKey={filterKey(serverSort, originalCate, metricSort)} wide={wide} onOpen={(v, visible) => { if (!replacing) push({ kind: "feed", videoIds: visible.map((x) => x.id), index: visible.findIndex((x) => x.id === v.id), title: name }); }} />
+            <Masonry videos={visibleItems} scopeKey={`${filterKey(serverSort, originalCate, metricSort)}:${metricDirection}`} wide={wide} onOpen={(v, visible) => { if (!replacing) push({ kind: "feed", videoIds: visible.map((x) => x.id), index: visible.findIndex((x) => x.id === v.id), title: name }); }} />
           </div>
         ) : err ? (
           <Empty icon={<ChannelGlyph size={26} />} title={tr("加载失败")} sub={err} action={tr("重试")} onAction={() => void (metricSort === "default" ? loadMore(true) : loadMetricPages(metricSort))} />

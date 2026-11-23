@@ -1,16 +1,17 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { Button } from "./ios/controls";
-import { ISort } from "./icons";
+import { ISort, ISortAsc, ISortDesc } from "./icons";
 import { tr } from "../i18n";
-import { videoSortLabel, VIDEO_SORT_METRICS, type VideoSortMetric } from "../model/videoSort";
+import { videoSortLabel, VIDEO_SORT_METRICS, type VideoSortDirection, type VideoSortMetric } from "../model/videoSort";
 
 const DEFAULT_SORT: VideoSortMetric = "default";
 
 /** Compact sort entry that expands from an icon into a labeled capsule. */
-export function VideoSortMenu({ value, onChange, className = "" }: {
+export function VideoSortMenu({ value, direction, onChange, className = "" }: {
   value: VideoSortMetric;
-  onChange: (value: VideoSortMetric) => void;
+  direction: VideoSortDirection;
+  onChange: (value: VideoSortMetric, direction: VideoSortDirection) => void;
   className?: string;
 }) {
   const [open, setOpen] = useState(false);
@@ -20,6 +21,7 @@ export function VideoSortMenu({ value, onChange, className = "" }: {
   const menuId = useId();
   const active = value !== DEFAULT_SORT;
   const label = videoSortLabel(value, tr);
+  const DirectionIcon = direction === "asc" ? ISortAsc : ISortDesc;
 
   const close = useCallback((focusTrigger = false) => {
     setOpen(false);
@@ -27,9 +29,18 @@ export function VideoSortMenu({ value, onChange, className = "" }: {
   }, []);
 
   const apply = useCallback((next: VideoSortMetric) => {
-    onChange(next);
+    onChange(next, "desc");
     close(true);
   }, [close, onChange]);
+
+  const selectMetric = (metric: VideoSortMetric) => {
+    if (metric === value) {
+      onChange(metric, direction === "desc" ? "asc" : "desc");
+      return;
+    }
+    onChange(metric, "desc");
+    close(true);
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -84,10 +95,13 @@ export function VideoSortMenu({ value, onChange, className = "" }: {
         aria-label={active ? tr("排序：{0}", label) : tr("排序")}
         aria-haspopup="menu" aria-expanded={open} aria-controls={open ? menuId : undefined}
         data-video-sort-trigger
+        data-sort-direction={active ? direction : undefined}
         onClick={onTriggerClick} onKeyDown={onTriggerKeyDown}
         className={`ios-filter-pill ios-sort-pill ${active ? "is-labeled is-active" : "is-icon"}`}>
         {active && <span className="ios-filter-active-label">{label}</span>}
-        <ISort size={16} strokeWidth={1.9} />
+        {active
+          ? <DirectionIcon size={15} strokeWidth={1.9} />
+          : <ISort size={16} strokeWidth={1.9} />}
       </Button>
       {open && (
         <div ref={menuRef} id={menuId} role="menu" aria-label={tr("排序方式")} className="ios-sort-menu"
@@ -97,12 +111,19 @@ export function VideoSortMenu({ value, onChange, className = "" }: {
             onClick={() => apply(DEFAULT_SORT)}>
             <span>{tr("默认排序")}</span>
           </button>
-          {VIDEO_SORT_METRICS.map(metric => (
-            <button key={metric} type="button" role="menuitemradio" aria-checked={value === metric}
-              onClick={() => apply(metric)}>
-              <span>{videoSortLabel(metric, tr)}</span>
-            </button>
-          ))}
+          {VIDEO_SORT_METRICS.map(metric => {
+            const itemDirection = value === metric ? direction : "desc";
+            return (
+              <button key={metric} type="button" role="menuitemradio" aria-checked={value === metric}
+                data-sort-direction={itemDirection}
+                onClick={() => selectMetric(metric)}>
+                <span>{videoSortLabel(metric, tr)}</span>
+                <span className="ios-sort-dir" aria-hidden="true">
+                  {itemDirection === "asc" ? <ISortAsc size={14} strokeWidth={1.9} /> : <ISortDesc size={14} strokeWidth={1.9} />}
+                </span>
+              </button>
+            );
+          })}
         </div>
       )}
     </div>

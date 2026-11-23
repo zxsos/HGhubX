@@ -26,6 +26,12 @@ const expected = {
   评分: ["丙", "乙", "甲"],
   默认排序: ["甲", "乙", "丙"],
 };
+const expectedAsc = {
+  点赞数: ["甲", "丙", "乙"],
+  收藏数: ["乙", "丙", "甲"],
+  播放数: ["甲", "丙", "乙"],
+  评分: ["甲", "乙", "丙"],
+};
 let vite, browser;
 
 try {
@@ -91,18 +97,26 @@ try {
   await page.locator("[data-video-sort-trigger]").click();
   await page.getByRole("menu", { name: "排序方式" }).waitFor();
   assert.equal(await page.getByRole("menuitemradio", { name: "默认排序", exact: true }).count(), 1);
+  assert.equal(await page.locator('[role="menuitemradio"][data-sort-direction="desc"]').count(), 4);
   await page.screenshot({ path: fileURLToPath(new URL("channel-menu.png", output)), animations: "disabled" });
   await page.keyboard.press("Escape");
   for (const label of ["点赞数", "收藏数", "播放数", "评分"]) {
     await selectSort(label);
     if (label === "点赞数") {
       await page.screenshot({ path: fileURLToPath(new URL("channel-like-sort.png", output)), animations: "disabled" });
+      await openSortMenu();
+      await page.getByRole("menuitemradio", { name: "点赞数", exact: true }).click();
+      await waitOrder(expectedAsc.点赞数);
+      assert.equal(await page.locator("[data-video-sort-trigger]").getAttribute("data-sort-direction"), "asc");
+      assert.equal(await page.getByRole("menu", { name: "排序方式" }).count(), 1);
+      await page.screenshot({ path: fileURLToPath(new URL("channel-like-asc.png", output)), animations: "disabled" });
+      await page.keyboard.press("Escape");
       await page.getByRole("button", { name: "原创漫剧", exact: true }).click();
-      await waitOrder(expected.点赞数);
-      assert.match(await page.locator("[data-video-sort-trigger]").innerText(), /点赞数/);
-      report.checks.push("original channel: switching category tab keeps the active metric sort");
+      await waitOrder(expectedAsc.点赞数);
+      assert.equal(await page.locator("[data-video-sort-trigger]").getAttribute("data-sort-direction"), "asc");
+      report.checks.push("original channel: clicking the selected metric flips the arrow and keeps the menu open; switching tab keeps metric and direction");
       await page.getByRole("button", { name: "全部原创", exact: true }).click();
-      await waitOrder(expected.点赞数);
+      await waitOrder(expectedAsc.点赞数);
     }
   }
   await resetSort();
@@ -123,8 +137,13 @@ try {
   await selectSort("收藏数");
   await selectSort("播放数");
   await selectSort("评分");
+  await openSortMenu();
+  await page.getByRole("menuitemradio", { name: "评分", exact: true }).click();
+  await waitOrder(expectedAsc.评分);
+  assert.equal(await page.locator("[data-video-sort-trigger]").getAttribute("data-sort-direction"), "asc");
+  await page.keyboard.press("Escape");
   await resetSort();
-  report.checks.push("tag page: sorter is on the short-drama heading row; all four metrics reorder the video list");
+  report.checks.push("tag page: sorter is on the short-drama heading row; all four metrics reorder the video list and toggle direction");
 
   // Menu keyboard path: Escape closes and returns focus to the trigger.
   await page.locator("[data-video-sort-trigger]").focus();

@@ -59,6 +59,8 @@ export const IPip = S(<><rect x="3" y="4.5" width="18" height="15" rx="2.5" /><r
 export const ISidebar = S(<><rect x="3" y="4" width="18" height="16" rx="3" /><path d="M9 4v16" /></>);
 export const IChevronUp = S(<path d="m6 14 6-6 6 6" />);
 export const IChevronDown = S(<path d="m6 10 6 6 6-6" />);
+export const ISortDesc = S(<><path d="M12 3.5v16" /><path d="m5.8 13.7 6.2 6.2 6.2-6.2" /></>);
+export const ISortAsc = S(<><path d="M12 20.5v-16" /><path d="m5.8 10.3 6.2-6.2 6.2 6.2" /></>);
 export const IRestore = S(<><rect x="4" y="8" width="12" height="12" rx="1.5" /><path d="M8 5V4h12v12h-1" /></>);
 export const ITheater = S(<><rect x="2.5" y="5" width="19" height="14" rx="2.5" /><path d="M6.5 5v14M17.5 5v14" /></>);
 export const INext = S(<><path d="M5 5v14l10-7Z" fill="currentColor" stroke="none" /><path d="M18 5v14" /></>);

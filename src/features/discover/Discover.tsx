@@ -13,7 +13,7 @@ import { Empty, Img } from "../../shared/ui/ui";
 import { IBack, IFireF, ILayers, IRefresh, ISearch, ITag } from "../../shared/ui/icons";
 import { tr } from "../../shared/i18n";
 import { VideoSortMenu } from "../../shared/ui/VideoSortMenu";
-import { sortVideosByMetric, type VideoSortMetric } from "../../shared/model/videoSort";
+import { sortVideosByMetric, type VideoSortDirection, type VideoSortMetric } from "../../shared/model/videoSort";
 
 const TopicIcon = ILayers;
 const TagIcon = ITag;
@@ -354,6 +354,7 @@ export function TagPage({ tag, name, onBack, wide }: { tag: string; name: string
   const [searching, setSearching] = useState(false);
   const [videos, setVideos] = useState<VideoCard[]>([]);
   const [metricSort, setMetricSort] = useState<VideoSortMetric>("default");
+  const [metricDirection, setMetricDirection] = useState<VideoSortDirection>("desc");
   const [metricVisible, setMetricVisible] = useState(20);
   const metricLoaded = useRef(false);
   const [posts, setPosts] = useState<Post[]>([]);
@@ -379,8 +380,8 @@ export function TagPage({ tag, name, onBack, wide }: { tag: string; name: string
   const currentVideos = loadedVideoTag === tag;
   const currentPosts = loadedPostTag === tag;
   const sortedVideos = useMemo(
-    () => currentVideos ? sortVideosByMetric(videos, metricSort) : [],
-    [currentVideos, videos, metricSort],
+    () => currentVideos ? sortVideosByMetric(videos, metricSort, metricDirection) : [],
+    [currentVideos, videos, metricSort, metricDirection],
   );
   const visibleVideos = metricSort === "default" ? sortedVideos : sortedVideos.slice(0, metricVisible);
   const visiblePosts = currentPosts ? posts : [];
@@ -491,18 +492,22 @@ export function TagPage({ tag, name, onBack, wide }: { tag: string; name: string
       }
     }
   }, [tag, name]);
-  const changeMetricSort = (value: VideoSortMetric) => {
-    if (value === metricSort) return;
+  const changeMetricSort = (value: VideoSortMetric, direction: VideoSortDirection = "desc") => {
+    if (value === metricSort && direction === metricDirection) return;
     if (scrollContainer.current) scrollContainer.current.scrollTop = 0;
     setMetricVisible(20);
     if (value === "default") {
       metricLoaded.current = false;
       setMetricSort("default");
+      setMetricDirection("desc");
       setVideos([]); setLoadedVideoTag(""); setVideoPage(0); setVideoPages(1); setVideoTotal(0);
       void load("video", 1, true);
       return;
     }
+    const metricChanged = value !== metricSort;
     setMetricSort(value);
+    setMetricDirection(direction);
+    if (!metricChanged) return;
     if (metricLoaded.current) return;
     void loadMetricVideos(value);
   };
@@ -510,7 +515,7 @@ export function TagPage({ tag, name, onBack, wide }: { tag: string; name: string
     sequence.current.video++; sequence.current.post++;
     busy.current.video = false; busy.current.post = false;
     setVideos([]); setPosts([]); setLoadedVideoTag(""); setLoadedPostTag("");
-    setMetricSort("default"); setMetricVisible(20); metricLoaded.current = false;
+    setMetricSort("default"); setMetricDirection("desc"); setMetricVisible(20); metricLoaded.current = false;
     setVideoPage(0); setPostPage(0); setVideoPages(1); setPostPages(1); setVideoTotal(0); setPostTotal(0);
     setVideoLoading(true); setPostLoading(true); setVideoErr(""); setPostErr(""); setSearching(false);
     setVideoEmptyStreak(0); setPostEmptyStreak(0);
@@ -527,7 +532,7 @@ export function TagPage({ tag, name, onBack, wide }: { tag: string; name: string
     sentinelRef: videoSentinel,
     enabled: !videoErr && !videoLoading
       && (metricSort === "default" ? videoPage < videoPages && !videoAutoLoadPaused : metricVisible < sortedVideos.length),
-    watchKey: `${videoPage}:${videoPages}:${videos.length}:${metricSort}:${metricVisible}`,
+    watchKey: `${videoPage}:${videoPages}:${videos.length}:${metricSort}:${metricDirection}:${metricVisible}`,
     onLoadMore: () => {
       if (metricSort !== "default") {
         setMetricVisible(count => Math.min(count + 20, sortedVideos.length));
@@ -581,9 +586,9 @@ export function TagPage({ tag, name, onBack, wide }: { tag: string; name: string
           <div className="mb-3 flex items-center gap-2">
             <h2 className="text-[15px] font-bold text-on">{tr("短剧")}</h2>
             <span className="text-[12px] text-mut tabular-nums">{videoTotal}</span>
-            <VideoSortMenu className="ml-auto" value={metricSort} onChange={changeMetricSort} />
+            <VideoSortMenu className="ml-auto" value={metricSort} direction={metricDirection} onChange={changeMetricSort} />
           </div>
-          <Masonry videos={visibleVideos} scopeKey={`tag-video:${tag}:${metricSort}`} wide={wide} onOpen={(v, visible) => push({ kind: "feed", videoIds: visible.map(x => x.id), index: visible.findIndex(x => x.id === v.id), title: name })} />
+          <Masonry videos={visibleVideos} scopeKey={`tag-video:${tag}:${metricSort}:${metricDirection}`} wide={wide} onOpen={(v, visible) => push({ kind: "feed", videoIds: visible.map(x => x.id), index: visible.findIndex(x => x.id === v.id), title: name })} />
         </section>}
         <div ref={videoSentinel} className="h-2" aria-hidden="true" />
         {videoErr && visibleVideos.length > 0 && <div role="status" className="flex flex-wrap items-center justify-center gap-2 py-2 text-[12px] text-mut"><span>{tr("短剧加载失败：{0}", videoErr)}</span><Button onClick={() => void (metricSort === "default" ? load("video", videoPage + 1) : loadMetricVideos(metricSort))} className="px-3 text-primary">{tr("重试")}</Button></div>}

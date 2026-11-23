@@ -505,6 +505,8 @@ html.theme-light {
 .ios-sort-menu-title { display:block; padding:5px 9px 4px; font-size:11px; font-weight:600; color:var(--p-mut); }
 .ios-sort-menu button { display:flex; align-items:center; width:100%; min-height:38px; padding:0 9px; border:0; border-radius:10px; background:transparent; color:var(--p-on); font-size:13px; font-weight:600; text-align:left; }
 .ios-sort-menu button[aria-checked=true] { background:var(--p-s3); color:var(--p-primary); }
+.ios-sort-dir { display:inline-flex; align-items:center; justify-content:flex-end; width:16px; margin-left:auto; opacity:.58; }
+.ios-sort-menu button[aria-checked=true] .ios-sort-dir { opacity:1; }
 .ios-history-actions { display:flex; align-items:center; gap:2px; margin-right:-8px; }
 .ios-history-action { min-height:32px; height:32px; padding:0 6px; border:0; background:transparent; box-shadow:none; color:var(--p-mut); font-size:12px; }
 .ios-history-action:active { color:var(--p-on); }
