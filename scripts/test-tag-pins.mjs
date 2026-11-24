@@ -150,7 +150,13 @@ try {
   await detail.screenshot({ path: fileURLToPath(new URL("tag-page-pin.png", output)), animations: "disabled" });
   report.checks.push("pinning from a direct tag page persists the tag");
 
+  await detail.evaluate(() => window.tagPinToastProbe.toast("播放提示占位", "info", "playback-hint"));
+  assert.equal(await detail.locator(".a-toast").count(), 1, "pin and playback hints must share one toast slot");
+  assert.equal((await detail.locator(".a-toast").innerText()).trim(), "播放提示占位", "a later playback hint must replace the pin toast");
+  report.checks.push("pin and playback hints share one toast slot");
+
   await detail.getByRole("button", { name: "取消置顶此标签" }).click();
+  await detail.waitForFunction(() => document.querySelector(".a-toast")?.textContent?.includes("已取消置顶：都市"));
   assert.deepEqual(await detail.evaluate(() => (JSON.parse(localStorage.getItem("hghubx_content_preferences_v1") || "{}").pinnedTags || [])), []);
   report.checks.push("pinning again from the tag page unpins it");
 
