@@ -103,6 +103,34 @@ try {
   assert.deepEqual(await page.evaluate(() => (JSON.parse(localStorage.getItem("hghubx_content_preferences_v1") || "{}").pinnedTags || [])), []);
   report.checks.push("dragging across a tag cancels the hold");
 
+  const detail = await context.newPage();
+  detail.on("pageerror", error => report.errors.push(error.message));
+  await detail.route("**/*", route => {
+    const url = new URL(route.request().url());
+    if (url.origin === new URL(origin).origin) return route.continue();
+    return route.abort();
+  });
+  await detail.goto(new URL("/tests/tag-pin-detail.html?tag=都市", origin).href, { waitUntil: "networkidle" });
+  const pinButton = detail.getByRole("button", { name: "置顶此标签" });
+  await pinButton.waitFor();
+  assert.equal(await detail.getByRole("button", { name: "搜索短剧" }).count(), 0, "tag result header must replace search with pin");
+  const titleBox = await detail.getByRole("heading", { name: "都市" }).boundingBox();
+  const pinBox = await pinButton.boundingBox();
+  assert(titleBox && pinBox, "tag title and pin button need bounding boxes");
+  assert(Math.abs((titleBox.y + titleBox.height / 2) - (pinBox.y + pinBox.height / 2)) < 10, "pin must align with the tag title");
+  assert(pinBox.x > titleBox.x, "pin must sit to the right of the tag title");
+  report.checks.push("tag result page exposes a pin aligned with the tag title instead of search");
+
+  await pinButton.click();
+  await detail.getByRole("button", { name: "取消置顶此标签" }).waitFor();
+  assert.deepEqual(await detail.evaluate(() => (JSON.parse(localStorage.getItem("hghubx_content_preferences_v1") || "{}").pinnedTags || [])), ["都市"]);
+  await detail.screenshot({ path: fileURLToPath(new URL("tag-page-pin.png", output)), animations: "disabled" });
+  report.checks.push("pinning from a direct tag page persists the tag");
+
+  await detail.getByRole("button", { name: "取消置顶此标签" }).click();
+  assert.deepEqual(await detail.evaluate(() => (JSON.parse(localStorage.getItem("hghubx_content_preferences_v1") || "{}").pinnedTags || [])), []);
+  report.checks.push("pinning again from the tag page unpins it");
+
   assert.deepEqual(report.errors, []);
   report.passed = true;
   console.log(`PASS: tag-pins (${report.checks.length} checks)`);

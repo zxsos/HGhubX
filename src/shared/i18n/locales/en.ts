@@ -556,6 +556,8 @@ const en: Record<string, string> = {
   "最多置顶 {0} 个标签": "Up to {0} pinned tags",
   "长按置顶：{0}": "Long-press to pin: {0}",
   "长按取消置顶：{0}": "Long-press to unpin: {0}",
+  "置顶此标签": "Pin this tag",
+  "取消置顶此标签": "Unpin this tag",
   "版本 {0} · 仅限非商业使用": "Version {0} · Non-commercial use only",
   "版本、平台、当前线路和播放失败原因始终记录；开关只额外记录拖动与缓冲细节": "Version, platform, active line, and playback errors are always logged; enabling this adds scrub and buffer details",
   "用于账号联系": "For account recovery / contact",

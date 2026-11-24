@@ -10,7 +10,7 @@ import { Masonry, MediaCard } from "../../shared/ui/cards";
 import { FilteredContent } from "../../shared/ui/FilteredContent";
 import { InplaceSearch } from "../search/InplaceSearch";
 import { Empty, Img } from "../../shared/ui/ui";
-import { IBack, IFireF, ILayers, IPin, IRefresh, ISearch, ITag } from "../../shared/ui/icons";
+import { IBack, IFireF, ILayers, IPin, IPinF, IRefresh, ISearch, ITag } from "../../shared/ui/icons";
 import { tr } from "../../shared/i18n";
 import { VideoSortMenu } from "../../shared/ui/VideoSortMenu";
 import { sortVideosByMetric, type VideoSortDirection, type VideoSortMetric } from "../../shared/model/videoSort";
@@ -440,16 +440,16 @@ export function TagsPage({ onBack, wide }: { onBack: () => void; wide: boolean }
 
 /* ================= 标签视频页 ================= */
 export function TagPage({ tag, name, onBack, wide }: { tag: string; name: string; onBack: () => void; wide: boolean }) {
-  const { push, lineEpoch } = useStore();
-  const { preferences, storageError, isTagBlocked, blockTags, unblockTag, blockReason } = useContentPreferences();
+  const { push, lineEpoch, toast } = useStore();
+  const { preferences, storageError, isTagBlocked, blockTags, unblockTag, blockReason, isTagPinned, togglePinnedTag } = useContentPreferences();
   const filtering = !preferences.paused && (preferences.blockedTags.length > 0 || preferences.hideUntagged);
   const blockReasonRef = useRef(blockReason);
   blockReasonRef.current = blockReason;
   const filteringRef = useRef(filtering);
   filteringRef.current = filtering;
   const tagBlocked = isTagBlocked(name);
+  const tagPinned = isTagPinned(name);
   const cannotAdd = !name.trim() || name.trim().length > MAX_TAG_LENGTH || preferences.blockedTags.length >= MAX_BLOCKED_TAGS;
-  const [searching, setSearching] = useState(false);
   const [videos, setVideos] = useState<VideoCard[]>([]);
   const [metricSort, setMetricSort] = useState<VideoSortMetric>("default");
   const [metricDirection, setMetricDirection] = useState<VideoSortDirection>("desc");
@@ -590,6 +590,14 @@ export function TagPage({ tag, name, onBack, wide }: { tag: string; name: string
       }
     }
   }, [tag, name]);
+  const togglePin = useCallback(() => {
+    if (!tagPinned && preferences.pinnedTags.length >= MAX_PINNED_TAGS) {
+      toast(tr("最多置顶 {0} 个标签", MAX_PINNED_TAGS), "info");
+      return;
+    }
+    togglePinnedTag(name);
+    toast(tagPinned ? tr("已取消置顶：{0}", name) : tr("已置顶标签：{0}", name), tagPinned ? "info" : "ok");
+  }, [name, preferences.pinnedTags.length, tagPinned, toast, togglePinnedTag]);
   const changeMetricSort = (value: VideoSortMetric, direction: VideoSortDirection = "desc") => {
     if (value === metricSort && direction === metricDirection) return;
     if (scrollContainer.current) scrollContainer.current.scrollTop = 0;
@@ -615,7 +623,7 @@ export function TagPage({ tag, name, onBack, wide }: { tag: string; name: string
     setVideos([]); setPosts([]); setLoadedVideoTag(""); setLoadedPostTag("");
     setMetricSort("default"); setMetricDirection("desc"); setMetricVisible(20); metricLoaded.current = false;
     setVideoPage(0); setPostPage(0); setVideoPages(1); setPostPages(1); setVideoTotal(0); setPostTotal(0);
-    setVideoLoading(true); setPostLoading(true); setVideoErr(""); setPostErr(""); setSearching(false);
+    setVideoLoading(true); setPostLoading(true); setVideoErr(""); setPostErr("");
     setVideoEmptyStreak(0); setPostEmptyStreak(0);
     if (scrollContainer.current) scrollContainer.current.scrollTop = 0;
     void load("video", 1, true);
@@ -656,10 +664,15 @@ export function TagPage({ tag, name, onBack, wide }: { tag: string; name: string
           <Button aria-label={tr("返回")} onClick={onBack} className="ios-nav-btn"><IBack size={20} /></Button>
           <span className="w-9 h-9 rounded-[12px] bg-pc text-on-pc flex items-center justify-center shrink-0"><TagIcon size={18} /></span>
           <div className="flex-1 min-w-0">
-            <h1 className="text-[17px] font-bold text-on leading-tight truncate" title={name}>{name}</h1>
+            <div className="flex items-center gap-1.5 min-w-0">
+              <h1 className="min-w-0 text-[17px] font-bold text-on leading-tight truncate" title={name}>{name}</h1>
+              <Button onClick={togglePin} aria-pressed={tagPinned} aria-label={tagPinned ? tr("取消置顶此标签") : tr("置顶此标签")}
+                title={tagPinned ? tr("取消置顶此标签") : tr("置顶此标签")} className="tag-page-pin">
+                <IPinF size={17} />
+              </Button>
+            </div>
             <div role="status" className="text-[12px] text-mut leading-tight mt-0.5 tabular-nums">{tr("短剧 {0} · 吃瓜 {1}", currentVideos ? videoTotal : 0, currentPosts ? postTotal : 0)}</div>
           </div>
-          <Button onClick={() => setSearching(true)} aria-label={tr("搜索短剧")} className="ios-nav-btn"><ISearch size={18} /></Button>
         </div>
       </div>
       <div ref={scrollContainer} className="flex-1 scroll-y pt-3.5 pb-8" aria-busy={videoLoading || postLoading || !currentVideos || !currentPosts}>
@@ -710,7 +723,6 @@ export function TagPage({ tag, name, onBack, wide }: { tag: string; name: string
         {!postLoading && !postErr && postPage < postPages && postAutoLoadPaused && <Button onClick={() => { setPostEmptyStreak(0); void load("post", postPage + 1); }} className="my-2 px-4 text-primary">{tr("加载更多吃瓜")}</Button>}
         {!videoLoading && !postLoading && !videoErr && !postErr && !visibleVideos.length && !visiblePosts.length && <Empty icon={<TagIcon size={26} />} title={tr("该标签下暂无内容")} />}
       </div>
-      {searching && <InplaceSearch kind="video" wide={wide} onClose={() => setSearching(false)} onOpenVideo={(v, list, kw) => push({ kind: "feed", videoIds: list.map(x => x.id), index: list.findIndex(x => x.id === v.id), title: kw ? tr("搜索 · {0}", kw) : tr("搜索") })} />}
     </div>
   );
 }
