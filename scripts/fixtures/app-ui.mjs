@@ -47,6 +47,17 @@ export function installFixture({ theme, titles, metrics = [], metricPages = 1, m
       if (command === "api_topic") return { topic, videos: paged(cards), related: [] };
       if (command === "api_tags") return { categories: tagGroups ?? [{ name: "题材", tags: [{ id: 1, name: "都市", slug: "city" }] }] };
       if (command === "api_hot_tags") return { items: [{ name: "都市", slug: "dushi" }] };
+      if (command === "api_popular_authors") {
+        const authors = Array.from({ length: 16 }, (_, index) => ({
+          id: 100 + index,
+          username: `author-${index + 1}`,
+          nickname: ["都市阿城", "古风小满", "悬疑老K", "甜宠七月", "逆袭阿岚", "校园小北", "职场安姐", "奇幻阿泽", "仙侠青禾", "现代老周", "脑洞小鹿", "都市阿梨", "反派阿川", "人间阿杏", "作者小满", "路人甲"][index],
+          avatar: "",
+          counts: { followers: 1200000 - index * 70000 },
+        }));
+        return { items: authors, pagination: { page: 1, pages: 1, size: 100, total: authors.length } };
+      }
+      if (command === "api_user") return { id: args.id, username: `author-${args.id}`, nickname: "示例作者", avatar: "", counts: {} };
       if (command === "api_rank") return paged(cards.map((card, index) => ({ ...card, rank: index + 1, video_id: card.id, metric_value: card.hot, metric_label: "热度" })));
       if (command === "api_search_hot") return paged(titles.map((title, index) => ({ video_id: index + 1, title, plays: `${550 - index * 10}.1w播放量` })));
       if (command === "api_video") return { ...cards[(args.id - 1) % cards.length], counts: { collect: 900, comment: 20, hot: 286000, like: 1800 }, episodes: [] };

@@ -46,8 +46,8 @@ export default function Feed({
 }: Props) {
   const store = useStore();
   const {
-    isLiked, isFav, setLiked, setCollected, setFollowing, actionPending, accountScope,
-    muted, setMuted, volume, setVolume, toast, addHistory, user, setLoginOpen,
+    isLiked, isFav, setLiked, setCollected, setFollowing, toggleFollowLocal, actionPending, accountScope,
+    muted, setMuted, volume, setVolume, toast, addHistory, user,
     swipeEp, setSwipeEp, preferHevc, setPreferHevc, ambientGlow,
   } = store;
   const isDesktop = !isMobile;
@@ -362,8 +362,8 @@ export default function Feed({
     likeCount, collectCount, onLike, onFav, onFollow, togglePip,
   } = useFeedActions({
     videoRef, mounted, actionContext, accountScope, lineEpoch: store.lineEpoch,
-    curId, curEp, kind, meta, detail, posts, user, setLoginOpen, follows: store.follows,
-    isLiked, isFav, setLiked, setCollected, setFollowing, actionPending, toast,
+    curId, curEp, kind, meta, detail, posts, user, follows: store.follows,
+    isLiked, isFav, setLiked, setCollected, setFollowing, toggleFollowLocal, actionPending, toast,
   });
 
   /* 倍速：右上长按临时加速、左右滑换挡，左下长按 0.5x；松手恢复持久倍速。 */

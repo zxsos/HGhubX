@@ -134,7 +134,7 @@ export function UserPage({ id, name, onBack, wide }: { id: number; name?: string
 }
 
 function UserContent({ id, name, onBack, wide }: { id: number; name?: string; onBack: () => void; wide: boolean }) {
-  const { push, toast, follows, setFollowing, actionPending, accountScope, user, setLoginOpen } = useStore();
+  const { push, toast, follows, setFollowing, toggleFollowLocal, actionPending, accountScope, user, setLoginOpen } = useStore();
   const [searching, setSearching] = useState(false);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [stats, setStats] = useState<Awaited<ReturnType<typeof api.userStats>> | null>(null);
@@ -176,7 +176,11 @@ function UserContent({ id, name, onBack, wide }: { id: number; name?: string; on
   const following = follows.includes(id);
   const onFollow = async () => {
     if (isOwnProfile || followPending.current || actionPending(`follow:${id}`)) return;
-    if (!user) { setLoginOpen(true); return; }
+    if (!user) {
+      const on = toggleFollowLocal(id);
+      toast(on ? tr("已关注 {0}", profile?.nickname || name || "") : tr("已取消关注"), on ? "ok" : "info");
+      return;
+    }
     const version = ++followVersion.current;
     const on = !following;
     followPending.current = true; setFollowBusy(true); setFollowError("");

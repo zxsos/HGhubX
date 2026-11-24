@@ -178,6 +178,8 @@ export type UserProfile = {
   counts?: Record<string, number>;
 };
 
+export type UserDirectory = { items: UserProfile[]; pagination?: Pagination };
+
 export type User = {
   id: number;
   username: string;

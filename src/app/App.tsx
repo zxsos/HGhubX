@@ -31,6 +31,7 @@ const PostDetail = lazy(() => import("../features/posts/Posts").then(module => (
 const TopicsPage = lazy(() => import("../features/discover/Discover").then(module => ({ default: module.TopicsPage })));
 const TopicPage = lazy(() => import("../features/discover/Discover").then(module => ({ default: module.TopicPage })));
 const TagsPage = lazy(() => import("../features/discover/Discover").then(module => ({ default: module.TagsPage })));
+const AuthorsPage = lazy(() => import("../features/authors/AuthorsPage").then(module => ({ default: module.AuthorsPage })));
 const TagPage = lazy(() => import("../features/discover/Discover").then(module => ({ default: module.TagPage })));
 const FollowingPage = lazy(() => import("../features/account/User").then(module => ({ default: module.FollowingPage })));
 const UserPage = lazy(() => import("../features/account/User").then(module => ({ default: module.UserPage })));
@@ -103,6 +104,7 @@ function StackPageContent({ page, onBack, wide, top, bottomInset, loginOpen }: {
   if (page.kind === "topic") return <TopicPage slug={page.slug} name={page.name} onBack={onBack} wide={wide} />;
   if (page.kind === "tags") return <TagsPage onBack={onBack} wide={wide} />;
   if (page.kind === "tag") return <TagPage tag={page.tag} name={page.name} onBack={onBack} wide={wide} />;
+  if (page.kind === "authors") return <AuthorsPage onBack={onBack} wide={wide} />;
   if (page.kind === "following") return <FollowingPage onBack={onBack} wide={wide} />;
   if (page.kind === "user") return <UserPage id={page.id} name={page.name} onBack={onBack} wide={wide} />;
   return null;

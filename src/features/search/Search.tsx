@@ -11,6 +11,7 @@ import { FilteredContent } from "../../shared/ui/FilteredContent";
 import { Empty } from "../../shared/ui/ui";
 import { useSearchResults } from "./useSearchResults";
 import { SearchTags } from "./SearchTags";
+import { SearchAuthors } from "../authors/SearchAuthors";
 import { SearchHistory } from "./SearchHistory";
 import { useRankSwipe } from "./useRankSwipe";
 import { useTabSwipe } from "../../shared/ui/hooks/useTabSwipe";
@@ -276,6 +277,8 @@ export default function Search({ active, wide }: { active: boolean; wide: boolea
             )}
 
             <SearchTags key={JSON.stringify([lineEpoch, accountScope])} active={active} />
+
+            <SearchAuthors key={lineEpoch} active={active} />
           </>
         ) : (
           <>

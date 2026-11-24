@@ -140,6 +140,7 @@ pub fn scope_for(method: &str, path_with_query: &str) -> EdgeScope {
     // Public scope (GET/HEAD only; sort=random|rand promoted to Dynamic)
     if m.eq_ignore_ascii_case("GET") {
         let is_public = match segs.as_slice() {
+            ["api", "users"] => true,
             ["api", "videos"]
             | ["api", "videos", "long" | "report-reasons"]
             | ["api", "topics"]
@@ -656,6 +657,7 @@ mod tests {
         assert_eq!(scope_for("POST", "/api/videos/123/comments"), EdgeScope::User);
         assert_eq!(scope_for("POST", "/api/users/42/follow"), EdgeScope::User);
         assert_eq!(scope_for("GET", "/api/users/42/stats"), EdgeScope::Public);
+        assert_eq!(scope_for("GET", "/api/users?page=1&size=100&sort=followers"), EdgeScope::Public);
         assert_eq!(scope_for("GET", "/api/users/42"), EdgeScope::Dynamic);
     }
 

@@ -276,6 +276,7 @@ pub fn run() {
             api::feed::api_user,
             api::feed::api_user_stats,
             api::feed::api_user_videos,
+            api::feed::api_popular_authors,
             api::video::api_video,
             api::video::api_play,
             api::video::api_comments,
