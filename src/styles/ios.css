@@ -511,6 +511,8 @@ html.theme-light {
 .tag-pin-mark { flex:none; color:var(--p-primary); }
 .tag-page-pin.ios-button { display:inline-flex; align-items:center; justify-content:center; width:36px; height:36px; min-width:36px; min-height:36px; padding:0; flex:none; border-radius:50%; background:transparent; color:var(--p-mut); }
 .tag-page-pin.ios-button[aria-pressed="true"] { color:var(--p-accent); background:color-mix(in srgb, var(--p-accent) 12%, transparent); }
+.tag-page-pin-icon { transform:rotate(0deg); transition:transform 180ms cubic-bezier(.2,.8,.2,1); }
+.tag-page-pin.ios-button[aria-pressed="true"] .tag-page-pin-icon { transform:rotate(-45deg); }
 .tag-page-pin.ios-button:active { scale:.92; }
 .ios-sort-control { position:relative; display:inline-flex; flex:none; }
 .ios-sort-pill.is-icon { width:36px; min-width:36px; height:36px; min-height:36px; padding:0; }

@@ -669,7 +669,7 @@ export function TagPage({ tag, name, onBack, wide }: { tag: string; name: string
           </div>
           <Button onClick={togglePin} aria-pressed={tagPinned} aria-label={tagPinned ? tr("取消置顶此标签") : tr("置顶此标签")}
             title={tagPinned ? tr("取消置顶此标签") : tr("置顶此标签")} className="tag-page-pin">
-            <IPinF size={18} />
+            <IPinF size={18} className="tag-page-pin-icon" />
           </Button>
         </div>
       </div>

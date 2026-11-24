@@ -122,8 +122,16 @@ try {
   assert(pinBox.x > titleBox.x + titleBox.width, "pin must occupy the trailing header slot, not sit beside the title");
   report.checks.push("tag result page exposes a trailing pin centered with the header tag icon instead of search");
 
+  const pinIcon = pinButton.locator("svg");
+  assert(["none", "matrix(1, 0, 0, 1, 0, 0)"].includes(await pinIcon.evaluate(el => getComputedStyle(el).transform)), "unpinned header pin should stay diagonal");
+  await detail.screenshot({ path: fileURLToPath(new URL("tag-page-pin-unpinned.png", output)), animations: "disabled" });
+
   await pinButton.click();
   await detail.getByRole("button", { name: "取消置顶此标签" }).waitFor();
+  await detail.waitForTimeout(250);
+  const pinnedTransform = await pinIcon.evaluate(el => getComputedStyle(el).transform);
+  assert(pinnedTransform.includes("-0.707107"), "pinned header pin should rotate to point down");
+  report.checks.push("header pin rotates from diagonal to point down when pinned");
   assert.deepEqual(await detail.evaluate(() => (JSON.parse(localStorage.getItem("hghubx_content_preferences_v1") || "{}").pinnedTags || [])), ["都市"]);
   await detail.screenshot({ path: fileURLToPath(new URL("tag-page-pin.png", output)), animations: "disabled" });
   report.checks.push("pinning from a direct tag page persists the tag");
