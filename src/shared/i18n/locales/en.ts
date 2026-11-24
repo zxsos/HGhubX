@@ -826,6 +826,9 @@ const en: Record<string, string> = {
   "播放数": "Plays",
   "评分": "Rating",
   "正在加载全部结果以排序…": "Loading all results to sort…",
+  "连载状态": "Release status",
+  "筛选连载状态": "Filter release status",
+  "筛选连载状态：{0}": "Filter release status: {0}",
 };
 
 export default en;
