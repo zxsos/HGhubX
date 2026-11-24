@@ -8,9 +8,7 @@ use tauri::State;
 
 #[tauri::command]
 pub async fn api_feed(state: State<'_, Api>, page: u32, size: u32) -> Result<Value, String> {
-    state
-        .get(&format!("/api/videos?page={page}&size={size}"))
-        .await
+    state.get(&format!("/api/videos?page={page}&size={size}")).await
 }
 
 /// 原创频道，返回分页视频卡（结构同 api_feed）。
@@ -64,6 +62,10 @@ pub async fn api_topic(state: State<'_, Api>, slug: String, page: u32, size: u32
 pub async fn api_tags(state: State<'_, Api>) -> Result<Value, String> {
     state.get("/api/tags").await
 }
+
+/// 热门标签：解析官网首页服务端渲染的热门标签列表，与官网集合及顺序一致。
+#[tauri::command]
+pub async fn api_hot_tags(_state: State<'_, Api>) -> Result<Value, String> { crate::search_hot::fetch_hot_tags().await }
 
 /// 按标签取短剧：后端按中文标签名匹配；默认按官网标签页 `latest` 排序，社区标签需使用 api_post_tag。
 #[tauri::command]
