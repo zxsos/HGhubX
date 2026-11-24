@@ -16,7 +16,7 @@ const scriptScenarios = {
   tv: { script: "test-tv-remote.mjs", timeout: 480000, metrics: { transport: "mock Tauri IPC; actual TV bootstrap, worker, library and player" } },
   "post-flicker": { script: "test-post-flicker.mjs", timeout: 240000, metrics: { transport: "mock Tauri IPC; real PostDetail/AppProvider/Player; local HLS fixture" } },
 };
-const ALL_SCENARIOS = ["seek", "legacy", "lifecycle", "gesture", "proxy", "portrait-fit", "episode-toast", "ambient", "balance-volume", "ios-native", "recovery", "review", "tv", "post-flicker"];
+const ALL_SCENARIOS = ["seek", "legacy", "lifecycle", "gesture", "proxy", "portrait-fit", "episode-toast", "ambient", "balance-volume", "super-resolution", "super-resolution-2x", "super-resolution-cas", "super-resolution-detail", "ios-native", "recovery", "review", "tv", "post-flicker"];
 const { values: args } = parseArgs({ options: {
   "media-dir": { type: "string" }, output: { type: "string" }, "browser-executable": { type: "string" },
   scenarios: { type: "string", default: "seek,legacy,lifecycle,gesture,proxy,portrait-fit" }, help: { type: "boolean" },
@@ -492,8 +492,145 @@ async function episodeToastChecks(page, dir) {
   return { stageDropped: audit.stageDropped, portraitFlashes: audit.portraitToasts.length, boundaryReplaces: true, rotatedBottom: true, noPortraitEpisodeBadge: true, host: "rotated-stage", pauseHint: { text: pauseHintText, sticky: true, dismissOnResume: true, rotatedBottom: true }, text: (await lastToast.innerText().catch(() => "当前已是最后一集")).trim(), box: lastBox, portraitAfterExit };
 }
 
-// Ambient glow is a sampled color wash behind the video. It must follow the
-// live setting, render on a readable source, and leave no layer when disabled.
+// Super resolution is a hidden WebGL2 overlay. It must upscale a low-res
+// source, keep the native video as fallback, and leave no canvas when disabled.
+
+async function superResolutionChecks(page, dir) {
+  // The fixture is a 320x180 HLS stream. The mobile portrait viewport must
+  // still upscale it into the overlay instead of silently falling back.
+  await page.addInitScript(() => localStorage.setItem("hghubx_mobile_hold_guide_v1", "1"));
+  await loadPlayer(page, false, "&sr=1");
+  const guideDone = page.locator(".mobile-hold-guide-done").first();
+  if (await guideDone.count()) {
+    await guideDone.click({ timeout: 5000 }).catch(() => {});
+  }
+  await page.evaluate(async () => {
+    const video = document.querySelector("video");
+    video.playbackRate = 1;
+    await video.play().catch(() => {});
+  });
+  await page.waitForFunction(() => Number(document.querySelector(".hg-super-resolution-canvas")?.dataset.frames || 0) > 0);
+  const on = await page.locator(".hg-super-resolution-canvas").evaluate(canvas => ({
+    width: canvas.width,
+    height: canvas.height,
+    frames: Number(canvas.dataset.frames),
+    scale: canvas.dataset.scale,
+    cpuMs: Number(canvas.dataset.cpuMs),
+    active: canvas.closest(".hg-super-resolution")?.style.display,
+  }));
+  const source = await page.locator("video").evaluate(video => ({ width: video.videoWidth, height: video.videoHeight }));
+  const gpu = await page.locator(".hg-super-resolution-canvas").evaluate(canvas => {
+    const gl = canvas.getContext("webgl2");
+    const info = gl?.getExtension("WEBGL_debug_renderer_info");
+    return info ? gl?.getParameter(info.UNMASKED_RENDERER_WEBGL) : "unknown";
+  });
+  assert.ok(on.width > source.width && on.height > source.height, `Super resolution must upscale: ${JSON.stringify({ source, on })}`);
+  assert.ok(on.frames > 0, "Super resolution must draw real video frames");
+  assert.equal(on.active, "block", "Super resolution canvas must be visible when active");
+  const fpsStarted = Date.now();
+  const framesStarted = on.frames;
+  await page.waitForTimeout(1500);
+  const framesAfter = await page.locator(".hg-super-resolution-canvas").evaluate(canvas => Number(canvas.dataset.frames));
+  const fps = Math.round(((framesAfter - framesStarted) * 1000) / (Date.now() - fpsStarted) * 10) / 10;
+  await page.evaluate(() => {
+    const video = document.querySelector("video");
+    video.pause();
+    video.currentTime = Number.isFinite(video.duration) ? Math.min(6, video.duration * 0.5) : 6;
+  });
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: join(dir, "super-resolution-on.png") });
+  await page.evaluate(() => { document.querySelector("video").style.visibility = "hidden"; });
+  await page.waitForTimeout(150);
+  await page.screenshot({ path: join(dir, "super-resolution-canvas-only.png") });
+  await page.evaluate(() => { document.querySelector("video").style.visibility = ""; });
+
+  await loadPlayer(page);
+  await page.evaluate(() => {
+    const video = document.querySelector("video");
+    video.pause();
+    video.currentTime = Number.isFinite(video.duration) ? Math.min(6, video.duration * 0.5) : 6;
+  });
+  await page.waitForTimeout(500);
+  assert.equal(await page.locator(".hg-super-resolution-canvas").count(), 0, "The hidden switch must leave native video untouched when off");
+  await page.screenshot({ path: join(dir, "super-resolution-off.png") });
+
+  await page.addInitScript(() => {
+    const getContext = HTMLCanvasElement.prototype.getContext;
+    HTMLCanvasElement.prototype.getContext = function (type, ...args) {
+      if (type === "webgl2") return null;
+      return getContext.call(this, type, ...args);
+    };
+  });
+  await loadPlayer(page, false, "&sr=1");
+  await page.waitForTimeout(500);
+  assert.equal(await page.locator(".hg-super-resolution-canvas").count(), 0, "Super resolution must fall back when WebGL2 is unavailable");
+  await page.screenshot({ path: join(dir, "super-resolution-fallback.png") });
+  return { source, on, fps, gpu, fallback: true, cpu_ms: on.cpuMs };
+}
+
+async function superResolutionQualityChecks(page, dir, variant = "fsr") {
+  // A 2x display is FSR1's normal operating range. Keep the wrapper at 640x360
+  // so the canvas is 1:1 with CSS pixels; otherwise the browser scales the
+  // canvas again and hides the actual FSR result.
+  await page.addInitScript(() => localStorage.setItem("hghubx_mobile_hold_guide_v1", "1"));
+  await loadPlayer(page, false, `&sr=${variant}`);
+  await page.evaluate(() => {
+    const root = document.querySelector("[data-player-fixture]");
+    if (root) {
+      root.style.width = "640px";
+      root.style.height = "360px";
+      window.dispatchEvent(new Event("resize"));
+    }
+  });
+  await page.waitForTimeout(700);
+  await page.waitForFunction(() => Number(document.querySelector(".hg-super-resolution-canvas")?.dataset.frames || 0) > 0);
+  const on = await page.locator(".hg-super-resolution-canvas").evaluate(canvas => ({
+    width: canvas.width,
+    height: canvas.height,
+    frames: Number(canvas.dataset.frames),
+    scale: canvas.dataset.scale,
+    mode: canvas.closest(".hg-super-resolution")?.dataset.superResolutionMode,
+    active: canvas.closest(".hg-super-resolution")?.style.display,
+  }));
+  const source = await page.locator("video").evaluate(video => ({ width: video.videoWidth, height: video.videoHeight }));
+  assert.equal(on.width, 640, `2x canvas width must be 640: ${JSON.stringify({ source, on })}`);
+  assert.equal(on.height, 360, `2x canvas height must be 360: ${JSON.stringify({ source, on })}`);
+  assert.equal(on.scale, "2.00", `2x scale must be exactly 2.00: ${JSON.stringify({ source, on })}`);
+  assert.equal(on.active, "block", "2x canvas must be visible");
+  assert.equal(on.mode, variant, `2x canvas mode must be ${variant}`);
+  await page.evaluate(() => {
+    const video = document.querySelector("video");
+    video.pause();
+    video.currentTime = Number.isFinite(video.duration) ? Math.min(6, video.duration * 0.5) : 6;
+  });
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: join(dir, `super-resolution-2x-${variant}-on.png`) });
+  await page.evaluate(() => { document.querySelector("video").style.visibility = "hidden"; });
+  await page.waitForTimeout(150);
+  await page.screenshot({ path: join(dir, `super-resolution-2x-${variant}-canvas-only.png`) });
+  await page.evaluate(() => { document.querySelector("video").style.visibility = ""; });
+
+  await loadPlayer(page);
+  await page.evaluate(() => {
+    const root = document.querySelector("[data-player-fixture]");
+    if (root) {
+      root.style.width = "640px";
+      root.style.height = "360px";
+      window.dispatchEvent(new Event("resize"));
+    }
+  });
+  await page.waitForTimeout(500);
+  await page.evaluate(() => {
+    const video = document.querySelector("video");
+    video.pause();
+    video.currentTime = Number.isFinite(video.duration) ? Math.min(6, video.duration * 0.5) : 6;
+  });
+  await page.waitForTimeout(500);
+  assert.equal(await page.locator(".hg-super-resolution-canvas").count(), 0, "2x native path must not create a canvas");
+  await page.screenshot({ path: join(dir, "super-resolution-2x-off.png") });
+  return { source, on, quality: true };
+}
+
 async function ambientGlowChecks(page) {
   await page.addInitScript(() => {
     window.__TAURI_INTERNALS__ = { invoke: async () => null };
@@ -1133,8 +1270,9 @@ try {
       }
       continue;
     }
-    const mobileContext = name === "gesture" || name === "portrait-fit" || name === "episode-toast" || name === "ambient" || name === "balance-volume";
-    const context = await browser.newContext({ ...(mobileContext ? {userAgent:"Mozilla/5.0 (iPhone; CPU iPhone OS 17_1_1 like Mac OS X) AppleWebKit/605.1.15 Version/17.1 Mobile/15E148 Safari/604.1",hasTouch:true} : {}), viewport: name === "portrait-fit" || name === "episode-toast" || name === "ambient" ? { width: 390, height: 844 } : { width: 1000, height: 900 } });
+    const mobileContext = name === "gesture" || name === "portrait-fit" || name === "episode-toast" || name === "ambient" || name === "balance-volume" || name === "super-resolution";
+    const qualityContext = name === "super-resolution-2x" || name === "super-resolution-cas" || name === "super-resolution-detail";
+    const context = await browser.newContext({ ...(mobileContext ? {userAgent:"Mozilla/5.0 (iPhone; CPU iPhone OS 17_1_1 like Mac OS X) AppleWebKit/605.1.15 Version/17.1 Mobile/15E148 Safari/604.1",hasTouch:true} : {}), ...(name === "super-resolution" ? { deviceScaleFactor: 2 } : {}), viewport: qualityContext ? { width: 1000, height: 900 } : name === "portrait-fit" || name === "episode-toast" || name === "ambient" || name === "super-resolution" ? { width: 390, height: 844 } : { width: 1000, height: 900 } });
     await context.exposeBinding("collectPlaybackLogs", (_source, entries) => {
       for (const e of entries) jsonl(join(dir, "playback.jsonl"), { ts: e.data.at, event: `web.${e.event}`, data: e.data, transport: "browser-fixture" });
     });
