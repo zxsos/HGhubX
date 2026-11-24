@@ -839,7 +839,6 @@ const en: Record<string, string> = {
   "刷新失败，保留已加载作者。": "Refresh failed; keeping loaded authors. ",
   "正在加载作者…": "Loading authors…",
   "暂无可用作者": "No authors available",
-  "仅展示粉丝数前 {0} 位，更多作者见全部作者": "Showing the top {0} by followers; see all authors for more",
   "{0} 粉丝": "{0} followers",
   "{0} 位": "{0}",
   "已关注作者": "Followed authors",

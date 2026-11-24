@@ -12,7 +12,11 @@ let vite, browser;
 
 try {
   await mkdir(output, { recursive: true });
-  vite = await createServer({ root, server: { host: "127.0.0.1", port: 0, strictPort: false } });
+  vite = await createServer({
+    root,
+    optimizeDeps: { entries: ["tests/search-nav-reset.html"] },
+    server: { host: "127.0.0.1", port: 0, strictPort: false },
+  });
   await vite.listen();
   const origin = vite.resolvedUrls.local[0];
   let executablePath = process.env.BROWSER_EXECUTABLE;
@@ -36,25 +40,33 @@ try {
     if (url.origin === new URL(origin).origin) return route.continue();
     return route.abort();
   });
-  await page.goto(new URL("/tests/search-nav-reset.html", origin).href, { waitUntil: "networkidle" });
+  await page.goto(new URL("/tests/search-nav-reset.html", origin).href, { waitUntil: "domcontentloaded" });
   await page.locator(".hg-tabbar .ios-mobile-nav-item").filter({ hasText: "搜索" }).click();
 
   const region = page.getByRole("region", { name: "热门作者" });
   await region.getByRole("button", { name: "全部作者 ›" }).waitFor({ timeout: 8000 });
   const topChips = region.locator("button[data-author-id]");
-  assert.equal(await topChips.count(), 12, "search page shows the top 12 authors");
+  assert.equal(await topChips.count(), 10, "search page shows the first ten of the top twenty authors");
   assert.ok((await topChips.first().innerText()).includes("都市阿城"), "top author follows follower-count order");
+  assert.ok(!(await topChips.first().innerText()).includes("万"), "search author chips hide follower counts");
   assert.equal(await region.getByRole("button", { name: "全部作者 ›" }).count(), 1, "all-authors link is present");
+  assert.equal(await region.getByRole("button", { name: "换一批" }).count(), 1, "the next batch button is present");
 
-  await region.scrollIntoViewIfNeeded();
+  await region.evaluate(element => element.scrollIntoView({ block: "center" }));
+  await page.waitForTimeout(120);
   await page.screenshot({ path: join(output, "search-hot-authors.png"), animations: "disabled" });
+  await region.getByRole("button", { name: "换一批" }).click();
+  await page.waitForTimeout(120);
+  assert.equal(await topChips.count(), 10, "the next batch still shows ten authors");
+  assert.ok((await topChips.first().innerText()).includes("脑洞小鹿"), "the next batch starts at the eleventh author");
+  await page.screenshot({ path: join(output, "search-hot-authors-batch2.png"), animations: "disabled" });
 
   await region.getByRole("button", { name: "全部作者 ›" }).click();
   await page.getByRole("heading", { name: "作者", exact: true }).waitFor();
   const authorsPage = page.locator(".ios-page").filter({ has: page.getByRole("heading", { name: "作者", exact: true }) });
   const allChips = authorsPage.locator("button[data-author-id]");
   await allChips.first().waitFor();
-  assert.equal(await allChips.count(), 16, "all-authors page shows the full directory");
+  assert.equal(await allChips.count(), 24, "all-authors page shows the full directory");
 
   const first = allChips.first();
   const box = await first.boundingBox();
@@ -83,7 +95,7 @@ try {
   await page.waitForTimeout(200);
   assert.equal(await board.count(), 0, "long press again unfollows the author and removes the board");
 
-  console.log("PASS: search-authors (9 checks)");
+  console.log("PASS: search-authors (13 checks)");
 } finally {
   if (browser) await browser.close();
   if (vite) await vite.close();

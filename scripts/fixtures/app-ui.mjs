@@ -48,12 +48,17 @@ export function installFixture({ theme, titles, metrics = [], metricPages = 1, m
       if (command === "api_tags") return { categories: tagGroups ?? [{ name: "题材", tags: [{ id: 1, name: "都市", slug: "city" }] }] };
       if (command === "api_hot_tags") return { items: [{ name: "都市", slug: "dushi" }] };
       if (command === "api_popular_authors") {
-        const authors = Array.from({ length: 16 }, (_, index) => ({
+        const names = [
+          "都市阿城", "古风小满", "悬疑老K", "甜宠七月", "逆袭阿岚", "校园小北", "职场安姐", "奇幻阿泽",
+          "仙侠青禾", "现代老周", "脑洞小鹿", "都市阿梨", "反派阿川", "人间阿杏", "作者小满", "路人甲",
+          "悬疑阿夏", "古风阿棠", "甜宠阿宁", "逆袭阿野", "校园阿星", "职场阿月", "奇幻阿岭", "仙侠阿松",
+        ];
+        const authors = Array.from({ length: 24 }, (_, index) => ({
           id: 100 + index,
           username: `author-${index + 1}`,
-          nickname: ["都市阿城", "古风小满", "悬疑老K", "甜宠七月", "逆袭阿岚", "校园小北", "职场安姐", "奇幻阿泽", "仙侠青禾", "现代老周", "脑洞小鹿", "都市阿梨", "反派阿川", "人间阿杏", "作者小满", "路人甲"][index],
+          nickname: names[index],
           avatar: "",
-          counts: { followers: 1200000 - index * 70000 },
+          counts: { followers: 1200000 - index * 45000 },
         }));
         return { items: authors, pagination: { page: 1, pages: 1, size: 100, total: authors.length } };
       }
