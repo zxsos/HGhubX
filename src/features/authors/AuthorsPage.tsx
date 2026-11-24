@@ -77,7 +77,7 @@ export function AuthorsPage({ onBack, wide }: { onBack: () => void; wide: boolea
           <span className="text-[12px] text-dim tabular-nums" aria-live="polite">{tr("共 {0} 位", follows.length)}</span>
         </div>
         <div className="mt-3 flex flex-wrap gap-2">
-          {followedAuthors.map(author => <AuthorChip key={author.id} author={author} followed busy={busyId === author.id}
+          {followedAuthors.map(author => <AuthorChip key={author.id} author={author} followed showFollowers={false} highlight={false} busy={busyId === author.id}
             onOpen={() => openAuthor(author)} onToggleFollow={toggleFollow} />)}
         </div>
       </Surface>}

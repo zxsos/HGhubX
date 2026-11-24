@@ -68,6 +68,7 @@ try {
   await board.waitFor();
   assert.equal(await board.getByRole("button", { name: /都市阿城/ }).count(), 1, "long press follows the author and adds the followed board");
   assert.ok((await board.innerText()).includes("共 1 位"), "followed count updates");
+  assert.ok(!(await board.locator(".tag-pin-pill").innerText()).includes("120万"), "followed chip hides the follower count");
   const followedChip = authorsPage.locator('button[data-author-id="100"]').last();
   assert.equal(await followedChip.getAttribute("data-following"), "true", "author chip reflects the followed state");
   await page.screenshot({ path: join(output, "all-authors-followed.png"), animations: "disabled" });
