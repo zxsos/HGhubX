@@ -158,6 +158,9 @@ export type TagGroup = {
   tags: TagItem[];
 };
 
+/** 官网首页的热门标签列表；按官网展示顺序返回。 */
+export type HotTagItem = { name: string; slug: string };
+
 /** 官网搜索页的影片热搜榜；plays 保留上游的播放量单位。 */
 export type HotSearchVideo = { video_id: number; title: string; plays: string };
 

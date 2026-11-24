@@ -7,6 +7,7 @@ use std::time::Duration;
 const MAX_HTML_BYTES: usize = 2 * 1024 * 1024;
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(12);
 const MAX_ITEMS: usize = 20;
+const MAX_HOT_TAGS: usize = 50;
 const JS_MAX_SAFE_INTEGER: i64 = 9_007_199_254_740_991;
 
 #[derive(Debug, Serialize, PartialEq, Eq)]
@@ -14,6 +15,12 @@ struct HotVideo {
     video_id: i64,
     title: String,
     plays: String,
+}
+
+#[derive(Debug, Serialize, PartialEq, Eq)]
+struct HotTag {
+    name: String,
+    slug: String,
 }
 
 fn normalized_text(selection: Selection<'_>) -> String {
@@ -88,17 +95,71 @@ fn parse_items(html: &str) -> Result<Vec<HotVideo>, String> {
     }
 }
 
+fn tag_slug_from_href(href: &str) -> Option<String> {
+    let rest = href.strip_prefix("/tag/")?;
+    let slug = rest.strip_suffix('/').unwrap_or(rest);
+    if slug.is_empty()
+        || slug == "."
+        || slug == ".."
+        || slug
+            .chars()
+            .any(|ch| ch.is_whitespace() || matches!(ch, '/' | '?' | '#' | '\\'))
+    {
+        return None;
+    }
+    Some(slug.to_owned())
+}
+
+fn parse_hot_tags(html: &str) -> Result<Vec<HotTag>, String> {
+    let document = Document::from(html);
+    let sections = document.select("section.hg-home-popular-tags");
+    if sections.is_empty() {
+        return Err("官网首页没有找到热门标签区域".into());
+    }
+
+    let mut seen = HashSet::new();
+    let mut items = Vec::new();
+    for section in sections.iter() {
+        for anchor in Selection::from(section).select("a.hg-tagrow__item").iter() {
+            let Some(slug) = anchor
+                .attr("href")
+                .and_then(|href| tag_slug_from_href(&href))
+            else {
+                continue;
+            };
+            let name = normalized_text(Selection::from(anchor));
+            if name.is_empty() || seen.contains(&name) {
+                continue;
+            }
+            seen.insert(name.clone());
+            items.push(HotTag { name, slug });
+            if items.len() == MAX_HOT_TAGS {
+                return Ok(items);
+            }
+        }
+    }
+
+    if items.is_empty() {
+        Err("官网热门标签没有可用条目".into())
+    } else {
+        Ok(items)
+    }
+}
+
 fn search_page_url(base: &str) -> String {
     format!("{}/search/", base.trim_end_matches('/'))
 }
 
-async fn fetch_html() -> Result<String, String> {
+fn home_page_url(base: &str) -> String {
+    format!("{}/", base.trim_end_matches('/'))
+}
+
+async fn fetch_html(url: &str, page_label: &str, timeout_msg: &str) -> Result<String, String> {
     let base = crate::net::base();
     tokio::time::timeout(REQUEST_TIMEOUT, async {
         let referer = format!("{base}/");
-        let url = search_page_url(&base);
         let mut response = crate::net::get(
-            &url,
+            url,
             REQUEST_TIMEOUT,
             Some("text/html,application/xhtml+xml"),
             Some(&referer),
@@ -106,34 +167,45 @@ async fn fetch_html() -> Result<String, String> {
         .await?;
 
         if !response.status().is_success() {
-            return Err(format!("官网搜索页请求失败（HTTP {}）", response.status()));
+            return Err(format!("{page_label}请求失败（HTTP {}）", response.status()));
         }
         if response
             .content_length()
             .is_some_and(|length| length > MAX_HTML_BYTES as u64)
         {
-            return Err("官网搜索页超过 2 MiB 限制".into());
+            return Err(format!("{page_label}超过 2 MiB 限制"));
         }
 
         let mut html = Vec::with_capacity(response.content_length().unwrap_or(0) as usize);
         while let Some(chunk) = response.chunk().await.map_err(|error| crate::net::err_text(&error))? {
             if html.len().saturating_add(chunk.len()) > MAX_HTML_BYTES {
-                return Err("官网搜索页超过 2 MiB 限制".into());
+                return Err(format!("{page_label}超过 2 MiB 限制"));
             }
             html.extend_from_slice(&chunk);
         }
-        String::from_utf8(html).map_err(|_| "官网搜索页不是有效的 UTF-8 HTML".into())
+        String::from_utf8(html).map_err(|_| format!("{page_label}不是有效的 UTF-8 HTML"))
     })
     .await
-    .map_err(|_| "获取官网热搜超时（12 秒）".to_string())?
+    .map_err(|_| timeout_msg.to_string())?
 }
 
 pub async fn fetch() -> Result<Value, String> {
-    let html = fetch_html()
+    let url = search_page_url(&crate::net::base());
+    let html = fetch_html(&url, "官网搜索页", "获取官网热搜超时（12 秒）")
         .await
         .map_err(|error| format!("获取官网热搜失败：{error}"))?;
     let items =
         parse_items(&html).map_err(|error| format!("获取官网热搜失败：{error}"))?;
+    Ok(json!({ "items": items }))
+}
+
+pub async fn fetch_hot_tags() -> Result<Value, String> {
+    let url = home_page_url(&crate::net::base());
+    let html = fetch_html(&url, "官网首页", "获取官网热门标签超时（12 秒）")
+        .await
+        .map_err(|error| format!("获取官网热门标签失败：{error}"))?;
+    let items =
+        parse_hot_tags(&html).map_err(|error| format!("获取官网热门标签失败：{error}"))?;
     Ok(json!({ "items": items }))
 }
 

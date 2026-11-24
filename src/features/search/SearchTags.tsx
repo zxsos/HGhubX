@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../../shared/api/api";
-import type { TagItem } from "../../shared/api/types";
+import type { HotTagItem } from "../../shared/api/types";
 import { useContentPreferences } from "../../shared/model/contentPreferences";
 import { useStore } from "../../shared/model/store";
 import { IFireF, IRefresh } from "../../shared/ui/icons";
@@ -9,13 +9,12 @@ import { Loader } from "../../shared/ui/ios/effects";
 import { tr } from "../../shared/i18n";
 
 const BATCH_SIZE = 12;
-const heat = (tag: TagItem) => Number.isFinite(tag.hot_score) ? tag.hot_score! : 0;
 
-/** Use the catalog's actual tag names: keyword search is a different endpoint. */
+/** Use the official site's curated popular tags in upstream order. */
 export function SearchTags({ active }: { active: boolean }) {
   const { push } = useStore();
   const { preferences, isTagBlocked } = useContentPreferences();
-  const [tags, setTags] = useState<TagItem[] | null>(null);
+  const [tags, setTags] = useState<HotTagItem[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [batch, setBatch] = useState(0);
@@ -29,17 +28,16 @@ export function SearchTags({ active }: { active: boolean }) {
     const token = ++sequence.current;
     setLoading(true); setError("");
     try {
-      const response = await api.tags();
-      if (!Array.isArray(response?.categories)) throw new Error(tr("标签数据格式异常，请重试"));
-      const sorted = response.categories.flatMap(group => Array.isArray(group.tags) ? group.tags : [])
-        .filter(tag => typeof tag?.name === "string" && tag.name.trim().length > 0)
-        .sort((a, b) => Number(!!b.is_hot) - Number(!!a.is_hot) || heat(b) - heat(a));
+      const response = await api.hotTags();
+      if (!Array.isArray(response?.items)) throw new Error(tr("标签数据格式异常，请重试"));
       const seen = new Set<string>();
-      const unique = sorted.filter(tag => {
-        if (seen.has(tag.name)) return false;
-        seen.add(tag.name);
-        return true;
-      });
+      const unique: HotTagItem[] = [];
+      for (const item of response.items) {
+        const name = typeof item?.name === "string" ? item.name.trim() : "";
+        if (!name || seen.has(name)) continue;
+        seen.add(name);
+        unique.push({ name, slug: typeof item.slug === "string" ? item.slug : "" });
+      }
       if (sequence.current !== token) return;
       loaded.current = true;
       setTags(unique); setBatch(0);
