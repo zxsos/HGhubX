@@ -1,9 +1,9 @@
-export function installFixture({ theme, titles, metrics = [], metricPages = 1, metricPageSize = 2, tagGroups = null, follows = [] }) {
+export function installFixture({ theme, titles, metrics = [], metricPages = 1, metricPageSize = 2, tagGroups = null, follows = [], finished = [] }) {
   const cards = titles.map((title, i) => ({
     id: i + 1, title, cover: `https://fixture.invalid/poster/${i}`, tags: ["都市", "剧情"], score: metrics[i]?.score ?? (i % 2 === 0 ? 8.5 : 0),
     episode_count: 24, total_episodes: 24,
     hot: metrics[i]?.hot ?? 286000, like_count: metrics[i]?.like_count ?? 1800, collect_count: metrics[i]?.collect_count ?? 900,
-    comment_count: 20, is_finished: true, is_original: 0, description: "界面回归示例数据",
+    comment_count: 20, is_finished: finished[i] ?? true, is_original: 0, description: "界面回归示例数据",
     author: { id: 1, name: "示例作者" },
   }));
   const topic = { id: 1, title: "本周精选", slug: "weekly", cover: cards[0].cover, intro: "城市与故事", video_count: cards.length };

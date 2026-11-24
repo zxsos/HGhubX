@@ -9,6 +9,7 @@ import { usePaginatedList } from "../../shared/lib/usePaginatedList";
 import { Masonry } from "../../shared/ui/cards";
 import { VideoSortMenu } from "../../shared/ui/VideoSortMenu";
 import { sortVideosByMetric, type VideoSortDirection, type VideoSortMetric } from "../../shared/model/videoSort";
+import { WorkStatusMenu, type WorkStatus } from "./WorkStatusMenu";
 import { InplaceSearch } from "../search/InplaceSearch";
 import { Avatar, Empty } from "../../shared/ui/ui";
 import { IBack, IChevronDown, IGrid, IHeart, ISearch, IUser } from "../../shared/ui/icons";
@@ -156,14 +157,17 @@ function UserContent({ id, name, onBack, wide }: { id: number; name?: string; on
   const state = useUserVideos(true, `${accountScope}:${id}`, request);
   const [metricSort, setMetricSort] = useState<VideoSortMetric>("default");
   const [metricDirection, setMetricDirection] = useState<VideoSortDirection>("desc");
+  const [workStatus, setWorkStatus] = useState<WorkStatus>("all");
   const [metricItems, setMetricItems] = useState<VideoCard[] | null>(null);
   const [metricLoading, setMetricLoading] = useState(false);
   const [metricError, setMetricError] = useState("");
   const metricLoaded = useRef(false);
+  const metricLoadingRef = useRef(false);
   const metricSequence = useRef(0);
 
   const loadAllWorks = useCallback(async () => {
-    if (metricLoaded.current) return;
+    if (metricLoaded.current || metricLoadingRef.current) return;
+    metricLoadingRef.current = true;
     const token = ++metricSequence.current;
     setMetricLoading(true);
     setMetricError("");
@@ -193,7 +197,10 @@ function UserContent({ id, name, onBack, wide }: { id: number; name?: string; on
         setMetricError(error instanceof Error ? error.message : tr("作品加载失败"));
       }
     } finally {
-      if (metricSequence.current === token) setMetricLoading(false);
+      if (metricSequence.current === token) {
+        metricLoadingRef.current = false;
+        setMetricLoading(false);
+      }
     }
   }, [id]);
 
@@ -220,20 +227,36 @@ function UserContent({ id, name, onBack, wide }: { id: number; name?: string; on
     return () => { alive = false; };
   }, [id, infoReload]);
 
-  const sortedMetricWorks = useMemo(
-    () => metricSort === "default" ? [] : sortVideosByMetric(metricItems ?? [], metricSort, metricDirection),
-    [metricSort, metricDirection, metricItems],
+  const allWorksLoaded = metricItems !== null;
+  const statusCounts = useMemo(() => metricItems ? {
+    ongoing: metricItems.filter(video => !video.is_finished).length,
+    finished: metricItems.filter(video => video.is_finished).length,
+  } : null, [metricItems]);
+  const baseWorks = allWorksLoaded ? metricItems : state.items;
+  const statusWorks = useMemo(
+    () => workStatus === "all" ? baseWorks : baseWorks.filter(video => workStatus === "finished" ? video.is_finished : !video.is_finished),
+    [baseWorks, workStatus],
   );
-  const works = metricSort === "default" ? state.items : sortedMetricWorks;
-  const worksLoading = metricSort === "default" ? state.loading : metricLoading;
-  const worksError = metricSort === "default" ? state.err : metricError;
-  const worksTotal = state.total ?? state.items.length;
+  const works = useMemo(
+    () => metricSort === "default" ? statusWorks : sortVideosByMetric(statusWorks, metricSort, metricDirection),
+    [metricSort, metricDirection, statusWorks],
+  );
+  const needsAllWorks = metricSort !== "default" || workStatus !== "all";
+  const worksLoading = needsAllWorks ? metricLoading : state.loading;
+  const worksError = needsAllWorks ? metricError : state.err;
+  const worksTotal = state.total ?? metricItems?.length ?? state.items.length;
   const changeMetricSort = (value: VideoSortMetric, direction: VideoSortDirection = "desc") => {
     if (value === metricSort && direction === metricDirection) return;
     if (state.scroller.current) state.scroller.current.scrollTop = 0;
     setMetricSort(value);
     setMetricDirection(direction);
     if (value !== "default" && !metricLoaded.current) void loadAllWorks();
+  };
+  const changeWorkStatus = (value: WorkStatus) => {
+    if (value === workStatus) return;
+    if (state.scroller.current) state.scroller.current.scrollTop = 0;
+    setWorkStatus(value);
+    if (value !== "all" && !metricLoaded.current) void loadAllWorks();
   };
 
   const isOwnProfile = user?.id === id;
@@ -297,15 +320,14 @@ function UserContent({ id, name, onBack, wide }: { id: number; name?: string; on
       </div>}
       {profile?.sign && <details className="group mt-3 text-[13px] text-mut"><summary className="cursor-pointer min-h-11 flex items-center gap-2 text-on">{tr("作者简介")}<IChevronDown size={16} className="group-open:rotate-180" /></summary><p className="leading-relaxed whitespace-pre-wrap break-words">{profile.sign}</p></details>}
       <div className="mt-4 mb-2.5 flex items-center gap-2">
-        <h2 className="text-[14px] font-bold text-on">{tr("作品")}</h2>
-        <span data-works-count className="text-[12px] text-mut tabular-nums">{worksTotal}</span>
+        <WorkStatusMenu total={worksTotal} status={workStatus} counts={statusCounts} onChange={changeWorkStatus} />
         <VideoSortMenu className="ml-auto" value={metricSort} direction={metricDirection} onChange={changeMetricSort} />
       </div>
       {worksLoading && !works.length ? <div className="flex justify-center py-12"><Loader /></div>
-        : worksError && !works.length ? <Empty icon={<IGrid size={26} />} title={tr("作品加载失败")} sub={worksError} action={tr("重试")} onAction={() => void (metricSort === "default" ? state.loadMore() : loadAllWorks())} />
-        : works.length ? <Masonry videos={works} scopeKey={`user-works:${id}:${metricSort}:${metricDirection}`} wide={wide} onOpen={(v, visible) => push({ kind: "feed", videoIds: visible.map(x => x.id), index: visible.findIndex(x => x.id === v.id), title: profile?.nickname || name || tr("用户作品") })} />
+        : worksError && !works.length ? <Empty icon={<IGrid size={26} />} title={tr("作品加载失败")} sub={worksError} action={tr("重试")} onAction={() => void (needsAllWorks ? loadAllWorks() : state.loadMore())} />
+        : works.length ? <Masonry videos={works} scopeKey={`user-works:${id}:${metricSort}:${metricDirection}:${workStatus}`} wide={wide} onOpen={(v, visible) => push({ kind: "feed", videoIds: visible.map(x => x.id), index: visible.findIndex(x => x.id === v.id), title: profile?.nickname || name || tr("用户作品") })} />
         : <Empty icon={<IGrid size={26} />} title={tr("暂无作品")} />}
-      {metricSort === "default" ? <PaginationFeedback state={state} /> : worksError && works.length > 0 ? <Button onClick={() => void loadAllWorks()} className="mt-3 w-full rounded-(--r-ctl) bg-s3">{tr("重试")}</Button> : null}
+      {!allWorksLoaded && metricSort === "default" && workStatus === "all" ? <PaginationFeedback state={state} /> : worksError && works.length > 0 ? <Button onClick={() => void loadAllWorks()} className="mt-3 w-full rounded-(--r-ctl) bg-s3">{tr("重试")}</Button> : null}
     </div>
     {searching && <InplaceSearch kind="video" wide={wide} onClose={() => setSearching(false)} onOpenVideo={(v, list, kw) => push({ kind: "feed", videoIds: list.map(x => x.id), index: list.findIndex(x => x.id === v.id), title: kw ? tr("搜索 · {0}", kw) : tr("搜索") })} />}
   </div>;

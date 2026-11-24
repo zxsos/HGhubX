@@ -847,6 +847,9 @@ const en: Record<string, string> = {
   "长按作者可关注或取消关注": "Long-press an author to follow or unfollow",
   "{0} 位作者 · {1} 位已关注": "{0} authors · {1} followed",
   "已取消关注 {0}": "Unfollowed {0}",
+  "作品状态筛选": "Work status filter",
+  "筛选作品状态": "Filter works",
+  "筛选作品状态：{0}": "Filter works: {0}",
 };
 
 export default en;

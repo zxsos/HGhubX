@@ -55,7 +55,7 @@ try {
     isMobile: true,
     hasTouch: true,
   });
-  await context.addInitScript(installFixture, { theme: "dark", titles, metrics, metricPages: 2, metricPageSize: 2 });
+  await context.addInitScript(installFixture, { theme: "dark", titles, metrics, metricPages: 2, metricPageSize: 2, finished: [true, false, true] });
   const page = await context.newPage();
   page.on("pageerror", error => report.errors.push(error.message));
   await page.route("**/*", route => {
@@ -95,7 +95,7 @@ try {
   await page.goto(new URL("/tests/user-metric-sort.html", origin).href, { waitUntil: "domcontentloaded" });
   await page.locator("[data-video-sort-trigger]").waitFor();
   await waitOrder(expected.默认排序);
-  assert.equal((await page.locator("[data-works-count]").innerText()).trim(), "3");
+  assert.match(await page.locator("[data-work-status-trigger]").innerText(), /作品\s*3/u);
   await page.screenshot({ path: fileURLToPath(new URL("user-default.png", output)), animations: "disabled" });
   await page.locator("[data-video-sort-trigger]").click();
   await page.getByRole("menu", { name: "排序方式" }).waitFor();
@@ -114,6 +114,26 @@ try {
   await page.keyboard.press("Escape");
   await resetSort();
   report.checks.push("user page: the sorter sits on the works heading row; all four metrics reorder the author works and toggle direction");
+
+  await page.locator("[data-work-status-trigger]").click();
+  await page.locator('[data-work-status-option="finished"]').click();
+  await waitOrder(["甲", "丙"]);
+  assert.match(await page.locator("[data-work-status-trigger]").innerText(), /已完结 2/);
+  await openSortMenu();
+  await page.getByRole("menuitemradio", { name: "点赞数", exact: true }).click();
+  await waitOrder(["丙", "甲"]);
+  await page.screenshot({ path: fileURLToPath(new URL("user-finished-like.png", output)), animations: "disabled" });
+  await page.locator("[data-work-status-trigger]").click();
+  await page.getByRole("menu", { name: "作品状态筛选" }).waitFor();
+  assert.equal(await page.getByRole("menuitemradio", { name: "连载中 1", exact: true }).count(), 1);
+  assert.equal(await page.getByRole("menuitemradio", { name: "已完结 2", exact: true }).count(), 1);
+  await page.screenshot({ path: fileURLToPath(new URL("user-status-menu.png", output)), animations: "disabled" });
+  await page.keyboard.press("Escape");
+  await page.locator("[data-work-status-trigger]").click();
+  await page.locator('[data-work-status-option="ongoing"]').click();
+  await waitOrder(["乙"]);
+  assert.match(await page.locator("[data-video-sort-trigger]").innerText(), /点赞数/);
+  report.checks.push("user page: status filter combines with the existing metric sort and uses the loaded works");
 
   assert.deepEqual(report.errors, []);
   report.passed = true;
