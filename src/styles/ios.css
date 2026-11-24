@@ -509,7 +509,7 @@ html.theme-light {
 .tag-pin-pill[data-pressing="true"] { scale:.96; border-color:var(--p-primary); }
 .tag-pin-pill[data-pinned="true"] { border-color:var(--p-primary); background:color-mix(in srgb, var(--p-primary) 10%, var(--p-s3)); }
 .tag-pin-mark { flex:none; color:var(--p-primary); }
-.tag-page-pin.ios-button { display:inline-flex; align-items:center; justify-content:center; width:30px; height:30px; min-width:30px; min-height:30px; padding:0; flex:none; border-radius:50%; background:transparent; color:var(--p-mut); }
+.tag-page-pin.ios-button { display:inline-flex; align-items:center; justify-content:center; width:36px; height:36px; min-width:36px; min-height:36px; padding:0; flex:none; border-radius:50%; background:transparent; color:var(--p-mut); }
 .tag-page-pin.ios-button[aria-pressed="true"] { color:var(--p-accent); background:color-mix(in srgb, var(--p-accent) 12%, transparent); }
 .tag-page-pin.ios-button:active { scale:.92; }
 .ios-sort-control { position:relative; display:inline-flex; flex:none; }

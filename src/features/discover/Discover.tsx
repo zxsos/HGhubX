@@ -664,15 +664,13 @@ export function TagPage({ tag, name, onBack, wide }: { tag: string; name: string
           <Button aria-label={tr("返回")} onClick={onBack} className="ios-nav-btn"><IBack size={20} /></Button>
           <span className="w-9 h-9 rounded-[12px] bg-pc text-on-pc flex items-center justify-center shrink-0"><TagIcon size={18} /></span>
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-1.5 min-w-0">
-              <h1 className="min-w-0 text-[17px] font-bold text-on leading-tight truncate" title={name}>{name}</h1>
-              <Button onClick={togglePin} aria-pressed={tagPinned} aria-label={tagPinned ? tr("取消置顶此标签") : tr("置顶此标签")}
-                title={tagPinned ? tr("取消置顶此标签") : tr("置顶此标签")} className="tag-page-pin">
-                <IPinF size={17} />
-              </Button>
-            </div>
+            <h1 className="text-[17px] font-bold text-on leading-tight truncate" title={name}>{name}</h1>
             <div role="status" className="text-[12px] text-mut leading-tight mt-0.5 tabular-nums">{tr("短剧 {0} · 吃瓜 {1}", currentVideos ? videoTotal : 0, currentPosts ? postTotal : 0)}</div>
           </div>
+          <Button onClick={togglePin} aria-pressed={tagPinned} aria-label={tagPinned ? tr("取消置顶此标签") : tr("置顶此标签")}
+            title={tagPinned ? tr("取消置顶此标签") : tr("置顶此标签")} className="tag-page-pin">
+            <IPinF size={18} />
+          </Button>
         </div>
       </div>
       <div ref={scrollContainer} className="flex-1 scroll-y pt-3.5 pb-8" aria-busy={videoLoading || postLoading || !currentVideos || !currentPosts}>

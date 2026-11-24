@@ -116,10 +116,11 @@ try {
   assert.equal(await detail.getByRole("button", { name: "搜索短剧" }).count(), 0, "tag result header must replace search with pin");
   const titleBox = await detail.getByRole("heading", { name: "都市" }).boundingBox();
   const pinBox = await pinButton.boundingBox();
-  assert(titleBox && pinBox, "tag title and pin button need bounding boxes");
-  assert(Math.abs((titleBox.y + titleBox.height / 2) - (pinBox.y + pinBox.height / 2)) < 10, "pin must align with the tag title");
-  assert(pinBox.x > titleBox.x, "pin must sit to the right of the tag title");
-  report.checks.push("tag result page exposes a pin aligned with the tag title instead of search");
+  const tagIconBox = await detail.locator(".ios-subpage-bar > span.w-9").first().boundingBox();
+  assert(titleBox && pinBox && tagIconBox, "tag title, header icon and pin button need bounding boxes");
+  assert(Math.abs((tagIconBox.y + tagIconBox.height / 2) - (pinBox.y + pinBox.height / 2)) < 6, "pin must be vertically centered with the header tag icon");
+  assert(pinBox.x > titleBox.x + titleBox.width, "pin must occupy the trailing header slot, not sit beside the title");
+  report.checks.push("tag result page exposes a trailing pin centered with the header tag icon instead of search");
 
   await pinButton.click();
   await detail.getByRole("button", { name: "取消置顶此标签" }).waitFor();
