@@ -730,7 +730,7 @@ export default function Feed({
           videoRef={videoRef} barRef={barRef} playbackClock={playbackClock}
           isDesktop={isDesktop} active={active} fs={fs} idle={idle} rotated={rotated} vpLandscape={vpLandscape}
           theater={theater} setTheater={setTheater} fullscreen={fullscreen} controlsLocked={controlsLocked}
-          paused={paused} duration={duration} rate={rate} setRate={setRate} effRate={effRate}
+          paused={paused} duration={duration} rate={rate} setRate={setRate} effRate={effRate} holdRate={holdSpeed || (holdSlow ? 0.5 : 0)}
           muted={muted} setMuted={setMuted} volume={volume} setVolume={setVolume} swipeEp={swipeEp} setSwipeEp={setSwipeEp}
           preferHevc={preferHevc} setPreferHevc={setPreferHevc} portraitFit={portraitFit} setPortraitFit={setPortraitFit}
           playKey={playKey} curId={curId} curEp={curEp} index={index} effectiveLength={effectiveVideoIds.length}

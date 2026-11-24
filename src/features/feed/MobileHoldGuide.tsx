@@ -1,5 +1,4 @@
-import { useId, useLayoutEffect, useRef, useState, type CSSProperties, type RefObject } from "react";
-import { getHoldMenuBounds } from "./mobileHold";
+import { useLayoutEffect, useRef, useState, type CSSProperties, type RefObject } from "react";
 import { Button } from "../../shared/ui/ios/controls";
 import { GuideFrame } from "../../shared/ui/ios/overlays";
 import "../../styles/mobile-hold-guide.css";
@@ -22,7 +21,6 @@ export default function MobileHoldGuide({ open, onClose, target, bottomInset }: 
 function GuideContent({ target, bottomInset, onClose }: Omit<Props, "open">) {
   const root = useRef<HTMLDivElement>(null);
   const [layout, setLayout] = useState<Layout | null>(null);
-  const maskId = useId();
   useLayoutEffect(() => {
     const frame = root.current;
     const surface = target.current;
@@ -64,7 +62,6 @@ function GuideContent({ target, bottomInset, onClose }: Omit<Props, "open">) {
     };
   }, [target]);
 
-  const bounds = layout ? getHoldMenuBounds(layout.targetWidth, layout.targetHeight) : null;
   const compact = !!layout && layout.targetWidth > layout.targetHeight;
   const point = (x: number, y: number): CSSProperties => layout
     ? { left: layout.left + layout.targetWidth * x, top: layout.top + layout.targetHeight * y }
@@ -74,34 +71,26 @@ function GuideContent({ target, bottomInset, onClose }: Omit<Props, "open">) {
     onPointerDown={event => event.stopPropagation()} onPointerMove={event => event.stopPropagation()}
     onPointerUp={event => event.stopPropagation()} onPointerCancel={event => event.stopPropagation()}
     onClick={event => event.stopPropagation()} onContextMenu={event => event.preventDefault()}>
-    {layout && bounds && <>
+    {layout && <>
       <svg className="mobile-hold-guide-map" viewBox={`0 0 ${layout.width} ${layout.height}`} aria-hidden="true">
-        <defs><mask id={maskId} maskUnits="userSpaceOnUse" x="0" y="0" width={layout.width} height={layout.height}>
-          <rect width={layout.width} height={layout.height} fill="white" />
-          <rect x={layout.left + bounds.left} y={layout.top + bounds.top} width={bounds.size} height={bounds.size} fill="black" />
-        </mask></defs>
-        <rect width={layout.width} height={layout.height} fill="rgb(7 11 21 / .76)" mask={`url(#${maskId})`} />
-        <g mask={`url(#${maskId})`}>
-          <path d={`M ${layout.left} ${layout.top} H ${layout.left + layout.targetWidth} V ${layout.top + layout.targetHeight} Z`} fill="rgb(112 230 220 / .12)" />
-          <path d={`M ${layout.left} ${layout.top} V ${layout.top + layout.targetHeight} H ${layout.left + layout.targetWidth} Z`} fill="rgb(249 199 124 / .12)" />
-          <path d={`M ${layout.left} ${layout.top} L ${layout.left + layout.targetWidth} ${layout.top + layout.targetHeight}`} stroke="rgb(255 255 255 / .3)" strokeWidth="1" strokeDasharray="5 7" />
-        </g>
-        <rect className="mobile-hold-guide-square" x={layout.left + bounds.left} y={layout.top + bounds.top}
-          width={bounds.size} height={bounds.size} fill="rgb(15 19 30 / .42)" stroke="white" strokeWidth="2" />
+        <rect width={layout.width} height={layout.height} fill="rgb(7 11 21 / .76)" />
+        <rect x={layout.left + layout.targetWidth / 2} y={layout.top} width={layout.targetWidth / 2} height={layout.targetHeight} fill="rgb(112 230 220 / .14)" />
+        <rect x={layout.left} y={layout.top} width={layout.targetWidth / 2} height={layout.targetHeight} fill="rgb(249 199 124 / .12)" />
+        <line x1={layout.left + layout.targetWidth / 2} y1={layout.top} x2={layout.left + layout.targetWidth / 2} y2={layout.top + layout.targetHeight} stroke="rgb(255 255 255 / .34)" strokeWidth="1.5" strokeDasharray="6 7" />
       </svg>
       <div className="mobile-hold-guide-heading">
         <h2>{tr("长按左右区域调整速度")}</h2>
-        <p>{tr("按住约 0.4 秒，松开恢复原速度")}</p>
+        <p>{tr("按住约 0.3 秒，松开恢复原速度")}</p>
       </div>
-      <div className="mobile-hold-guide-zone is-fast" style={point(.76, compact ? .34 : .28)}>
-        <strong>2×</strong><span>{tr("右上 · 按住加速")}</span>
+      <div className="mobile-hold-guide-zone is-slow" style={point(.25, .5)}>
+        <strong>0.5×</strong><span>{tr("左半屏 · 按住慢放")}</span>
       </div>
-      <div className="mobile-hold-guide-zone is-slow" style={point(.24, compact ? .66 : .65)}>
-        <strong>0.5×</strong><span>{tr("左下 · 按住减速")}</span>
+      <div className="mobile-hold-guide-zone is-fast" style={point(.75, .5)}>
+        <strong>2×</strong><span>{tr("右半屏 · 按住倍速")}</span>
       </div>
     </>}
     <div className="mobile-hold-guide-footer">
-      <p>{tr("长按左右区域加速 / 减速 · 左右滑换挡")}</p>
+      <p>{tr("长按右半屏 2× 倍速 · 左右滑顺滑换挡")}</p>
       <p>{tr("双击暂停播放")}</p>
       <Button className="mobile-hold-guide-done" onClick={onClose} data-autofocus>{tr("知道了")}</Button>
     </div>
