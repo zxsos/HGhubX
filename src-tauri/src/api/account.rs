@@ -52,13 +52,12 @@ pub async fn api_login(
 ) -> Result<Value, String> {
     // Manual login has no expected identity. Automatic login must still belong
     // to the initiating session and may only cross verified shared-account lines.
+    crate::net::refresh_client();
     let (origin, revision) = match (expected_user_id, expected_origin.as_deref(), credential_origin.as_deref()) {
         (None, None, None) => (base(), state.session.revision()),
         (Some(id), Some(expected), Some(saved)) => {
             let session = state.account_session(Some(id), Some(expected))?;
-            if saved != expected && !(crate::session::rebase_trust(saved) && crate::session::rebase_trust(expected)) {
-                return Err("登录信息不适用于当前线路，请手动重新登录".into());
-            }
+            crate::session::verify_relogin_origins(saved, expected).await?;
             (session.origin, session.revision)
         }
         _ => return Err("自动重新登录缺少账号或线路信息".into()),
