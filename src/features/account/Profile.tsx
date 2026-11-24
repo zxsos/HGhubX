@@ -377,9 +377,15 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
         )}
 
         {user && accountSync.error && <div role="alert" className="mt-3 rounded-(--r-sm) bg-s3 px-3.5 py-3 text-[13px] flex flex-wrap items-center justify-between gap-2">
-          <p className="text-danger break-words flex-1 min-w-[200px]">{accountSync.error}</p>
-          <Button disabled={accountSync.busy} onClick={() => { void syncAccount({ manual: true }).catch(() => {}); }}
-            className="inline-flex items-center min-h-9 -mx-2 px-2 text-primary font-semibold shrink-0">{accountSync.busy ? tr("正在重试…") : tr("重试同步")}</Button>
+          <p className={`${accountSync.authError ? "text-on" : "text-danger"} break-words flex-1 min-w-[200px]`}>{accountSync.error}</p>
+          <div className="flex items-center gap-2 shrink-0">
+            {accountSync.authError && (
+              <Button onClick={() => setLoginOpen(true)}
+                className="inline-flex items-center min-h-9 px-3 rounded-full bg-primary text-on-primary text-[12px] font-semibold shrink-0">{tr("重新登录")}</Button>
+            )}
+            <Button disabled={accountSync.busy} onClick={() => { void syncAccount({ manual: true }).catch(() => {}); }}
+              className="inline-flex items-center min-h-9 -mx-2 px-2 text-primary font-semibold shrink-0">{accountSync.busy ? tr("正在重试…") : tr("重试同步")}</Button>
+          </div>
         </div>}
 
         {/* 关注 / 我的主页 */}
@@ -465,8 +471,9 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
         <div className="mt-3" aria-busy={loading || syncingFavorites}>
           {favoriteSyncFailed ? (
             <Empty icon={<IStar size={24} />} title={tr("收藏状态未知")}
-              sub={tr("账号同步未完成，暂时无法确认收藏内容。")} action={tr("重试")}
-              onAction={() => { void syncAccount({ manual: true }).catch(() => {}); }} />
+              sub={accountSync.authError ? tr("登录已过期，重新登录后继续同步") : tr("账号同步未完成，暂时无法确认收藏内容。")}
+              action={accountSync.authError ? tr("重新登录") : tr("重试")}
+              onAction={() => { if (accountSync.authError) setLoginOpen(true); else void syncAccount({ manual: true }).catch(() => {}); }} />
           ) : syncingFavorites ? (
             <FavoriteSyncState wide={wide} />
           ) : loading && !cardsCount ? (

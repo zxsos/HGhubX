@@ -12,6 +12,25 @@ pub fn rebase_trust(origin: &str) -> bool {
     crate::lines::is_fixed(origin) || crate::lines::is_trusted_mirror(origin)
 }
 
+/// Verify cross-line trust for automatic re-login, refreshing published mirror
+/// trust on demand when a saved or current mirror origin is not yet cached.
+pub async fn verify_relogin_origins(saved: &str, expected: &str) -> Result<(), String> {
+    if saved == expected {
+        return Ok(());
+    }
+    if !rebase_trust(saved) {
+        let _ = crate::lines::verify_published_origin(saved).await;
+    }
+    if !rebase_trust(expected) {
+        let _ = crate::lines::verify_published_origin(expected).await;
+    }
+    if rebase_trust(saved) && rebase_trust(expected) {
+        Ok(())
+    } else {
+        Err("登录信息不适用于当前线路，请手动重新登录".into())
+    }
+}
+
 /// Boot-time session visibility: a session already bound to the current line
 /// stays visible even when this process could not refresh publisher trust
 /// (flaky publish pages at boot). Sending credentials to an unverified mirror

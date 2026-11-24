@@ -46,8 +46,9 @@
 
 1. `Api::get/post/authed` 调 `edge(origin, method, path, body, token)`。逻辑 method/path/body 被
    序列化后 Base64 放进信封，实际 HTTP 始终是 `POST {origin}/api/edge/request`；响应要求
-   `status == 1`，否则取 `msg` 作为错误。`401`/`403` 统一折叠成 `401`，避免把权限错误误判为
-   可重试网络错误。
+   `status == 1`，否则取 `msg` 作为错误。仅 HTTP `401` 折叠成 `"401"`；HTTP `403` 保留
+   `"HTTP 403..."` 原状态，避免网络切换后的 CDN/WAF 拦截被误报为登录态失效，同时让前端
+   自动选线感知连续 403 并切线。
 2. `with_retry()` 只对逻辑 GET、无 body 的请求重试，最多 3 次；408/425/429/5xx、超时/连接类
    错误可重试，401、404、403、地址策略拒绝和重定向错误一次即终止。重试前 `heal_client()` 会在
    3 秒节流内重建客户端，解决代理软件开关后的 tunnel error。
@@ -83,8 +84,8 @@
   后续失败或过期 → 回到系统解析路径。
 - 代理：`system` 每次建客户端时重新读系统设置；`custom` 用用户保存的地址；`off` 强制
   `no_proxy()`。保存代理会推进线路选择代次，旧探测不能在新代理保存后切换线路。
-- 响应：成功且 `status=1` → 返回 `data`；空 body → `Null`；业务失败 → `msg`；HTTP 401/403 →
-  `"401"`；网络错误 → 保留 source chain 的脱敏文本。
+- 响应：成功且 `status=1` → 返回 `data`；空 body → `Null`；业务失败 → `msg`；HTTP 401 →
+  `"401"`；HTTP 403 → `"HTTP 403..."`；网络错误 → 保留 source chain 的脱敏文本。
 
 ## 约束与失败行为
 
