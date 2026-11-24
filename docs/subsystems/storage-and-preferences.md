@@ -83,8 +83,8 @@
    回退默认 `zh-CN`（不跟随系统语言）；切换到 `zh-TW` 或 `en` 时先按需加载对应词典 chunk，成功后才写
    `localStorage`、同步 `<html lang>` 并触发界面重绘。
 4. 内容偏好存在 `CONTENT_PREFERENCES_KEY`，结构是
-   `{blockedTags, paused, hideUntagged}`。`normalizeTag()` 只做 trim、压缩空白和小写化，
-   不做模糊匹配；最多 200 个标签、单个 64 字符。读取失败/JSON 损坏 → 全空偏好；写入失败 →
+   `{blockedTags, pinnedTags, paused, hideUntagged}`。`normalizeTag()` 只做 trim、压缩空白和小写化，
+   不做模糊匹配；屏蔽标签最多 200 个、置顶标签最多 24 个、单个标签 64 字符。读取失败/JSON 损坏 → 全空偏好；写入失败 →
    本次内存偏好仍生效，同时把 `storageError` 暴露给 `PreferenceStorageNotice`，重启可能回退。
 5. 账号数据按 `[origin, user.id]` 分桶保存在 `ACCOUNT_KEY`，值带 `version:1`。`accountScope`
    是 `${key}:${generation}`，`generation` 在登录/退出/切换账号时递增；所有详情、标签门、

@@ -126,6 +126,7 @@ try {
   await page.goto(new URL("/tests/tag-metric-sort.html?tag=悬疑", origin).href, { waitUntil: "networkidle" });
   await page.locator("[data-video-sort-trigger]").waitFor();
   await waitOrder(expected.默认排序);
+  assert.deepEqual(await page.locator(".ios-media-grid .ios-poster-ep").allInnerTexts(), ["全 24 集", "全 24 集", "全 24 集"]);
   await page.screenshot({ path: fileURLToPath(new URL("tag-default.png", output)), animations: "disabled" });
   await page.locator("[data-video-sort-trigger]").click();
   await page.getByRole("menu", { name: "排序方式" }).waitFor();

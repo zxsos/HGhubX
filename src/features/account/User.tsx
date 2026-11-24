@@ -207,14 +207,14 @@ function UserContent({ id, name, onBack, wide }: { id: number; name?: string; on
           <Avatar size={56} name={profile?.nickname || name || "U"} hue={220} ring />
           <div className="flex-1 min-w-0">
             <p className="text-[16px] font-bold text-on break-words">{profile?.nickname || name || (infoLoading ? tr("正在读取资料…") : tr("用户资料暂不可用"))}</p>
-            {profile?.username && <p className="text-[12px] text-mut mt-0.5 break-words">@{profile.username} · ID {id}</p>}
+            {profile?.username && <p className="text-[12px] text-mut mt-0.5 flex flex-wrap items-center gap-x-1.5"><span className="truncate max-w-full">@{profile.username}</span><span className="whitespace-nowrap">· ID {id}</span></p>}
           </div>
         </div>
         <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap gap-x-3 gap-y-1 text-[12px] text-mut" aria-busy={infoLoading}>
-            <span>{tr("作品")}{" "}<b className="text-on">{stat(stats?.video_count)}</b></span>
-            <span>{tr("粉丝")}{" "}<b className="text-on">{stat(stats?.followers)}</b></span>
-            <span>{tr("获赞")}{" "}<b className="text-on">{stat(stats?.like_count)}</b></span>
+            <span className="whitespace-nowrap">{tr("作品")}{" "}<b className="text-on">{stat(stats?.video_count)}</b></span>
+            <span className="whitespace-nowrap">{tr("粉丝")}{" "}<b className="text-on">{stat(stats?.followers)}</b></span>
+            <span className="whitespace-nowrap">{tr("获赞")}{" "}<b className="text-on">{stat(stats?.like_count)}</b></span>
           </div>
           {!isOwnProfile && <Button onClick={() => void onFollow()} disabled={followBusy || actionPending(`follow:${id}`)} aria-busy={followBusy || actionPending(`follow:${id}`)} aria-pressed={following}
             className={`min-h-11 px-3.5 rounded-full text-[13px] font-semibold shrink-0 ${following ? "bg-s3 text-mut" : "bg-primary text-on-primary"}`}>

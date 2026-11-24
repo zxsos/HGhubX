@@ -123,7 +123,7 @@ try {
     assert.deepEqual(await badgesOf("仅原创完结剧"), ["原创", "完结"]);
     assert.deepEqual(await badgesOf("热播新片剧"), ["热播", "新片"]);
     assert.deepEqual(await badgesOf("过期新片不显示"), []);
-    assert.equal(await page.getByRole("button", { name: "仅原创完结剧" }).locator(".ios-poster-ep").innerText(), "已完结");
+    assert.equal(await page.getByRole("button", { name: "仅原创完结剧" }).locator(".ios-poster-ep").innerText(), "全 24 集");
 
     const overlap = await page.evaluate(() => {
       const card = Array.from(document.querySelectorAll("button.ios-poster"))
