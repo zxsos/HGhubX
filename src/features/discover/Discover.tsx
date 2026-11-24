@@ -285,6 +285,7 @@ export function TopicPage({ slug, name, onBack, wide }: { slug: string; name: st
 /* ================= 标签聚合页 ================= */
 const TAG_PIN_HOLD_MS = 600;
 const TAG_PIN_MOVE_PX = 10;
+const TAG_PIN_TOAST_SLOT = "tag-pin-hint";
 
 /** A tag chip that opens on tap and toggles its pinned state on a deliberate hold. */
 function TagPinChip({ name, hotScore, pinned, board = false, onOpen, onTogglePin }: {
@@ -374,11 +375,11 @@ export function TagsPage({ onBack, wide }: { onBack: () => void; wide: boolean }
   const togglePin = useCallback((name: string) => {
     const currentlyPinned = isTagPinned(name);
     if (!currentlyPinned && pinnedTags.length >= MAX_PINNED_TAGS) {
-      toast(tr("最多置顶 {0} 个标签", MAX_PINNED_TAGS), "info");
+      toast(tr("最多置顶 {0} 个标签", MAX_PINNED_TAGS), "info", TAG_PIN_TOAST_SLOT);
       return;
     }
     togglePinnedTag(name);
-    toast(currentlyPinned ? tr("已取消置顶：{0}", name) : tr("已置顶标签：{0}", name), currentlyPinned ? "info" : "ok");
+    toast(currentlyPinned ? tr("已取消置顶：{0}", name) : tr("已置顶标签：{0}", name), currentlyPinned ? "info" : "ok", TAG_PIN_TOAST_SLOT);
   }, [isTagPinned, pinnedTags.length, toast, togglePinnedTag]);
 
   return (
@@ -591,11 +592,11 @@ export function TagPage({ tag, name, onBack, wide }: { tag: string; name: string
   }, [tag, name]);
   const togglePin = useCallback(() => {
     if (!tagPinned && preferences.pinnedTags.length >= MAX_PINNED_TAGS) {
-      toast(tr("最多置顶 {0} 个标签", MAX_PINNED_TAGS), "info");
+      toast(tr("最多置顶 {0} 个标签", MAX_PINNED_TAGS), "info", TAG_PIN_TOAST_SLOT);
       return;
     }
     togglePinnedTag(name);
-    toast(tagPinned ? tr("已取消置顶：{0}", name) : tr("已置顶标签：{0}", name), tagPinned ? "info" : "ok");
+    toast(tagPinned ? tr("已取消置顶：{0}", name) : tr("已置顶标签：{0}", name), tagPinned ? "info" : "ok", TAG_PIN_TOAST_SLOT);
   }, [name, preferences.pinnedTags.length, tagPinned, toast, togglePinnedTag]);
   const changeMetricSort = (value: VideoSortMetric, direction: VideoSortDirection = "desc") => {
     if (value === metricSort && direction === metricDirection) return;
