@@ -4,7 +4,7 @@ import { Loader } from "../../shared/ui/ios/effects";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, cover, fmt, isMobile } from "../../shared/api/api";
 import type { Post } from "../../shared/api/types";
-import { useStore } from "../../shared/model/store";
+import { ACTION_TOAST_SLOT, useStore } from "../../shared/model/store";
 import { copyText } from "../../shared/lib/clipboard";
 import { Empty, Img, Sheet } from "../../shared/ui/ui";
 import { Player } from "../playback";
@@ -286,16 +286,16 @@ export function PostDetail({ id, onBack, active = true }: { id: number; onBack: 
                   return <>
                     <Button aria-pressed={liked} disabled={likeBusy} onClick={() => {
                       void setLiked("post", id, 1, !liked)
-                        .then(() => toast(!liked ? tr("已加入喜欢") : tr("已取消喜欢"), !liked ? "heart" : "info"))
-                        .catch(e => toast(e instanceof Error ? e.message : tr("操作失败"), "info"));
+                        .then(() => toast(!liked ? tr("已加入喜欢") : tr("已取消喜欢"), !liked ? "heart" : "info", ACTION_TOAST_SLOT))
+                        .catch(e => toast(e instanceof Error ? e.message : tr("操作失败"), "info", ACTION_TOAST_SLOT));
                     }} className="h-9 px-3.5 rounded-full bg-s2 flex items-center gap-1.5 text-[13px] text-on pressable">
                       {liked ? <IHeartF size={15} className="text-neon" /> : <IHeart size={15} />}
                       <span>{likeCount > 0 ? fmt(likeCount) : tr("喜欢")}</span>
                     </Button>
                     <Button aria-pressed={fav} disabled={favBusy} onClick={() => {
                       void setCollected("post", id, !fav)
-                        .then(() => toast(!fav ? tr("已收藏") : tr("已取消收藏"), !fav ? "star" : "info"))
-                        .catch(e => toast(e instanceof Error ? e.message : tr("操作失败"), "info"));
+                        .then(() => toast(!fav ? tr("已收藏") : tr("已取消收藏"), !fav ? "star" : "info", ACTION_TOAST_SLOT))
+                        .catch(e => toast(e instanceof Error ? e.message : tr("操作失败"), "info", ACTION_TOAST_SLOT));
                     }} className="h-9 px-3.5 rounded-full bg-s2 flex items-center gap-1.5 text-[13px] text-on pressable">
                       {fav ? <IStarF size={15} className="text-amber" /> : <IStar size={15} />}
                       <span>{favCount > 0 ? fmt(favCount) : tr("收藏")}</span>
