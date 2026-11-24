@@ -10,7 +10,7 @@ import { IClose, IEye, IEyeOff, ILogin } from "../../shared/ui/icons";
 import { tr } from "../../shared/i18n";
 
 export default function LoginModal() {
-  const { loginOpen, setLoginOpen, setUser, toast, accountScope, lineEpoch } = useStore();
+  const { user, loginOpen, setLoginOpen, setUser, toast, accountScope, lineEpoch } = useStore();
   const [mode, setMode] = useState<"login" | "register">("login");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -38,7 +38,8 @@ export default function LoginModal() {
   }, []);
   useEffect(() => {
     if (!loginOpen) { setPassword(""); setShowPassword(false); setErr(""); }
-  }, [loginOpen]);
+    else if (user?.username) { setMode("login"); setUsername(prev => prev || user.username); }
+  }, [loginOpen, user?.username]);
   const title = mode === "login" ? tr("登录 HGhubX") : tr("注册 HGhubX");
   const close = () => {
     if (pending.current) return;

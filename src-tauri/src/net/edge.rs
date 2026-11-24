@@ -197,7 +197,7 @@ pub async fn edge(
                         continue;
                     }
                     let text = resp.text().await.map_err(|e| err_text(&e))?;
-                    if status.as_u16() == 401 || status.as_u16() == 403 {
+                    if status.as_u16() == 401 {
                         return Err("401".to_string());
                     }
                     if !status.is_success() {

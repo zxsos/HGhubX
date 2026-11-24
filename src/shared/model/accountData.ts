@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api/api";
 import type { AccountHistoryItem, AccountIdentity, AccountInteractions, User } from "../api/types";
 import type { WatchProgress } from "./store";
+import { autoLineEnabled, pickLine, waitForPendingLinePick } from "../network/autoLine";
 import { tr } from "../i18n";
 
 type Kind = "video" | "post";
@@ -25,7 +26,7 @@ type AccountData = GuestData & {
   dirtyHistory: Record<number, { ep: number; at: number }>;
   localHistory: number[];
 };
-type SyncState = { busy: boolean; error: string; lastSynced: number; favoritesKnown: boolean };
+type SyncState = { busy: boolean; error: string; authError: boolean; lastSynced: number; favoritesKnown: boolean };
 const ACCOUNT_KEY = "hghubx_accounts_v1";
 const empty = (): AccountData => ({ likes: [], favs: [], follows: [], history: [], postLikes: [], postFavs: [], dirtyHistory: {}, localHistory: [] });
 const ids = (value: unknown): number[] => Array.isArray(value)
@@ -100,7 +101,7 @@ export function useAccountData(initialGuest: GuestData, saveGuest: (data: GuestD
         accounts.current = Object.fromEntries(Object.entries(saved.accounts).map(([key, data]) => [key, sanitize(data as AccountData)]));
       }
     } catch { /* A damaged account cache must not erase legacy guest records. */ }
-    state.current = { user: null, origin: "", key: "guest", generation: 0, data: guest.current, sync: { busy: false, error: "", lastSynced: 0, favoritesKnown: false } };
+    state.current = { user: null, origin: "", key: "guest", generation: 0, data: guest.current, sync: { busy: false, error: "", authError: false, lastSynced: 0, favoritesKnown: false } };
   }
   const pending = useRef(new Map<string, Promise<void>>());
   const mutation = useRef(0);
@@ -185,31 +186,37 @@ export function useAccountData(initialGuest: GuestData, saveGuest: (data: GuestD
   };
   const authRejected = useRef(false);
   const authRejectedMsg = useRef("");
+  const lineRecovered = useRef(false);
   const syncRef = useRef<() => Promise<void>>(async () => {});
   const syncAccount = useCallback(async (options?: { manual?: boolean }) => {
     const s = state.current!;
     if (!s.user) return;
-    if (options?.manual) { authRejected.current = false; authRejectedMsg.current = ""; }
+    if (options?.manual) { authRejected.current = false; authRejectedMsg.current = ""; lineRecovered.current = false; }
     const generation = s.generation;
     if (synchronizing.current?.generation === generation) return synchronizing.current.promise;
     if (clearing.current === generation) return;
     const auth = identity();
-    s.sync = { ...s.sync, busy: true, error: "" }; render();
+    s.sync = { ...s.sync, busy: true, error: "", authError: false }; render();
     const startMutation = mutation.current;
     const startClear = clearVersion.current;
     const startHistory = new Map(s.data.history.map(row => [row.id, row]));
     const run = (async () => {
+      if (options?.manual) {
+        await api.lineHealth().catch(() => {});
+        if (!isCurrent(generation)) return;
+      }
       // Only replay observed playback, never silently upload the guest's library.
       let [profile, remote] = await Promise.allSettled([
         api.me(auth),
         (async () => { await flushHistory(); return readHistory(auth, generation); })(),
       ]);
       if (!isCurrent(generation)) return;
+      const is401 = (r: PromiseSettledResult<unknown>) => r.status === "rejected" && message(r.reason) === "401";
       // 镜像/CDN 可能不认其它线路签发的 token：账号 401 时用本机保存的凭据
-      // 在当前线路静默重登一次并重试；失败给可操作提示，不裸抛 401、不循环重登。
+      // 在当前线路静默重登一次并重试；瞬时网络失败保留凭据以便后续静默恢复。
       let reloginError = "";
-      if (((profile.status === "rejected" && message(profile.reason) === "401")
-        || (remote.status === "rejected" && message(remote.reason) === "401")) && state.current!.user) {
+      let reloginPermanentFailure = false;
+      if ((is401(profile) || is401(remote)) && state.current!.user) {
         const credential = readCredential(auth.expectedUserId);
         if (credential && !authRejected.current) {
           authRejected.current = true;
@@ -218,6 +225,7 @@ export function useAccountData(initialGuest: GuestData, saveGuest: (data: GuestD
             if (!isCurrent(generation)) return;
             if (snapshot.origin !== s.origin || snapshot.user?.id !== state.current!.user?.id) {
               clearCredential();
+              reloginPermanentFailure = true;
               authRejectedMsg.current = tr("当前线路返回的账号与本地登录不一致，请手动重新登录");
               reloginError = authRejectedMsg.current;
             } else {
@@ -230,25 +238,50 @@ export function useAccountData(initialGuest: GuestData, saveGuest: (data: GuestD
             }
           } catch (error) {
             if (!isCurrent(generation)) return;
-            if (/账号与本地登录不一致|密码/.test(message(error))) clearCredential();
-            authRejectedMsg.current = tr("自动重新登录失败，请在当前线路手动重新登录");
-            reloginError = authRejectedMsg.current;
+            const errMsg = message(error);
+            if (/账号与本地登录不一致|密码|账号不存在|用户名/.test(errMsg)) {
+              clearCredential();
+              reloginPermanentFailure = true;
+              authRejectedMsg.current = tr("自动重新登录失败，请重新登录");
+              reloginError = authRejectedMsg.current;
+            } else if (/不适用|缺少账号或线路|登录期间线路已变化/.test(errMsg)) {
+              reloginPermanentFailure = true;
+              authRejectedMsg.current = tr("自动重新登录失败，请重新登录");
+              reloginError = authRejectedMsg.current;
+            } else {
+              // 瞬时网络/线路错误：保留凭据并解除锁死，网络恢复后静默重登。
+              authRejected.current = false;
+              reloginError = errMsg;
+            }
           }
+        }
+        if ((is401(profile) || is401(remote)) && !reloginPermanentFailure && !lineRecovered.current && autoLineEnabled()) {
+          lineRecovered.current = true;
+          const switched = await pickLine("auth-401", true);
+          if (!isCurrent(generation) || switched) return;
         }
       }
       let current = state.current!.data;
       let favoritesKnown = state.current!.sync.favoritesKnown;
       const errors: string[] = [];
+      let authError = false;
+      const authFallback = reloginError || authRejectedMsg.current || tr("登录已过期，重新登录后继续同步");
+      const unresolvedAuth401 = reloginPermanentFailure || !reloginError || reloginError === authRejectedMsg.current;
       if (profile.status === "fulfilled") {
         const snapshot = profile.value;
-        if (snapshot?.origin !== auth.expectedOrigin || snapshot.user?.id !== auth.expectedUserId) errors.push(tr("账号资料身份不匹配，请重新登录"));
-        else if (mutation.current === startMutation && pending.current.size === 0) {
+        if (snapshot?.origin !== auth.expectedOrigin || snapshot.user?.id !== auth.expectedUserId) {
+          errors.push(tr("账号资料身份不匹配，请重新登录"));
+          authError = true;
+        } else if (mutation.current === startMutation && pending.current.size === 0) {
           state.current!.user = snapshot.user;
           current = applyInteractions(current, snapshot.interactions);
           if (Array.isArray(snapshot.interactions?.favorite_video_ids)) favoritesKnown = true;
           else if (!favoritesKnown) errors.push(tr("账号未返回收藏数据，请重试"));
         } else if (pending.current.size === 0) needsResync.current = true;
-      } else errors.push(message(profile.reason) === "401" ? (reloginError || authRejectedMsg.current || tr("当前线路不认此登录态（401），请在本线路重新登录")) : message(profile.reason));
+      } else if (is401(profile)) {
+        errors.push(authFallback);
+        if (unresolvedAuth401) authError = true;
+      } else errors.push(message(profile.reason));
       if (remote.status === "fulfilled" && clearVersion.current === startClear) {
         const localRows = new Map(current.history.map(row => [row.id, row]));
         const changed = (row: WatchProgress) => startHistory.get(row.id) !== row;
@@ -265,12 +298,16 @@ export function useAccountData(initialGuest: GuestData, saveGuest: (data: GuestD
           if (!current.dirtyHistory[row.video_id] && (!local || !changed(local))) localOnly.delete(row.video_id);
         }
         current = { ...current, history: [...merged.values()].sort((a, b) => b.at - a.at), localHistory: [...localOnly] };
-      } else if (remote.status === "rejected") errors.push(message(remote.reason) === "401" ? (reloginError || authRejectedMsg.current || tr("当前线路不认此登录态（401），请在本线路重新登录")) : message(remote.reason));
+      } else if (is401(remote)) {
+        errors.push(authFallback);
+        if (unresolvedAuth401) authError = true;
+      } else if (remote.status === "rejected") errors.push(message(remote.reason));
       persist(current);
       if (storageError.current) errors.push(storageError.current);
-      state.current!.sync = { busy: false, error: errors.join("；"), lastSynced: errors.length ? s.sync.lastSynced : Date.now(), favoritesKnown };
+      const uniqueErrors = [...new Set(errors.filter(Boolean))];
+      state.current!.sync = { busy: false, error: uniqueErrors.join("；"), authError, lastSynced: uniqueErrors.length ? s.sync.lastSynced : Date.now(), favoritesKnown };
       render();
-      if (errors.length) throw new Error(errors.join("；"));
+      if (uniqueErrors.length) throw new Error(uniqueErrors.join("；"));
     })();
     synchronizing.current = { generation, promise: run };
     try { await run; } finally {
@@ -303,8 +340,8 @@ export function useAccountData(initialGuest: GuestData, saveGuest: (data: GuestD
     s.generation++; mutation.current++; historyMutation.current++;
     s.user = next; s.origin = nextOrigin; s.key = key;
     s.data = next ? accounts.current[key] || applyInteractions(empty(), next.interactions) : guest.current;
-    s.sync = { busy: false, error: "", lastSynced: 0, favoritesKnown: false };
-    sentHistory.current.clear(); pending.current.clear(); needsResync.current = false; storageError.current = ""; authRejected.current = false; authRejectedMsg.current = "";
+    s.sync = { busy: false, error: "", authError: false, lastSynced: 0, favoritesKnown: false };
+    sentHistory.current.clear(); pending.current.clear(); needsResync.current = false; storageError.current = ""; authRejected.current = false; authRejectedMsg.current = ""; lineRecovered.current = false;
     render();
     if (next) void syncRef.current().catch(() => {});
   }, []);
@@ -478,10 +515,22 @@ export function useAccountData(initialGuest: GuestData, saveGuest: (data: GuestD
   }, []);
   useEffect(() => {
     mounted.current = true;
-    const refresh = () => { if (document.visibilityState !== "hidden") void syncRef.current().catch(() => {}); };
-    window.addEventListener("focus", refresh); window.addEventListener("online", refresh); document.addEventListener("visibilitychange", refresh);
+    const refresh = () => {
+      if (document.visibilityState === "hidden") return;
+      void Promise.resolve().then(() => waitForPendingLinePick()).then(() => {
+        if (mounted.current && document.visibilityState !== "hidden") void syncRef.current().catch(() => {});
+      });
+    };
+    const onOnline = () => {
+      lineRecovered.current = false;
+      if (document.visibilityState === "hidden") return;
+      void Promise.resolve()
+        .then(() => autoLineEnabled() ? waitForPendingLinePick() : api.lineHealth().then(() => undefined, () => undefined))
+        .then(() => { if (mounted.current && document.visibilityState !== "hidden") void syncRef.current().catch(() => {}); });
+    };
+    window.addEventListener("focus", refresh); window.addEventListener("online", onOnline); document.addEventListener("visibilitychange", refresh);
     return () => { mounted.current = false; window.clearTimeout(flushTimer.current); window.clearTimeout(syncTimer.current);
-      window.removeEventListener("focus", refresh); window.removeEventListener("online", refresh); document.removeEventListener("visibilitychange", refresh); };
+      window.removeEventListener("focus", refresh); window.removeEventListener("online", onOnline); document.removeEventListener("visibilitychange", refresh); };
   }, []);
   const s = state.current;
   const rev = snapshotRevision.current;

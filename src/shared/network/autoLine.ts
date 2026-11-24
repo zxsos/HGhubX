@@ -18,12 +18,18 @@ let started = false;
 let attached = false;
 let picking = false;
 let checking = false;
+let pendingOnlinePick = false;
+let pendingPick: Promise<boolean> | null = null;
 let timer = 0;
 let step = 0;
 let downStreak = 0;
 let failStreak = 0;
 let lastPickAt: number | null = null;
 let cancellation: Promise<void> = Promise.resolve();
+
+export function waitForPendingLinePick(): Promise<void> {
+  return pendingPick ? pendingPick.then(() => undefined, () => undefined) : Promise.resolve();
+}
 
 function stopTimer() {
   window.clearTimeout(timer);
@@ -49,6 +55,7 @@ export const setAutoLine = (on: boolean): Promise<void> => {
   try { localStorage.setItem(STORAGE_KEYS.autoLine, on ? "on" : "off"); } catch { /* storage can be unavailable */ }
   if (!on) {
     stopTimer();
+    pendingOnlinePick = false;
     const pending = cancellation.then(() => api.lineCancel());
     cancellation = pending.catch((error) => {
       logLine(`[line] cancel failed: ${(error as Error).message}`);
@@ -62,45 +69,51 @@ export const setAutoLine = (on: boolean): Promise<void> => {
   return Promise.resolve();
 };
 
-export async function pickLine(reason: string, force = false): Promise<void> {
-  if (!autoLineEnabled() || picking || (!force && document.visibilityState !== "visible")) return;
-  if (!force && lastPickAt !== null && Date.now() - lastPickAt < PICK_COOLDOWN_MS) return;
+export async function pickLine(reason: string, force = false): Promise<boolean> {
+  if (!autoLineEnabled() || picking || (!force && document.visibilityState !== "visible")) return false;
+  if (!force && lastPickAt !== null && Date.now() - lastPickAt < PICK_COOLDOWN_MS) return false;
   picking = true;
-  let down = false;
-  try {
-    await cancellation;
-    if (!autoLineEnabled()) return;
-    const result = await api.lineAuto();
-    if (result.cancelled || !autoLineEnabled()) return;
-    lastPickAt = Date.now();
-    downStreak = 0;
-    failStreak = 0;
-    step = 0;
-    const candidates = result.pick.candidates
-      .map((candidate) => `${candidate.tier}:${candidate.ok ? "ok" : candidate.reachable ? "reachable" : "down"}/${candidate.ms}ms`)
-      .join(",");
-    if (result.pick.reason === "all-down") {
-      down = true;
-      logLine(`[line] auto(${reason}) all-down, keep ${hostOf(result.base)} | ${candidates}`);
-      tracePlayback("line.allDown", { reason, line: hostOf(result.base), candidates });
-      window.dispatchEvent(new Event("hg:line-down"));
-      return;
+  const run = (async (): Promise<boolean> => {
+    let down = false;
+    try {
+      await cancellation;
+      if (!autoLineEnabled()) return false;
+      const result = await api.lineAuto();
+      if (result.cancelled || !autoLineEnabled()) return false;
+      lastPickAt = Date.now();
+      downStreak = 0;
+      failStreak = 0;
+      step = 0;
+      const candidates = result.pick.candidates
+        .map((candidate) => `${candidate.tier}:${candidate.ok ? "ok" : candidate.reachable ? "reachable" : "down"}/${candidate.ms}ms`)
+        .join(",");
+      if (result.pick.reason === "all-down") {
+        down = true;
+        logLine(`[line] auto(${reason}) all-down, keep ${hostOf(result.base)} | ${candidates}`);
+        tracePlayback("line.allDown", { reason, line: hostOf(result.base), candidates });
+        window.dispatchEvent(new Event("hg:line-down"));
+        return false;
+      }
+      logLine(`[line] auto(${reason}) ${hostOf(result.base)} tier=${result.pick.tier} ms=${result.pick.ms} switched=${result.switched} | ${candidates}`);
+      tracePlayback("line.pick", { reason, line: hostOf(result.base), tier: result.pick.tier, ms: result.pick.ms, switched: result.switched, candidates });
+      if (result.switched) {
+        window.dispatchEvent(new CustomEvent("hg:line", {
+          detail: { region: result.pick.tier === "main" ? "intl" : "cn", host: hostOf(result.base), ms: result.pick.ms },
+        }));
+        window.dispatchEvent(new Event("hg:line-changed"));
+      }
+      return result.switched;
+    } catch (error) {
+      logLine(`[line] auto(${reason}) failed: ${(error as Error).message}`);
+      tracePlayback("line.fail", { where: "auto", reason, err: (error as Error).message });
+      return false;
+    } finally {
+      picking = false;
+      if (started) schedule(down ? DOWN_RETRY_MS : HEALTH_STEPS[0]);
     }
-    logLine(`[line] auto(${reason}) ${hostOf(result.base)} tier=${result.pick.tier} ms=${result.pick.ms} switched=${result.switched} | ${candidates}`);
-    tracePlayback("line.pick", { reason, line: hostOf(result.base), tier: result.pick.tier, ms: result.pick.ms, switched: result.switched, candidates });
-    if (result.switched) {
-      window.dispatchEvent(new CustomEvent("hg:line", {
-        detail: { region: result.pick.tier === "main" ? "intl" : "cn", host: hostOf(result.base), ms: result.pick.ms },
-      }));
-      window.dispatchEvent(new Event("hg:line-changed"));
-    }
-  } catch (error) {
-    logLine(`[line] auto(${reason}) failed: ${(error as Error).message}`);
-    tracePlayback("line.fail", { where: "auto", reason, err: (error as Error).message });
-  } finally {
-    picking = false;
-    if (started) schedule(down ? DOWN_RETRY_MS : HEALTH_STEPS[0]);
-  }
+  })();
+  pendingPick = run;
+  try { return await run; } finally { if (pendingPick === run) pendingPick = null; }
 }
 
 async function tryMain(reason: string): Promise<void> {
@@ -134,6 +147,10 @@ async function check(reason: string): Promise<void> {
   checking = true;
   try {
     const health = await api.lineHealth();
+    if (!health) {
+      schedule(HEALTH_STEPS[step]);
+      return;
+    }
     if (health.ok) {
       downStreak = 0;
       step = Math.min(step + 1, HEALTH_STEPS.length - 1);
@@ -170,7 +187,19 @@ function attach() {
     failStreak = 0;
     void check("api-fail");
   });
-  window.addEventListener("online", () => { step = 0; void pickLine("online"); });
+  window.addEventListener("online", () => {
+    if (!autoLineEnabled()) return;
+    failStreak = 0;
+    downStreak = 0;
+    step = 0;
+    lastPickAt = null;
+    if (document.visibilityState === "visible") {
+      pendingOnlinePick = false;
+      void pickLine("online", true);
+    } else {
+      pendingOnlinePick = true;
+    }
+  });
   window.addEventListener("offline", () => schedule(30_000));
   window.addEventListener("hg:proxy-changed", () => {
     // Backend invalidates outstanding selections on save. Keep the selected
@@ -183,7 +212,13 @@ function attach() {
   });
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "hidden") stopTimer();
-    else { downStreak = 0; step = 0; void check("visible"); }
+    else if (pendingOnlinePick) {
+      pendingOnlinePick = false;
+      downStreak = 0;
+      failStreak = 0;
+      step = 0;
+      void pickLine("online-resume", true);
+    } else { downStreak = 0; step = 0; void check("visible"); }
   });
   schedule(HEALTH_STEPS[0]);
 }
