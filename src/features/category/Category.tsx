@@ -1,6 +1,6 @@
 import { Button } from "../../shared/ui/ios/controls";
 import { Loader } from "../../shared/ui/ios/effects";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { api, fmt } from "../../shared/api/api";
 import type { Post, VideoCard } from "../../shared/api/types";
 import { useStore } from "../../shared/model/store";
@@ -11,7 +11,7 @@ import { AUTO_LOAD_EMPTY_PAGE_LIMIT, useAutoLoadMore } from "../../shared/lib/us
 import { CollectionLink, CollectionLinks } from "../../shared/ui/CollectionLink";
 import { InplaceSearch } from "../search/InplaceSearch";
 import { Empty } from "../../shared/ui/ui";
-import { IAward, IBack, IChevR, IClock, IFilm, IFlame, ILayers, ISearch, ISpark, IStar, ITag } from "../../shared/ui/icons";
+import { IAward, IBack, IChevR, IClock, IFilm, IFlame, ILayers, ISearch, ISpark, IStar, ITag, IUserF } from "../../shared/ui/icons";
 import { tr, N_ } from "../../shared/i18n";
 import { useTabSwipe } from "../../shared/ui/hooks/useTabSwipe";
 import { VideoSortMenu } from "../../shared/ui/VideoSortMenu";
@@ -22,6 +22,15 @@ export const CHANNELS = [
   { cate: "ai-manju", name: N_("AI成人漫剧"), Icon: ISpark },
   { cate: "original", name: N_("原创"), Icon: IAward },
 ] as const;
+
+/** Half-width shortcut used to fit two destinations in one collection cell. */
+function CompactCollectionLink({ icon, title, onClick }: { icon: ReactNode; title: string; onClick: () => void }) {
+  return <Button onClick={onClick} aria-label={title}
+    className="ios-collection-link flex w-full min-w-0 min-h-[60px] items-center justify-center gap-1 rounded-[20px] px-1.5 py-2 text-center pressable">
+    <span aria-hidden="true" className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[9px] bg-pc text-on-pc">{icon}</span>
+    <span className="whitespace-nowrap text-[12px] font-semibold leading-none text-on">{title}</span>
+  </Button>;
+}
 
 /* ================= 分类总览 ================= */
 export default function Category({ wide, active }: { wide: boolean; active: boolean }) {
@@ -107,7 +116,7 @@ export default function Category({ wide, active }: { wide: boolean; active: bool
       </div>
 
       <div className="flex-1 scroll-y pb-24 pt-2">
-        {/* 最近上新 + 热门推荐 + 专题 + 标签（双端统一 2×2 快捷入口） */}
+        {/* 最近上新 + 热门推荐 + 专题 + 标签/作者（双端统一 2×2 快捷入口） */}
         <CollectionLinks className="ios-category-links mb-6">
           <CollectionLink icon={<IClock size={18} />} title={tr("最近上新")}
             onClick={() => push({ kind: "channel", cate: "newest", name: tr("最近上新") })} />
@@ -115,8 +124,12 @@ export default function Category({ wide, active }: { wide: boolean; active: bool
             onClick={() => push({ kind: "channel", cate: "recommend", name: tr("热门推荐") })} />
           <CollectionLink icon={<ILayers size={18} />} title={tr("专题")}
             onClick={() => push({ kind: "topics" })} />
-          <CollectionLink icon={<ITag size={18} />} title={tr("标签")}
-            onClick={() => push({ kind: "tags" })} />
+          <div className="grid min-w-0 grid-cols-2 gap-2">
+            <CompactCollectionLink icon={<ITag size={15} />} title={tr("标签")}
+              onClick={() => push({ kind: "tags" })} />
+            <CompactCollectionLink icon={<IUserF size={15} />} title={tr("作者")}
+              onClick={() => push({ kind: "authors" })} />
+          </div>
         </CollectionLinks>
 
         {CHANNELS.map((c, ci) => {

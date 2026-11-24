@@ -63,6 +63,8 @@ export function installFixture({ theme, titles, metrics = [], metricPages = 1, m
         return { items: authors, pagination: { page: 1, pages: 1, size: 100, total: authors.length } };
       }
       if (command === "api_user") return { id: args.id, username: `author-${args.id}`, nickname: "示例作者", avatar: "", counts: {} };
+      if (command === "api_user_stats") return { user_id: args.id, like_count: 178000, following: 0, followers: 1157, video_count: cards.length, post_count: 0 };
+      if (command === "api_user_videos") return args.size === 100 ? metricPaged(args.page || 1) : paged(cards);
       if (command === "api_rank") return paged(cards.map((card, index) => ({ ...card, rank: index + 1, video_id: card.id, metric_value: card.hot, metric_label: "热度" })));
       if (command === "api_search_hot") return paged(titles.map((title, index) => ({ video_id: index + 1, title, plays: `${550 - index * 10}.1w播放量` })));
       if (command === "api_video") return { ...cards[(args.id - 1) % cards.length], counts: { collect: 900, comment: 20, hot: 286000, like: 1800 }, episodes: [] };

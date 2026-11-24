@@ -1,12 +1,14 @@
 import { Button, Surface } from "../../shared/ui/ios/controls";
 import { Loader } from "../../shared/ui/ios/effects";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, fmt } from "../../shared/api/api";
 import type { Paged, UserProfile, VideoCard } from "../../shared/api/types";
 import { useStore } from "../../shared/model/store";
 import { useContentPreferences } from "../../shared/model/contentPreferences";
 import { usePaginatedList } from "../../shared/lib/usePaginatedList";
 import { Masonry } from "../../shared/ui/cards";
+import { VideoSortMenu } from "../../shared/ui/VideoSortMenu";
+import { sortVideosByMetric, type VideoSortDirection, type VideoSortMetric } from "../../shared/model/videoSort";
 import { InplaceSearch } from "../search/InplaceSearch";
 import { Avatar, Empty } from "../../shared/ui/ui";
 import { IBack, IChevronDown, IGrid, IHeart, ISearch, IUser } from "../../shared/ui/icons";
@@ -42,6 +44,8 @@ function PaginationFeedback({ state }: { state: VideoState }) {
   </>;
 }
 const countLabel = ({ items, total }: VideoState) => tr("已加载 {0}{1} 部", items.length, total === null ? "" : ` / ${total}`);
+const USER_METRIC_PAGE_SIZE = 100;
+const USER_METRIC_MAX_PAGES = 30;
 
 export function FollowingPage({ onBack, wide }: { onBack: () => void; wide: boolean }) {
   const { accountScope, lineEpoch } = useStore();
@@ -150,6 +154,50 @@ function UserContent({ id, name, onBack, wide }: { id: number; name?: string; on
   const followVersion = useRef(0);
   const request = useCallback((page: number) => api.userVideos(id, page, 20), [id]);
   const state = useUserVideos(true, `${accountScope}:${id}`, request);
+  const [metricSort, setMetricSort] = useState<VideoSortMetric>("default");
+  const [metricDirection, setMetricDirection] = useState<VideoSortDirection>("desc");
+  const [metricItems, setMetricItems] = useState<VideoCard[] | null>(null);
+  const [metricLoading, setMetricLoading] = useState(false);
+  const [metricError, setMetricError] = useState("");
+  const metricLoaded = useRef(false);
+  const metricSequence = useRef(0);
+
+  const loadAllWorks = useCallback(async () => {
+    if (metricLoaded.current) return;
+    const token = ++metricSequence.current;
+    setMetricLoading(true);
+    setMetricError("");
+    let all: VideoCard[] = [];
+    try {
+      const first = await api.userVideos(id, 1, USER_METRIC_PAGE_SIZE);
+      if (metricSequence.current !== token) return;
+      const pages = Math.max(1, first?.pagination?.pages || 1);
+      const requested = Math.min(pages, USER_METRIC_MAX_PAGES);
+      all = first?.items ?? [];
+      for (let start = 2; start <= requested; start += 4) {
+        const batch: Promise<Awaited<ReturnType<typeof api.userVideos>>>[] = [];
+        for (let page = start; page < Math.min(start + 4, requested + 1); page += 1) {
+          batch.push(api.userVideos(id, page, USER_METRIC_PAGE_SIZE));
+        }
+        const results = await Promise.all(batch);
+        if (metricSequence.current !== token) return;
+        for (const result of results) all.push(...(result?.items ?? []));
+      }
+      if (metricSequence.current !== token) return;
+      const seen = new Set<number>();
+      const unique = all.filter(item => !seen.has(item.id) && !!seen.add(item.id));
+      setMetricItems(unique);
+      metricLoaded.current = true;
+    } catch (error) {
+      if (metricSequence.current === token) {
+        setMetricError(error instanceof Error ? error.message : tr("作品加载失败"));
+      }
+    } finally {
+      if (metricSequence.current === token) setMetricLoading(false);
+    }
+  }, [id]);
+
+  useEffect(() => () => { metricSequence.current++; }, []);
 
   useEffect(() => {
     mounted.current = true;
@@ -171,6 +219,22 @@ function UserContent({ id, name, onBack, wide }: { id: number; name?: string; on
     });
     return () => { alive = false; };
   }, [id, infoReload]);
+
+  const sortedMetricWorks = useMemo(
+    () => metricSort === "default" ? [] : sortVideosByMetric(metricItems ?? [], metricSort, metricDirection),
+    [metricSort, metricDirection, metricItems],
+  );
+  const works = metricSort === "default" ? state.items : sortedMetricWorks;
+  const worksLoading = metricSort === "default" ? state.loading : metricLoading;
+  const worksError = metricSort === "default" ? state.err : metricError;
+  const worksTotal = state.total ?? state.items.length;
+  const changeMetricSort = (value: VideoSortMetric, direction: VideoSortDirection = "desc") => {
+    if (value === metricSort && direction === metricDirection) return;
+    if (state.scroller.current) state.scroller.current.scrollTop = 0;
+    setMetricSort(value);
+    setMetricDirection(direction);
+    if (value !== "default" && !metricLoaded.current) void loadAllWorks();
+  };
 
   const isOwnProfile = user?.id === id;
   const following = follows.includes(id);
@@ -232,12 +296,16 @@ function UserContent({ id, name, onBack, wide }: { id: number; name?: string; on
         <Button disabled={infoLoading} onClick={() => setInfoReload(value => value + 1)} className="mt-2 px-3 text-primary">{tr("重试资料")}</Button>
       </div>}
       {profile?.sign && <details className="group mt-3 text-[13px] text-mut"><summary className="cursor-pointer min-h-11 flex items-center gap-2 text-on">{tr("作者简介")}<IChevronDown size={16} className="group-open:rotate-180" /></summary><p className="leading-relaxed whitespace-pre-wrap break-words">{profile.sign}</p></details>}
-      <div className="mt-4 mb-2.5 flex flex-wrap items-baseline justify-between gap-2"><h2 className="text-[14px] font-bold text-on">{tr("作品")}</h2><p role="status" className="text-[12px] text-mut">{countLabel(state)}</p></div>
-      {state.loading && !state.items.length ? <div className="flex justify-center py-12"><Loader /></div>
-        : state.err && !state.items.length ? <Empty icon={<IGrid size={26} />} title={tr("作品加载失败")} sub={state.err} action={tr("重试")} onAction={() => void state.loadMore()} />
-        : state.items.length ? <Masonry videos={state.items} scopeKey={id} wide={wide} onOpen={(v, visible) => push({ kind: "feed", videoIds: visible.map(x => x.id), index: visible.findIndex(x => x.id === v.id), title: profile?.nickname || name || tr("用户作品") })} />
+      <div className="mt-4 mb-2.5 flex items-center gap-2">
+        <h2 className="text-[14px] font-bold text-on">{tr("作品")}</h2>
+        <span data-works-count className="text-[12px] text-mut tabular-nums">{worksTotal}</span>
+        <VideoSortMenu className="ml-auto" value={metricSort} direction={metricDirection} onChange={changeMetricSort} />
+      </div>
+      {worksLoading && !works.length ? <div className="flex justify-center py-12"><Loader /></div>
+        : worksError && !works.length ? <Empty icon={<IGrid size={26} />} title={tr("作品加载失败")} sub={worksError} action={tr("重试")} onAction={() => void (metricSort === "default" ? state.loadMore() : loadAllWorks())} />
+        : works.length ? <Masonry videos={works} scopeKey={`user-works:${id}:${metricSort}:${metricDirection}`} wide={wide} onOpen={(v, visible) => push({ kind: "feed", videoIds: visible.map(x => x.id), index: visible.findIndex(x => x.id === v.id), title: profile?.nickname || name || tr("用户作品") })} />
         : <Empty icon={<IGrid size={26} />} title={tr("暂无作品")} />}
-      <PaginationFeedback state={state} />
+      {metricSort === "default" ? <PaginationFeedback state={state} /> : worksError && works.length > 0 ? <Button onClick={() => void loadAllWorks()} className="mt-3 w-full rounded-(--r-ctl) bg-s3">{tr("重试")}</Button> : null}
     </div>
     {searching && <InplaceSearch kind="video" wide={wide} onClose={() => setSearching(false)} onOpenVideo={(v, list, kw) => push({ kind: "feed", videoIds: list.map(x => x.id), index: list.findIndex(x => x.id === v.id), title: kw ? tr("搜索 · {0}", kw) : tr("搜索") })} />}
   </div>;

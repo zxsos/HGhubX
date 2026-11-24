@@ -76,6 +76,7 @@ export function AuthorsPage({ onBack, wide }: { onBack: () => void; wide: boolea
           <h2 className="flex items-center gap-1.5 text-[14.5px] font-bold text-on"><IHeart size={15} className="text-primary" />{tr("已关注作者")}</h2>
           <span className="text-[12px] text-dim tabular-nums" aria-live="polite">{tr("共 {0} 位", follows.length)}</span>
         </div>
+        <p className="mt-1 text-[12px] leading-relaxed text-mut">{tr("长按作者可关注或取消关注")}</p>
         <div className="mt-3 flex flex-wrap gap-2">
           {followedAuthors.map(author => <AuthorChip key={author.id} author={author} followed showFollowers={false} highlight={false} busy={busyId === author.id}
             onOpen={() => openAuthor(author)} onToggleFollow={toggleFollow} />)}
@@ -86,13 +87,12 @@ export function AuthorsPage({ onBack, wide }: { onBack: () => void; wide: boolea
       ) : error && !authors ? (
         <Empty icon={<IUserF size={26} />} title={tr("作者加载失败")} sub={error} action={tr("重试")} onAction={() => void load(true)} />
       ) : authors?.length ? (
-        <Surface className="rounded-[22px] bg-s1 p-4 a-rise">
+        <Surface data-author-list className="rounded-[22px] bg-s1 p-4 a-rise">
           <div className="flex items-baseline justify-between gap-2">
             <h2 className="text-[14.5px] font-bold text-on">{tr("全部作者")}</h2>
             <span className="text-[12px] text-dim tabular-nums">{tr("{0} 位", authors.length)}</span>
           </div>
-          <p className="mt-1 mb-3 text-[12px] leading-relaxed text-mut">{tr("长按作者可关注或取消关注")}</p>
-          <div className={`flex flex-wrap gap-2 ${wide ? "max-w-4xl" : ""}`}>
+          <div className={`mt-3 flex flex-wrap gap-2 ${wide ? "max-w-4xl" : ""}`}>
             {authors.map(author => <AuthorChip key={author.id} author={author} followed={isFollowing(author.id)} busy={busyId === author.id}
               onOpen={() => openAuthor(author)} onToggleFollow={toggleFollow} />)}
           </div>
