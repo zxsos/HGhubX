@@ -1,16 +1,16 @@
 import { Button, Surface } from "../../shared/ui/ios/controls";
 import { Loader } from "../../shared/ui/ios/effects";
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { api, fmt } from "../../shared/api/api";
 import type { Post, TopicCard, TopicDetail, VideoCard } from "../../shared/api/types";
 import { useStore } from "../../shared/model/store";
-import { MAX_BLOCKED_TAGS, MAX_TAG_LENGTH, useContentPreferences } from "../../shared/model/contentPreferences";
+import { MAX_BLOCKED_TAGS, MAX_PINNED_TAGS, MAX_TAG_LENGTH, useContentPreferences } from "../../shared/model/contentPreferences";
 import { AUTO_LOAD_EMPTY_PAGE_LIMIT, useAutoLoadMore } from "../../shared/lib/useAutoLoadMore";
 import { Masonry, MediaCard } from "../../shared/ui/cards";
 import { FilteredContent } from "../../shared/ui/FilteredContent";
 import { InplaceSearch } from "../search/InplaceSearch";
 import { Empty, Img } from "../../shared/ui/ui";
-import { IBack, IFireF, ILayers, IRefresh, ISearch, ITag } from "../../shared/ui/icons";
+import { IBack, IFireF, ILayers, IPin, IPinF, IRefresh, ISearch, ITag } from "../../shared/ui/icons";
 import { tr } from "../../shared/i18n";
 import { VideoSortMenu } from "../../shared/ui/VideoSortMenu";
 import { sortVideosByMetric, type VideoSortDirection, type VideoSortMetric } from "../../shared/model/videoSort";
@@ -283,13 +283,103 @@ export function TopicPage({ slug, name, onBack, wide }: { slug: string; name: st
 }
 
 /* ================= 标签聚合页 ================= */
+const TAG_PIN_HOLD_MS = 600;
+const TAG_PIN_MOVE_PX = 10;
+
+/** A tag chip that opens on tap and toggles its pinned state on a deliberate hold. */
+function TagPinChip({ name, hotScore, pinned, board = false, onOpen, onTogglePin }: {
+  name: string; hotScore?: number; pinned: boolean; board?: boolean;
+  onOpen: () => void; onTogglePin: (name: string) => void;
+}) {
+  const [pressing, setPressing] = useState(false);
+  const timer = useRef<number | null>(null);
+  const origin = useRef<{ x: number; y: number } | null>(null);
+  const longPressed = useRef(false);
+  const suppressClick = useRef(false);
+
+  const clearTimer = useCallback(() => {
+    if (timer.current !== null) {
+      window.clearTimeout(timer.current);
+      timer.current = null;
+    }
+  }, []);
+  const cancelHold = useCallback(() => {
+    clearTimer();
+    origin.current = null;
+    setPressing(false);
+  }, [clearTimer]);
+
+  useEffect(() => () => clearTimer(), [clearTimer]);
+
+  const pointerDown = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    clearTimer();
+    longPressed.current = false;
+    suppressClick.current = false;
+    origin.current = { x: event.clientX, y: event.clientY };
+    setPressing(true);
+    timer.current = window.setTimeout(() => {
+      timer.current = null;
+      longPressed.current = true;
+      suppressClick.current = true;
+      origin.current = null;
+      setPressing(false);
+      navigator.vibrate?.(8);
+      onTogglePin(name);
+    }, TAG_PIN_HOLD_MS);
+  };
+  const pointerMove = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (longPressed.current || !origin.current) return;
+    if (Math.hypot(event.clientX - origin.current.x, event.clientY - origin.current.y) > TAG_PIN_MOVE_PX) cancelHold();
+  };
+  const pointerUp = () => {
+    clearTimer();
+    origin.current = null;
+    setPressing(false);
+  };
+  const pointerCancel = () => {
+    cancelHold();
+    longPressed.current = false;
+    suppressClick.current = false;
+  };
+  const click = (event: ReactMouseEvent<HTMLButtonElement>) => {
+    if (suppressClick.current) {
+      suppressClick.current = false;
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+    onOpen();
+  };
+
+  return <Button type="button" aria-label={pinned ? tr("长按取消置顶：{0}", name) : tr("长按置顶：{0}", name)}
+    data-tag-name={name} data-pinned={pinned ? "true" : undefined} data-pin-surface={board ? "board" : "group"} data-pressing={pressing ? "true" : undefined}
+    onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={pointerCancel}
+    onPointerLeave={cancelHold} onClick={click} onContextMenu={event => event.preventDefault()}
+    className="ios-filter-pill tag-pin-pill max-w-full min-w-0 gap-1.5 text-left">
+    <span className="min-w-0 whitespace-normal break-words text-on/95">{name}</span>
+    {!!hotScore && <span aria-label={tr("热度 {0}", fmt(hotScore))} className="shrink-0 inline-flex items-center gap-0.5 text-[11.5px] font-medium text-dim tabular-nums"><IFireF size={11} className="text-primary/85" />{fmt(hotScore)}</span>}
+  </Button>;
+}
+
 export function TagsPage({ onBack, wide }: { onBack: () => void; wide: boolean }) {
-  const { push } = useStore();
+  const { push, toast } = useStore();
+  const { preferences, isTagPinned, togglePinnedTag } = useContentPreferences();
+  const pinnedTags = preferences.pinnedTags;
   const [searching, setSearching] = useState(false);
   const { data, loading, err, load } = useDiscoveryData("tags", api.tags);
   const groups = data?.categories ?? [];
 
   const totalTags = groups.reduce((sum, g) => sum + (g.tags?.length || 0), 0);
+  const togglePin = useCallback((name: string) => {
+    const currentlyPinned = isTagPinned(name);
+    if (!currentlyPinned && pinnedTags.length >= MAX_PINNED_TAGS) {
+      toast(tr("最多置顶 {0} 个标签", MAX_PINNED_TAGS), "info");
+      return;
+    }
+    togglePinnedTag(name);
+    toast(currentlyPinned ? tr("已取消置顶：{0}", name) : tr("已置顶标签：{0}", name), currentlyPinned ? "info" : "ok");
+  }, [isTagPinned, pinnedTags.length, toast, togglePinnedTag]);
 
   return (
     <div className="ios-page absolute inset-0 bg-bg flex flex-col">
@@ -308,6 +398,16 @@ export function TagsPage({ onBack, wide }: { onBack: () => void; wide: boolean }
 
       <div className="flex-1 scroll-y pt-3.5 pb-8" aria-busy={loading}>
         {groups.length > 0 && <RefreshStatus loading={loading} error={err} onRetry={() => void load()} />}
+        {groups.length > 0 && <Surface data-pin-board className="mb-3.5 rounded-[22px] bg-s1 p-4 a-rise" aria-label={tr("置顶标签")}>
+          <div className="flex items-baseline justify-between gap-2">
+            <h2 className="flex items-center gap-1.5 text-[14.5px] font-bold text-on"><IPin size={15} className="text-primary" />{tr("置顶标签")}</h2>
+            <span className="text-[12px] text-dim tabular-nums" aria-live="polite">{tr("{0} 个", pinnedTags.length)}</span>
+          </div>
+          <p className="mt-1 text-[12px] leading-relaxed text-mut">{pinnedTags.length ? tr("长按标签置顶，再长按取消") : tr("长按下方标签可置顶")}</p>
+          {pinnedTags.length > 0 && <div className="mt-3 flex flex-wrap gap-2">
+            {pinnedTags.map(name => <TagPinChip key={name} name={name} pinned board onOpen={() => push({ kind: "tag", tag: name, name })} onTogglePin={togglePin} />)}
+          </div>}
+        </Surface>}
         {loading && !groups.length ? (
           <div className="flex justify-center py-12"><Loader className="w-8 h-8 spinner" /></div>
         ) : err && !groups.length ? (
@@ -321,11 +421,8 @@ export function TagsPage({ onBack, wide }: { onBack: () => void; wide: boolean }
               </div>
               <div className="flex flex-wrap gap-2">
                 {g.tags.map((t) => (
-                  <Button key={t.id} onClick={() => push({ kind: "tag", tag: t.name, name: t.name })}
-                    className="ios-filter-pill max-w-full min-w-0 gap-1.5 text-left">
-                    <span className="min-w-0 whitespace-normal break-words text-on/95">{t.name}</span>
-                    {!!t.hot_score && <span aria-label={tr("热度 {0}", fmt(t.hot_score))} className="shrink-0 inline-flex items-center gap-0.5 text-[11.5px] font-medium text-dim tabular-nums"><IFireF size={11} className="text-primary/85" />{fmt(t.hot_score)}</span>}
-                  </Button>
+                  <TagPinChip key={`${g.name}:${t.id}`} name={t.name} hotScore={t.hot_score} pinned={isTagPinned(t.name)}
+                    onOpen={() => push({ kind: "tag", tag: t.name, name: t.name })} onTogglePin={togglePin} />
                 ))}
               </div>
             </Surface>
@@ -342,16 +439,16 @@ export function TagsPage({ onBack, wide }: { onBack: () => void; wide: boolean }
 
 /* ================= 标签视频页 ================= */
 export function TagPage({ tag, name, onBack, wide }: { tag: string; name: string; onBack: () => void; wide: boolean }) {
-  const { push, lineEpoch } = useStore();
-  const { preferences, storageError, isTagBlocked, blockTags, unblockTag, blockReason } = useContentPreferences();
+  const { push, lineEpoch, toast } = useStore();
+  const { preferences, storageError, isTagBlocked, blockTags, unblockTag, blockReason, isTagPinned, togglePinnedTag } = useContentPreferences();
   const filtering = !preferences.paused && (preferences.blockedTags.length > 0 || preferences.hideUntagged);
   const blockReasonRef = useRef(blockReason);
   blockReasonRef.current = blockReason;
   const filteringRef = useRef(filtering);
   filteringRef.current = filtering;
   const tagBlocked = isTagBlocked(name);
+  const tagPinned = isTagPinned(name);
   const cannotAdd = !name.trim() || name.trim().length > MAX_TAG_LENGTH || preferences.blockedTags.length >= MAX_BLOCKED_TAGS;
-  const [searching, setSearching] = useState(false);
   const [videos, setVideos] = useState<VideoCard[]>([]);
   const [metricSort, setMetricSort] = useState<VideoSortMetric>("default");
   const [metricDirection, setMetricDirection] = useState<VideoSortDirection>("desc");
@@ -492,6 +589,14 @@ export function TagPage({ tag, name, onBack, wide }: { tag: string; name: string
       }
     }
   }, [tag, name]);
+  const togglePin = useCallback(() => {
+    if (!tagPinned && preferences.pinnedTags.length >= MAX_PINNED_TAGS) {
+      toast(tr("最多置顶 {0} 个标签", MAX_PINNED_TAGS), "info");
+      return;
+    }
+    togglePinnedTag(name);
+    toast(tagPinned ? tr("已取消置顶：{0}", name) : tr("已置顶标签：{0}", name), tagPinned ? "info" : "ok");
+  }, [name, preferences.pinnedTags.length, tagPinned, toast, togglePinnedTag]);
   const changeMetricSort = (value: VideoSortMetric, direction: VideoSortDirection = "desc") => {
     if (value === metricSort && direction === metricDirection) return;
     if (scrollContainer.current) scrollContainer.current.scrollTop = 0;
@@ -517,7 +622,7 @@ export function TagPage({ tag, name, onBack, wide }: { tag: string; name: string
     setVideos([]); setPosts([]); setLoadedVideoTag(""); setLoadedPostTag("");
     setMetricSort("default"); setMetricDirection("desc"); setMetricVisible(20); metricLoaded.current = false;
     setVideoPage(0); setPostPage(0); setVideoPages(1); setPostPages(1); setVideoTotal(0); setPostTotal(0);
-    setVideoLoading(true); setPostLoading(true); setVideoErr(""); setPostErr(""); setSearching(false);
+    setVideoLoading(true); setPostLoading(true); setVideoErr(""); setPostErr("");
     setVideoEmptyStreak(0); setPostEmptyStreak(0);
     if (scrollContainer.current) scrollContainer.current.scrollTop = 0;
     void load("video", 1, true);
@@ -561,7 +666,10 @@ export function TagPage({ tag, name, onBack, wide }: { tag: string; name: string
             <h1 className="text-[17px] font-bold text-on leading-tight truncate" title={name}>{name}</h1>
             <div role="status" className="text-[12px] text-mut leading-tight mt-0.5 tabular-nums">{tr("短剧 {0} · 吃瓜 {1}", currentVideos ? videoTotal : 0, currentPosts ? postTotal : 0)}</div>
           </div>
-          <Button onClick={() => setSearching(true)} aria-label={tr("搜索短剧")} className="ios-nav-btn"><ISearch size={18} /></Button>
+          <Button onClick={togglePin} aria-pressed={tagPinned} aria-label={tagPinned ? tr("取消置顶此标签") : tr("置顶此标签")}
+            title={tagPinned ? tr("取消置顶此标签") : tr("置顶此标签")} className="tag-page-pin">
+            <IPinF size={18} className="tag-page-pin-icon" />
+          </Button>
         </div>
       </div>
       <div ref={scrollContainer} className="flex-1 scroll-y pt-3.5 pb-8" aria-busy={videoLoading || postLoading || !currentVideos || !currentPosts}>
@@ -612,7 +720,6 @@ export function TagPage({ tag, name, onBack, wide }: { tag: string; name: string
         {!postLoading && !postErr && postPage < postPages && postAutoLoadPaused && <Button onClick={() => { setPostEmptyStreak(0); void load("post", postPage + 1); }} className="my-2 px-4 text-primary">{tr("加载更多吃瓜")}</Button>}
         {!videoLoading && !postLoading && !videoErr && !postErr && !visibleVideos.length && !visiblePosts.length && <Empty icon={<TagIcon size={26} />} title={tr("该标签下暂无内容")} />}
       </div>
-      {searching && <InplaceSearch kind="video" wide={wide} onClose={() => setSearching(false)} onOpenVideo={(v, list, kw) => push({ kind: "feed", videoIds: list.map(x => x.id), index: list.findIndex(x => x.id === v.id), title: kw ? tr("搜索 · {0}", kw) : tr("搜索") })} />}
     </div>
   );
 }

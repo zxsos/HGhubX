@@ -131,7 +131,19 @@ pub async fn edge(
         "content_type": ctype,
     });
 
-    let url = format!("{cur}/api/edge/request");
+    let scope = crate::edge_crypto::scope_for(method, path);
+    let scope_url = format!("{cur}{}", scope.endpoint_path());
+    let legacy_url = format!("{cur}/api/edge/request");
+    let public_envelope = if scope == crate::edge_crypto::EdgeScope::Public {
+        json!({
+            "method": method,
+            "path": crate::edge_crypto::sort_public_path(path),
+            "body": encoded,
+            "content_type": ctype,
+        })
+    } else {
+        envelope.clone()
+    };
     let referer = format!("{cur}/");
     let token = token.map(|s| s.to_string());
 
@@ -148,9 +160,12 @@ pub async fn edge(
     let value = with_retry(can_retry, || {
         attempt += 1;
         let attempt = attempt;
+        let cur = cur.clone();
         let envelope = envelope.clone();
+        let public_envelope = public_envelope.clone();
         let token = token.clone();
-        let url = url.clone();
+        let scope_url = scope_url.clone();
+        let legacy_url = legacy_url.clone();
         let referer = referer.clone();
         let line_host = line_host.clone();
         async move {
@@ -162,57 +177,47 @@ pub async fn edge(
             let mut response_kind = "unknown";
             let mut gateway = "other";
             let result = async {
-                let mut next = network_policy::parse_target(&url)?;
-                for hop in 0..=5 {
-                    let (target, client) = client_for(next.as_str()).await?;
-                    target_host = target.host_str().unwrap_or("").to_string();
-                    let mut req = client
-                        .post(target.clone())
-                        .header("Accept", "application/json")
-                        .header("Referer", &referer)
-                        .json(&envelope);
-                    if let Some(t) = token.as_deref() {
-                        if !t.is_empty() {
-                            req = req.header("Authorization", format!("Bearer {t}"));
-                        }
+                let mut reply = None;
+                let mut need_legacy = false;
+                if scope == crate::edge_crypto::EdgeScope::Public {
+                    let r = post_edge_json(&scope_url, &referer, &public_envelope, None, true, guest_get, started).await?;
+                    if matches!(r.status, 404 | 405) {
+                        need_legacy = true;
+                    } else if !crate::edge_crypto::should_fallback_public_json_to_crypto(r.status, r.public_json, &r.text) {
+                        reply = Some(r);
                     }
-                    let resp = req.send().await.map_err(|e| err_text(&e))?;
-                    let status = resp.status();
-                    status_code = Some(status.as_u16());
-                    headers_ms = Some(started.elapsed().as_millis() as u64);
-                    let ctype = resp.headers().get(reqwest::header::CONTENT_TYPE).and_then(|v| v.to_str().ok()).unwrap_or("");
-                    response_kind = if ctype.contains("json") { "json" } else if ctype.contains("html") { "html" } else { "other" };
-                    gateway = if resp.headers().contains_key("x-amz-cf-id") { "cloudfront" } else if resp.headers().contains_key("cf-ray") { "cloudflare" } else { "other" };
-                    // 逐跳重建并检查客户端；不自动把信封 POST 改成无信封 GET。
-                    if status.is_redirection() {
-                        if hop == 5 {
-                            return Err("重定向次数超过限制".into());
-                        }
-                        let location = resp
-                            .headers()
-                            .get(reqwest::header::LOCATION)
-                            .and_then(|h| h.to_str().ok())
-                            .ok_or("重定向缺少有效 Location")?;
-                        next = edge_redirect_target(&target, status.as_u16(), location, guest_get)?;
-                        continue;
-                    }
-                    let text = resp.text().await.map_err(|e| err_text(&e))?;
-                    if status.as_u16() == 401 || status.as_u16() == 403 {
-                        return Err("401".to_string());
-                    }
-                    if !status.is_success() {
-                        return Err(format!(
-                            "HTTP {status}: {}",
-                            text.chars().take(160).collect::<String>()
-                        ));
-                    }
-                    if text.trim().is_empty() {
-                        return Ok(Value::Null);
-                    }
-                    return serde_json::from_str::<Value>(&text)
-                        .map_err(|e| format!("{e}: {}", text.chars().take(160).collect::<String>()));
                 }
-                Err("重定向次数超过限制".into())
+                if reply.is_none() && !need_legacy {
+                    match crate::edge_crypto::call_encrypted(&cur, scope, method, &envelope, token.as_deref(), |payload| {
+                        let scope_url = scope_url.clone();
+                        let referer = referer.clone();
+                        async move { post_edge_json(&scope_url, &referer, &payload, None, false, guest_get, started).await }
+                    }).await {
+                        Ok(r) | Err(crate::edge_crypto::CryptoCallError::Outer(r)) => reply = Some(r),
+                        Err(crate::edge_crypto::CryptoCallError::LegacyFallback) => {}
+                        Err(crate::edge_crypto::CryptoCallError::Transport(err)) => return Err(err),
+                    }
+                }
+                let reply = match reply {
+                    Some(r) => r,
+                    None => post_edge_json(&legacy_url, &referer, &envelope, token.as_deref(), false, guest_get, started).await?,
+                };
+                status_code = Some(reply.status);
+                headers_ms = Some(reply.headers_ms);
+                target_host = reply.target_host;
+                gateway = reply.gateway;
+                response_kind = if reply.ctype.contains("json") { "json" } else if reply.ctype.contains("html") { "html" } else { "other" };
+                if reply.status == 401 {
+                    return Err("401".to_string());
+                }
+                if !(200..300).contains(&reply.status) {
+                    return Err(format!("HTTP {}: {}", reply.status, reply.text.chars().take(160).collect::<String>()));
+                }
+                if reply.text.trim().is_empty() {
+                    return Ok(Value::Null);
+                }
+                serde_json::from_str::<Value>(&reply.text)
+                    .map_err(|e| format!("{e}: {}", reply.text.chars().take(160).collect::<String>()))
             }.await;
             crate::playback_log::record("api.end", json!({
                 "request": request, "attempt": attempt, "operation": operation, "method": method,
@@ -242,6 +247,44 @@ pub async fn edge(
             .unwrap_or("接口返回失败")
             .to_string())
     }
+}
+
+async fn post_edge_json(
+    url: &str,
+    referer: &str,
+    payload: &Value,
+    token: Option<&str>,
+    public_json: bool,
+    guest_get: bool,
+    started: Instant,
+) -> Result<crate::edge_crypto::HttpReply, String> {
+    let mut next = network_policy::parse_target(url)?;
+    for hop in 0..=5 {
+        let (target, client) = client_for(next.as_str()).await?;
+        let target_host = target.host_str().unwrap_or("").to_string();
+        let mut req = client.post(target.clone()).header("Accept", "application/json").header("Referer", referer).json(payload);
+        if public_json {
+            req = req.header("X-HG-Public-JSON", "1");
+        }
+        if let Some(t) = token.filter(|t| !t.is_empty()) {
+            req = req.header("Authorization", format!("Bearer {t}"));
+        }
+        let resp = req.send().await.map_err(|e| err_text(&e))?;
+        let status = resp.status();
+        let headers_ms = started.elapsed().as_millis() as u64;
+        if status.is_redirection() {
+            if hop == 5 { return Err("重定向次数超过限制".into()); }
+            let location = resp.headers().get(reqwest::header::LOCATION).and_then(|h| h.to_str().ok()).ok_or("重定向缺少有效 Location")?;
+            next = edge_redirect_target(&target, status.as_u16(), location, guest_get)?;
+            continue;
+        }
+        let ctype = resp.headers().get(reqwest::header::CONTENT_TYPE).and_then(|v| v.to_str().ok()).unwrap_or("").to_string();
+        let gateway = if resp.headers().contains_key("x-amz-cf-id") { "cloudfront" } else if resp.headers().contains_key("cf-ray") { "cloudflare" } else { "other" };
+        let has_pub_hdr = resp.headers().get("X-HG-Public-JSON").and_then(|v| v.to_str().ok()) == Some("1");
+        let text = resp.text().await.map_err(|e| err_text(&e))?;
+        return Ok(crate::edge_crypto::HttpReply { status: status.as_u16(), ctype, gateway, public_json: has_pub_hdr, target_host, headers_ms, text });
+    }
+    Err("重定向次数超过限制".into())
 }
 
 /// 拉原始字节（图片 / m3u8 / 分片），保留重定向后的最终 URL。

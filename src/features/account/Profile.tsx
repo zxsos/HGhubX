@@ -343,21 +343,26 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
         className="ios-page-body flex-1 scroll-y pt-2 pb-24">
         {/* 资料卡：已登录 / 未登录（点开登录抽屉） */}
         {user ? (
-          <Surface className="ios-account-card flex items-center gap-3.5 a-rise">
-            <Avatar size={56} name={user.nickname} hue={280} ring />
-            <div className="flex-1 min-w-0">
-              <div className="text-[16px] font-bold text-on truncate">{user.nickname}</div>
-              <div className="text-[12px] text-mut mt-0.5">@{user.username} · ID {user.id}</div>
-              <div className="flex gap-3 mt-2 text-[12px] text-mut">
-                <span>{tr("点赞")}{" "}<b className="text-on">{fmt(user.counts?.like)}</b></span>
-                <span>{tr("收藏")}{" "}<b className="text-on">{fmt(user.counts?.collect)}</b></span>
-                <span>{tr("关注")}{" "}<b className="text-on">{fmt(user.counts?.following)}</b></span>
+          <Surface className="ios-account-card flex flex-col gap-3 a-rise">
+            <div className="flex items-center gap-3.5 min-w-0">
+              <Avatar size={56} name={user.nickname} hue={280} ring />
+              <div className="flex-1 min-w-0">
+                <div className="text-[16px] font-bold text-on truncate">{user.nickname}</div>
+                <div className="text-[12px] text-mut mt-0.5 flex flex-wrap items-center gap-x-1.5">
+                  <span className="truncate max-w-full">@{user.username}</span>
+                  <span className="whitespace-nowrap">· ID {user.id}</span>
+                </div>
               </div>
+              <Button onClick={() => { setLogoutError(""); setLogoutOpen(true); }}
+                className="ios-icon-button" aria-label={tr("退出登录")}>
+                <ILogout size={17} />
+              </Button>
             </div>
-            <Button onClick={() => { setLogoutError(""); setLogoutOpen(true); }}
-              className="ios-icon-button" aria-label={tr("退出登录")}>
-              <ILogout size={17} />
-            </Button>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-mut">
+              <span className="whitespace-nowrap">{tr("点赞")}{" "}<b className="text-on">{fmt(user.counts?.like)}</b></span>
+              <span className="whitespace-nowrap">{tr("收藏")}{" "}<b className="text-on">{fmt(user.counts?.collect)}</b></span>
+              <span className="whitespace-nowrap">{tr("关注")}{" "}<b className="text-on">{fmt(user.counts?.following)}</b></span>
+            </div>
           </Surface>
         ) : (
           <Button onClick={() => setLoginOpen(true)}
@@ -366,9 +371,9 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
             <div className="flex-1 min-w-0">
               <div className="text-[16px] font-bold text-on">{tr("未登录")}</div>
               <div className="text-[12px] text-mut mt-0.5">{tr("登录后查看账号收藏、关注和观看记录")}</div>
-              <div className="flex gap-3 mt-2 text-[12px] text-mut">
-                <span>{tr("收藏")}{" "}<b className="text-on">{favs.length + postFavs.length}</b></span>
-                <span>{tr("观看")}{" "}<b className="text-on">{history.length}</b></span>
+              <div className="flex flex-wrap gap-x-3 gap-y-1 mt-2 text-[12px] text-mut">
+                <span className="whitespace-nowrap">{tr("收藏")}{" "}<b className="text-on">{favs.length + postFavs.length}</b></span>
+                <span className="whitespace-nowrap">{tr("观看")}{" "}<b className="text-on">{history.length}</b></span>
               </div>
             </div>
             <span className="inline-flex items-center gap-0.5 h-9 pl-3.5 pr-2.5 rounded-full bg-primary text-on-primary text-[13px] font-semibold shrink-0">{tr("登录")}<IChevR size={14} />
@@ -377,9 +382,15 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
         )}
 
         {user && accountSync.error && <div role="alert" className="mt-3 rounded-(--r-sm) bg-s3 px-3.5 py-3 text-[13px] flex flex-wrap items-center justify-between gap-2">
-          <p className="text-danger break-words flex-1 min-w-[200px]">{accountSync.error}</p>
-          <Button disabled={accountSync.busy} onClick={() => { void syncAccount({ manual: true }).catch(() => {}); }}
-            className="inline-flex items-center min-h-9 -mx-2 px-2 text-primary font-semibold shrink-0">{accountSync.busy ? tr("正在重试…") : tr("重试同步")}</Button>
+          <p className={`${accountSync.authError ? "text-on" : "text-danger"} break-words flex-1 min-w-[200px]`}>{accountSync.error}</p>
+          <div className="flex items-center gap-2 shrink-0">
+            {accountSync.authError && (
+              <Button onClick={() => setLoginOpen(true)}
+                className="inline-flex items-center min-h-9 px-3 rounded-full bg-primary text-on-primary text-[12px] font-semibold shrink-0">{tr("重新登录")}</Button>
+            )}
+            <Button disabled={accountSync.busy} onClick={() => { void syncAccount({ manual: true }).catch(() => {}); }}
+              className="inline-flex items-center min-h-9 -mx-2 px-2 text-primary font-semibold shrink-0">{accountSync.busy ? tr("正在重试…") : tr("重试同步")}</Button>
+          </div>
         </div>}
 
         {/* 关注 / 我的主页 */}
@@ -465,8 +476,9 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
         <div className="mt-3" aria-busy={loading || syncingFavorites}>
           {favoriteSyncFailed ? (
             <Empty icon={<IStar size={24} />} title={tr("收藏状态未知")}
-              sub={tr("账号同步未完成，暂时无法确认收藏内容。")} action={tr("重试")}
-              onAction={() => { void syncAccount({ manual: true }).catch(() => {}); }} />
+              sub={accountSync.authError ? tr("登录已过期，重新登录后继续同步") : tr("账号同步未完成，暂时无法确认收藏内容。")}
+              action={accountSync.authError ? tr("重新登录") : tr("重试")}
+              onAction={() => { if (accountSync.authError) setLoginOpen(true); else void syncAccount({ manual: true }).catch(() => {}); }} />
           ) : syncingFavorites ? (
             <FavoriteSyncState wide={wide} />
           ) : loading && !cardsCount ? (

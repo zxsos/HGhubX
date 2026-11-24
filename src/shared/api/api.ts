@@ -86,7 +86,7 @@ async function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T> 
     // 落盘完整错误链（dns error / connection refused / 证书错误…），toast 只显示截断版
     logLine(`[api] ${cmd} → ${msg}`);
     tracePlayback("api.fail", { cmd, err: msg, status: status ?? null, networkish });
-    notifyNet({ ok: false, cmd, msg, networkish });
+    notifyNet({ ok: false, cmd, msg, networkish: networkish || status === "403" });
     // 线路可能正被自动切走：给切换留一点时间，只读请求重试一次，用户就不用看见这条错误
     if (networkish && READ_ONLY.has(cmd)) {
       logLine(`[api] ${cmd} 链路异常，1.2s 后重试一次`);

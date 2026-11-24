@@ -205,6 +205,7 @@ pub async fn try_main() -> Value {
 }
 
 pub async fn health() -> Value {
+    crate::net::refresh_client();
     let hit = probe_hit("current", &crate::net::base()).await;
     let mut result = hit.json();
     result["base"] = json!(hit.url);

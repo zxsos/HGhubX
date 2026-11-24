@@ -396,7 +396,7 @@ async fn probe_proxy_origin(
     config: &crate::proxy::Config,
     strict: bool,
 ) -> Result<Value, String> {
-    let mut next = network_policy::parse_target_with_mode(&format!("{origin}/api/edge/request"), strict)?;
+    let mut next = network_policy::parse_target_with_mode(&format!("{origin}/api/public/request"), strict)?;
     let envelope = json!({ "method": "GET", "path": "/api/videos?page=1&size=1", "body": "", "content_type": "" });
     for hop in 0..=5 {
         let route = ProxyRoute::for_config(config, &next);
@@ -409,6 +409,7 @@ async fn probe_proxy_origin(
         let response = client
             .post(next.clone())
             .header("Accept", "application/json")
+            .header("X-HG-Public-JSON", "1")
             .header("Referer", format!("{origin}/"))
             .json(&envelope)
             .send()
@@ -617,7 +618,7 @@ mod tests {
             .unwrap();
         assert_eq!(result["ok"], true);
         let (request, body, auth) = serving.join().unwrap();
-        assert!(request.starts_with("POST http://unresolved.fixture.invalid/api/edge/request HTTP/1.1"));
+        assert!(request.starts_with("POST http://unresolved.fixture.invalid/api/public/request HTTP/1.1"));
         assert_eq!(
             body,
             json!({"method":"GET","path":"/api/videos?page=1&size=1","body":"","content_type":""})
