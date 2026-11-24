@@ -1,17 +1,17 @@
 import { useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { fmt } from "../../shared/api/api";
 import { Button } from "../../shared/ui/ios/controls";
-import { IUserF } from "../../shared/ui/icons";
+import { ICheck, IUserF } from "../../shared/ui/icons";
 import { tr } from "../../shared/i18n";
 import type { AuthorItem } from "./authorDirectory";
 
 const HOLD_MS = 600;
 const MOVE_PX = 10;
 
-/** Author pill: tap opens the profile, deliberate hold toggles its pinned state. */
-export function AuthorPinChip({ author, pinned, board = false, onOpen, onTogglePin }: {
-  author: AuthorItem; pinned: boolean; board?: boolean;
-  onOpen: () => void; onTogglePin: (author: AuthorItem) => void;
+/** Author pill: tap opens the profile, deliberate hold follows or unfollows. */
+export function AuthorChip({ author, followed, busy = false, onOpen, onToggleFollow }: {
+  author: AuthorItem; followed: boolean; busy?: boolean;
+  onOpen: () => void; onToggleFollow: (author: AuthorItem) => void;
 }) {
   const [pressing, setPressing] = useState(false);
   const timer = useRef<number | null>(null);
@@ -35,6 +35,7 @@ export function AuthorPinChip({ author, pinned, board = false, onOpen, onToggleP
 
   const pointerDown = (event: ReactPointerEvent<HTMLButtonElement>) => {
     if (event.pointerType === "mouse" && event.button !== 0) return;
+    if (busy) return;
     clearTimer();
     longPressed.current = false;
     suppressClick.current = false;
@@ -47,7 +48,7 @@ export function AuthorPinChip({ author, pinned, board = false, onOpen, onToggleP
       origin.current = null;
       setPressing(false);
       navigator.vibrate?.(8);
-      onTogglePin(author);
+      onToggleFollow(author);
     }, HOLD_MS);
   };
   const pointerMove = (event: ReactPointerEvent<HTMLButtonElement>) => {
@@ -75,11 +76,13 @@ export function AuthorPinChip({ author, pinned, board = false, onOpen, onToggleP
   };
 
   return <Button type="button"
-    aria-label={pinned ? tr("长按取消置顶作者：{0}", author.name) : tr("长按置顶作者：{0}", author.name)}
-    data-author-id={author.id} data-pinned={pinned ? "true" : undefined} data-pin-surface={board ? "board" : "group"} data-pressing={pressing ? "true" : undefined}
+    aria-label={followed ? tr("长按取消关注作者：{0}", author.name) : tr("长按关注作者：{0}", author.name)}
+    aria-pressed={followed}
+    data-author-id={author.id} data-following={followed ? "true" : undefined} data-pressing={pressing ? "true" : undefined}
     onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={pointerCancel}
     onPointerLeave={cancelHold} onClick={click} onContextMenu={event => event.preventDefault()}
     className="ios-filter-pill tag-pin-pill max-w-full min-w-0 gap-1.5 text-left">
+    {followed && <ICheck size={12} className="shrink-0 text-primary" aria-hidden />}
     <span className="min-w-0 whitespace-normal break-words text-on/95">{author.name}</span>
     {author.followers > 0 && <span aria-label={tr("{0} 粉丝", fmt(author.followers))} className="shrink-0 inline-flex items-center gap-0.5 text-[11.5px] font-medium text-dim tabular-nums"><IUserF size={11} className="text-primary/85" />{fmt(author.followers)}</span>}
   </Button>;

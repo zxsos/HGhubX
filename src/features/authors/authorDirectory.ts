@@ -3,6 +3,8 @@ import type { UserProfile, VideoCard } from "../../shared/api/types";
 
 export type AuthorItem = { id: number; name: string; followers: number; avatar?: string };
 
+export const MAX_FOLLOWED_AUTHORS = 24;
+
 const CACHE_TTL_MS = 5 * 60_000;
 const FALLBACK_PAGES = 6;
 const FALLBACK_PAGE_SIZE = 50;

@@ -1,20 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { fmt } from "../../shared/api/api";
 import { useStore } from "../../shared/model/store";
-import { AUTHOR_TOAST_SLOT, MAX_PINNED_AUTHORS, useAuthorPins } from "../../shared/model/authorPins";
 import { Button, Surface } from "../../shared/ui/ios/controls";
 import { Loader } from "../../shared/ui/ios/effects";
-import { IPin, IRefresh, IUserF } from "../../shared/ui/icons";
+import { IRefresh, IUserF } from "../../shared/ui/icons";
 import { tr } from "../../shared/i18n";
-import { AuthorPinChip } from "./AuthorPinChip";
+import { AuthorChip } from "./AuthorChip";
+import { useAuthorFollow } from "./useAuthorFollow";
 import { loadAuthors, type AuthorItem } from "./authorDirectory";
 
 const TOP_COUNT = 12;
 
-/** Popular authors on the search landing page, with the same hold-to-pin behavior as tag chips. */
+/** Popular authors on the search landing page, with hold-to-follow author chips. */
 export function SearchAuthors({ active }: { active: boolean }) {
-  const { push, toast, lineEpoch } = useStore();
-  const { pinnedAuthors, togglePinnedAuthor, isAuthorPinned } = useAuthorPins();
+  const { push, lineEpoch, follows } = useStore();
+  const { busyId, toggleFollow } = useAuthorFollow();
   const [authors, setAuthors] = useState<AuthorItem[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -40,16 +39,8 @@ export function SearchAuthors({ active }: { active: boolean }) {
   useEffect(() => { if (active && loadedKey.current !== String(lineEpoch)) void load(); }, [active, lineEpoch, load]);
   useEffect(() => () => { sequence.current++; }, []);
 
-  const togglePin = (author: AuthorItem) => {
-    const currentlyPinned = isAuthorPinned(author.id);
-    if (!currentlyPinned && pinnedAuthors.length >= MAX_PINNED_AUTHORS) {
-      toast(tr("最多置顶 {0} 位作者", MAX_PINNED_AUTHORS), "info", AUTHOR_TOAST_SLOT);
-      return;
-    }
-    togglePinnedAuthor({ id: author.id, name: author.name, followers: author.followers });
-    toast(currentlyPinned ? tr("已取消置顶作者：{0}", author.name) : tr("已置顶作者：{0}", author.name), currentlyPinned ? "info" : "ok", AUTHOR_TOAST_SLOT);
-  };
   const openAuthor = (author: AuthorItem) => push({ kind: "user", id: author.id, name: author.name });
+  const isFollowing = (id: number) => follows.includes(id);
   const top = (authors ?? []).slice(0, TOP_COUNT);
 
   return <Surface role="region" aria-label={tr("热门作者")} aria-busy={loading}
@@ -61,17 +52,9 @@ export function SearchAuthors({ active }: { active: boolean }) {
     {error && <p role="status" className="mt-2 text-[12px] text-mut break-words">
       {authors?.length ? tr("刷新失败，保留已加载作者。") : tr("作者暂未加载成功。")}{error}
     </p>}
-    {pinnedAuthors.length > 0 && <div className="mt-3 rounded-(--r-sm) bg-s1/60 p-2.5" aria-label={tr("置顶作者")}>
-      <div className="flex items-center justify-between gap-2 text-[12px] text-mut">
-        <span className="inline-flex items-center gap-1.5"><IPin size={13} className="text-primary" />{tr("置顶作者")}</span>
-        <span className="tabular-nums">{tr("{0} 位", pinnedAuthors.length)}</span>
-      </div>
-      <div className="mt-2 flex flex-wrap gap-2">
-        {pinnedAuthors.map(author => <AuthorPinChip key={author.id} author={{ id: author.id, name: author.name, followers: author.followers }} pinned board onOpen={() => openAuthor(author)} onTogglePin={togglePin} />)}
-      </div>
-    </div>}
-    {top.length > 0 ? <div className="flex flex-wrap gap-2 mt-3">
-      {top.map(author => <AuthorPinChip key={author.id} author={author} pinned={isAuthorPinned(author.id)} onOpen={() => openAuthor(author)} onTogglePin={togglePin} />)}
+    {top.length > 0 ? <div className="mt-3 flex flex-wrap gap-2">
+      {top.map(author => <AuthorChip key={author.id} author={author} followed={isFollowing(author.id)} busy={busyId === author.id}
+        onOpen={() => openAuthor(author)} onToggleFollow={toggleFollow} />)}
     </div> : !error && <p role="status" className="mt-3 text-[13px] text-mut">
       {loading || authors === null ? tr("正在加载作者…") : tr("暂无可用作者")}
     </p>}

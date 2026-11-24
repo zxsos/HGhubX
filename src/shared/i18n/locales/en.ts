@@ -840,19 +840,17 @@ const en: Record<string, string> = {
   "正在加载作者…": "Loading authors…",
   "暂无可用作者": "No authors available",
   "仅展示粉丝数前 {0} 位，更多作者见全部作者": "Showing the top {0} by followers; see all authors for more",
-  "长按作者置顶，再长按取消": "Long-press an author to pin; long-press again to unpin",
-  "长按下方作者可置顶": "Long-press an author below to pin",
-  "长按置顶作者：{0}": "Long-press to pin author: {0}",
-  "长按取消置顶作者：{0}": "Long-press to unpin author: {0}",
-  "已置顶作者：{0}": "Pinned author: {0}",
-  "已取消置顶作者：{0}": "Unpinned author: {0}",
-  "最多置顶 {0} 位作者": "Up to {0} pinned authors",
   "{0} 粉丝": "{0} followers",
-  "{0} 位作者 · {1} 位置顶": "{0} authors · {1} pinned",
   "{0} 位": "{0}",
   "已关注作者": "Followed authors",
+  "长按关注作者：{0}": "Long-press to follow author: {0}",
+  "长按取消关注作者：{0}": "Long-press to unfollow author: {0}",
+  "长按作者可关注或取消关注": "Long-press an author to follow or unfollow",
+  "{0} 位作者 · {1} 位已关注": "{0} authors · {1} followed",
+  "已取消关注 {0}": "Unfollowed {0}",
 };
 
 export default en;
+
 
 

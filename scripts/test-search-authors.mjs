@@ -64,14 +64,25 @@ try {
   await page.waitForTimeout(700);
   await page.mouse.up();
   await page.waitForTimeout(200);
-  const pins = await page.evaluate(() => JSON.parse(localStorage.getItem("hghubx_author_pins_v1") || "[]"));
-  assert.ok(pins.some(pin => pin.id === 100), "long press pins the author");
-  const board = authorsPage.locator("[data-pin-board]");
-  assert.equal(await board.getByRole("button").filter({ hasText: "都市阿城" }).count(), 1, "pinned author appears on the pin board");
-  assert.ok((await board.innerText()).includes("1 位"), "pin board count updates");
-  await page.screenshot({ path: join(output, "all-authors-pinned.png"), animations: "disabled" });
+  const board = authorsPage.locator("[data-followed-board]");
+  await board.waitFor();
+  assert.equal(await board.getByRole("button", { name: /都市阿城/ }).count(), 1, "long press follows the author and adds the followed board");
+  assert.ok((await board.innerText()).includes("共 1 位"), "followed count updates");
+  const followedChip = authorsPage.locator('button[data-author-id="100"]').last();
+  assert.equal(await followedChip.getAttribute("data-following"), "true", "author chip reflects the followed state");
+  await page.screenshot({ path: join(output, "all-authors-followed.png"), animations: "disabled" });
 
-  console.log("PASS: search-authors (7 checks)");
+  const boardChip = board.locator('button[data-author-id="100"]');
+  const boardBox = await boardChip.boundingBox();
+  assert(boardBox, "followed chip needs a bounding box");
+  await page.mouse.move(boardBox.x + boardBox.width / 2, boardBox.y + boardBox.height / 2);
+  await page.mouse.down();
+  await page.waitForTimeout(700);
+  await page.mouse.up();
+  await page.waitForTimeout(200);
+  assert.equal(await board.count(), 0, "long press again unfollows the author and removes the board");
+
+  console.log("PASS: search-authors (9 checks)");
 } finally {
   if (browser) await browser.close();
   if (vite) await vite.close();
