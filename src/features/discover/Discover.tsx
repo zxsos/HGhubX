@@ -3,7 +3,7 @@ import { Loader } from "../../shared/ui/ios/effects";
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { api, fmt } from "../../shared/api/api";
 import type { Post, TopicCard, TopicDetail, VideoCard } from "../../shared/api/types";
-import { useStore } from "../../shared/model/store";
+import { ACTION_TOAST_SLOT, useStore } from "../../shared/model/store";
 import { MAX_BLOCKED_TAGS, MAX_PINNED_TAGS, MAX_TAG_LENGTH, useContentPreferences } from "../../shared/model/contentPreferences";
 import { AUTO_LOAD_EMPTY_PAGE_LIMIT, useAutoLoadMore } from "../../shared/lib/useAutoLoadMore";
 import { Masonry, MediaCard } from "../../shared/ui/cards";
@@ -285,7 +285,6 @@ export function TopicPage({ slug, name, onBack, wide }: { slug: string; name: st
 /* ================= 标签聚合页 ================= */
 const TAG_PIN_HOLD_MS = 600;
 const TAG_PIN_MOVE_PX = 10;
-const TAG_PIN_TOAST_SLOT = "tag-pin-hint";
 
 /** A tag chip that opens on tap and toggles its pinned state on a deliberate hold. */
 function TagPinChip({ name, hotScore, pinned, board = false, onOpen, onTogglePin }: {
@@ -375,11 +374,11 @@ export function TagsPage({ onBack, wide }: { onBack: () => void; wide: boolean }
   const togglePin = useCallback((name: string) => {
     const currentlyPinned = isTagPinned(name);
     if (!currentlyPinned && pinnedTags.length >= MAX_PINNED_TAGS) {
-      toast(tr("最多置顶 {0} 个标签", MAX_PINNED_TAGS), "info", TAG_PIN_TOAST_SLOT);
+      toast(tr("最多置顶 {0} 个标签", MAX_PINNED_TAGS), "info", ACTION_TOAST_SLOT);
       return;
     }
     togglePinnedTag(name);
-    toast(currentlyPinned ? tr("已取消置顶：{0}", name) : tr("已置顶标签：{0}", name), currentlyPinned ? "info" : "ok", TAG_PIN_TOAST_SLOT);
+    toast(currentlyPinned ? tr("已取消置顶：{0}", name) : tr("已置顶标签：{0}", name), currentlyPinned ? "info" : "ok", ACTION_TOAST_SLOT);
   }, [isTagPinned, pinnedTags.length, toast, togglePinnedTag]);
 
   return (
@@ -592,11 +591,11 @@ export function TagPage({ tag, name, onBack, wide }: { tag: string; name: string
   }, [tag, name]);
   const togglePin = useCallback(() => {
     if (!tagPinned && preferences.pinnedTags.length >= MAX_PINNED_TAGS) {
-      toast(tr("最多置顶 {0} 个标签", MAX_PINNED_TAGS), "info", TAG_PIN_TOAST_SLOT);
+      toast(tr("最多置顶 {0} 个标签", MAX_PINNED_TAGS), "info", ACTION_TOAST_SLOT);
       return;
     }
     togglePinnedTag(name);
-    toast(tagPinned ? tr("已取消置顶：{0}", name) : tr("已置顶标签：{0}", name), tagPinned ? "info" : "ok", TAG_PIN_TOAST_SLOT);
+    toast(tagPinned ? tr("已取消置顶：{0}", name) : tr("已置顶标签：{0}", name), tagPinned ? "info" : "ok", ACTION_TOAST_SLOT);
   }, [name, preferences.pinnedTags.length, tagPinned, toast, togglePinnedTag]);
   const changeMetricSort = (value: VideoSortMetric, direction: VideoSortDirection = "desc") => {
     if (value === metricSort && direction === metricDirection) return;

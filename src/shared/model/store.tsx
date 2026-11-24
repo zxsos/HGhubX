@@ -65,6 +65,9 @@ export type Toast = {
   tag?: string;
 };
 
+/** Shared slot for transient action and playback hints; same-tag toasts replace in place. */
+export const ACTION_TOAST_SLOT = "playback-hint";
+
 /** 观看记录：看到第几集、第几秒（`dur` 用来判断是否已看完） */
 export type WatchProgress = { id: number; ep: number; t: number; dur: number; at: number };
 

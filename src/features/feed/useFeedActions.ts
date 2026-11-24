@@ -1,12 +1,9 @@
 import { useMemo, useRef, useState, type MutableRefObject, type RefObject } from "react";
 import type { Detail, Episode, Post, User } from "../../shared/api/types";
 import { detailEpisodeCount } from "../../shared/model/favoriteProgress";
-import type { Toast } from "../../shared/model/store";
+import { ACTION_TOAST_SLOT, type Toast } from "../../shared/model/store";
 import type { VideoHandle } from "../playback";
 import { tr } from "../../shared/i18n";
-
-/* Action confirmations share the player hint slot so rapid taps replace instead of stacking. */
-const ACTION_TOAST_SLOT = "playback-hint";
 
 export type FeedMeta = {
   title: string;
