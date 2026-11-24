@@ -178,7 +178,7 @@ function UserContent({ id, name, onBack, wide }: { id: number; name?: string; on
     if (isOwnProfile || followPending.current || actionPending(`follow:${id}`)) return;
     if (!user) {
       const on = toggleFollowLocal(id);
-      toast(on ? tr("已关注 {0}", profile?.nickname || name || "") : tr("已取消关注"), on ? "ok" : "info");
+      toast(on ? tr("已关注 {0}", profile?.nickname || name || "") : tr("已取消关注"), on ? "ok" : "info", "playback-hint");
       return;
     }
     const version = ++followVersion.current;
@@ -188,7 +188,7 @@ function UserContent({ id, name, onBack, wide }: { id: number; name?: string; on
     try {
       await setFollowing(id, on);
       if (!current()) return;
-      toast(on ? tr("已关注 {0}", profile?.nickname || name || "") : tr("已取消关注"), on ? "ok" : "info");
+      toast(on ? tr("已关注 {0}", profile?.nickname || name || "") : tr("已取消关注"), on ? "ok" : "info", "playback-hint");
     } catch (error) {
       if (current()) setFollowError(error instanceof Error ? error.message : tr("操作失败，请重试"));
     } finally {
