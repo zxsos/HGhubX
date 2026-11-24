@@ -211,7 +211,9 @@ pub async fn fetch_hot_tags() -> Result<Value, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_items, video_id_from_href, JS_MAX_SAFE_INTEGER};
+    use super::{
+        parse_hot_tags, parse_items, tag_slug_from_href, video_id_from_href, JS_MAX_SAFE_INTEGER,
+    };
 
     #[test]
     fn parses_hot_section_in_dom_order_and_decodes_entities() {
@@ -280,6 +282,57 @@ mod tests {
         assert_eq!(
             parse_items("<section class=\"hg-search-hot\"></section>").unwrap_err(),
             "官网热搜榜没有可用条目"
+        );
+    }
+
+    #[test]
+    fn parses_hot_tags_in_dom_order_and_deduplicates() {
+        let html = r#"
+            <section class="hg-section hg-home-popular-tags">
+              <div class="hg-tagrow__scroll" id="home-popular-tags-scroll">
+                <a class="hg-tagrow__item" href="/tag/dushi/">都市</a>
+                <a class="hg-tagrow__item" href="/tag/gufeng/">古风 &amp; 奇幻</a>
+                <a class="hg-tagrow__item" href="/tag/dushi/">都市</a>
+                <a class="hg-tagrow__item" href="/tag/ntr/">NTR</a>
+              </div>
+            </section>
+        "#;
+
+        let tags = parse_hot_tags(html).unwrap();
+        assert_eq!(tags.len(), 3);
+        assert_eq!(tags[0].name, "都市");
+        assert_eq!(tags[0].slug, "dushi");
+        assert_eq!(tags[1].name, "古风 & 奇幻");
+        assert_eq!(tags[1].slug, "gufeng");
+        assert_eq!(tags[2].name, "NTR");
+        assert_eq!(tags[2].slug, "ntr");
+    }
+
+    #[test]
+    fn rejects_external_or_malformed_tag_hrefs() {
+        assert_eq!(tag_slug_from_href("https://huangguoai.com/tag/dushi/"), None);
+        assert_eq!(tag_slug_from_href("//huangguoai.com/tag/dushi/"), None);
+        assert_eq!(tag_slug_from_href("/tag/"), None);
+        assert_eq!(tag_slug_from_href("/tag/../"), None);
+        assert_eq!(tag_slug_from_href("/tag/a/b/"), None);
+        assert_eq!(tag_slug_from_href("/tag/dushi?x=1"), None);
+        assert_eq!(tag_slug_from_href("/tag/dushi/").as_deref(), Some("dushi"));
+        assert_eq!(tag_slug_from_href("/tag/ai-duanju").as_deref(), Some("ai-duanju"));
+    }
+
+    #[test]
+    fn ignores_tag_links_outside_popular_section_and_reports_missing_or_empty() {
+        let outside = r#"<a class="hg-tagrow__item" href="/tag/dushi/">都市</a>"#;
+        assert_eq!(parse_hot_tags(outside).unwrap_err(), "官网首页没有找到热门标签区域");
+
+        let invalid = r#"<section class="hg-section hg-home-popular-tags">
+            <a class="hg-tagrow__item" href="https://evil.example/tag/dushi/">外域</a>
+            <a class="hg-tagrow__item" href="/tag/empty/">   </a>
+        </section>"#;
+        assert_eq!(parse_hot_tags(invalid).unwrap_err(), "官网热门标签没有可用条目");
+        assert_eq!(
+            parse_hot_tags("<section class=\"hg-home-popular-tags\"></section>").unwrap_err(),
+            "官网热门标签没有可用条目"
         );
     }
 }
