@@ -1,4 +1,4 @@
-export function installFixture({ theme, titles, metrics = [], metricPages = 1, metricPageSize = 2, tagGroups = null }) {
+export function installFixture({ theme, titles, metrics = [], metricPages = 1, metricPageSize = 2, tagGroups = null, follows = [] }) {
   const cards = titles.map((title, i) => ({
     id: i + 1, title, cover: `https://fixture.invalid/poster/${i}`, tags: ["都市", "剧情"], score: metrics[i]?.score ?? (i % 2 === 0 ? 8.5 : 0),
     episode_count: 24, total_episodes: 24,
@@ -17,7 +17,7 @@ export function installFixture({ theme, titles, metrics = [], metricPages = 1, m
     };
   };
   localStorage.setItem("hghubx_theme", theme);
-  localStorage.setItem("hghubx_app_v1", JSON.stringify({ favs: [1, 2, 3, 4, 5, 6], history: [{ id: 1, ep: 3, t: 55, dur: 180, at: 123 }], searchHist: ["都市"] }));
+  localStorage.setItem("hghubx_app_v1", JSON.stringify({ favs: [1, 2, 3, 4, 5, 6], follows, history: [{ id: 1, ep: 3, t: 55, dur: 180, at: 123 }], searchHist: ["都市"] }));
   localStorage.setItem("hghubx_swipe_ep_v2", "1");
   const callbacks = new Map();
   let nextCallback = 0;

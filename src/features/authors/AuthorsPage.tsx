@@ -1,18 +1,20 @@
 import { useCallback, useEffect, useState } from "react";
+import { api } from "../../shared/api/api";
 import { useStore } from "../../shared/model/store";
 import { AUTHOR_TOAST_SLOT, MAX_PINNED_AUTHORS, useAuthorPins } from "../../shared/model/authorPins";
 import { Button, Surface } from "../../shared/ui/ios/controls";
 import { Loader } from "../../shared/ui/ios/effects";
 import { Empty } from "../../shared/ui/ui";
-import { IBack, IPin, IRefresh, IUserF } from "../../shared/ui/icons";
+import { IBack, IHeart, IPin, IRefresh, IUserF } from "../../shared/ui/icons";
 import { tr } from "../../shared/i18n";
 import { AuthorPinChip } from "./AuthorPinChip";
-import { loadAuthors, type AuthorItem } from "./authorDirectory";
+import { asAuthor, loadAuthors, type AuthorItem } from "./authorDirectory";
 
 export function AuthorsPage({ onBack, wide }: { onBack: () => void; wide: boolean }) {
-  const { push, toast, lineEpoch } = useStore();
+  const { push, toast, lineEpoch, follows } = useStore();
   const { pinnedAuthors, togglePinnedAuthor, isAuthorPinned } = useAuthorPins();
   const [authors, setAuthors] = useState<AuthorItem[] | null>(null);
+  const [followedAuthors, setFollowedAuthors] = useState<AuthorItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -24,6 +26,34 @@ export function AuthorsPage({ onBack, wide }: { onBack: () => void; wide: boolea
   }, [lineEpoch]);
 
   useEffect(() => { void load(); }, [load]);
+
+  const followedIds = follows.slice(0, MAX_PINNED_AUTHORS);
+  const followedKey = followedIds.join(",");
+  useEffect(() => {
+    const ids = followedKey ? followedKey.split(",").map(Number) : [];
+    if (!ids.length) { setFollowedAuthors([]); return; }
+    let alive = true;
+    const known = (authors ?? []).filter(author => ids.includes(author.id));
+    const knownIds = new Set(known.map(author => author.id));
+    const missing = ids.filter(id => !knownIds.has(id));
+    const finish = (loaded: AuthorItem[]) => {
+      if (!alive) return;
+      const byId = new Map([...known, ...loaded].map(author => [author.id, author]));
+      setFollowedAuthors(ids.map(id => byId.get(id) ?? { id, name: tr("用户 {0}", id), followers: 0 }));
+    };
+    if (!missing.length) { finish([]); return; }
+    Promise.allSettled(missing.map(id => api.user(id))).then(results => {
+      const loaded: AuthorItem[] = [];
+      results.forEach(result => {
+        if (result.status === "fulfilled") {
+          const author = asAuthor(result.value);
+          if (author) loaded.push(author);
+        }
+      });
+      finish(loaded);
+    });
+    return () => { alive = false; };
+  }, [authors, followedKey]);
 
   const togglePin = (author: AuthorItem) => {
     const currentlyPinned = isAuthorPinned(author.id);
@@ -58,6 +88,15 @@ export function AuthorsPage({ onBack, wide }: { onBack: () => void; wide: boolea
         {pinnedAuthors.length > 0 && <div className="mt-3 flex flex-wrap gap-2">
           {pinnedAuthors.map(author => <AuthorPinChip key={author.id} author={author} pinned board onOpen={() => openAuthor(author)} onTogglePin={togglePin} />)}
         </div>}
+      </Surface>}
+      {followedAuthors.length > 0 && <Surface data-followed-board aria-label={tr("已关注作者")} className="mb-3.5 rounded-[22px] bg-s1 p-4 a-rise">
+        <div className="flex items-baseline justify-between gap-2">
+          <h2 className="flex items-center gap-1.5 text-[14.5px] font-bold text-on"><IHeart size={15} className="text-primary" />{tr("已关注作者")}</h2>
+          <span className="text-[12px] text-dim tabular-nums" aria-live="polite">{tr("共 {0} 位", follows.length)}</span>
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {followedAuthors.map(author => <AuthorPinChip key={author.id} author={author} pinned={isAuthorPinned(author.id)} onOpen={() => openAuthor(author)} onTogglePin={togglePin} />)}
+        </div>
       </Surface>}
       {loading && !authors ? (
         <div className="flex justify-center py-12"><Loader className="w-8 h-8 spinner" /></div>

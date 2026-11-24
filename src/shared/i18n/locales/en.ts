@@ -850,7 +850,9 @@ const en: Record<string, string> = {
   "{0} 粉丝": "{0} followers",
   "{0} 位作者 · {1} 位置顶": "{0} authors · {1} pinned",
   "{0} 位": "{0}",
+  "已关注作者": "Followed authors",
 };
 
 export default en;
+
 

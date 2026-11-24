@@ -12,7 +12,7 @@ const positiveId = (value: unknown) => {
   const id = Number(value);
   return Number.isSafeInteger(id) && id > 0 ? id : 0;
 };
-const asAuthor = (value: unknown): AuthorItem | null => {
+export const asAuthor = (value: unknown): AuthorItem | null => {
   if (!value || typeof value !== "object") return null;
   const item = value as Partial<UserProfile> & { name?: unknown; followers?: unknown; counts?: Record<string, unknown> };
   const id = positiveId(item.id);
