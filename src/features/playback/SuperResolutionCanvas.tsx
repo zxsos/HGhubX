@@ -585,7 +585,7 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
         gl.uniform2f(rcasOutputLoc, width, height);
         gl.uniform1f(rcasSharpLoc, 0.0);
         gl.uniform1f(rcasLimitLoc, 0.1875);
-        gl.uniform1f(rcasStrengthLoc, variant === "cas" ? 0.60 : 1.0);
+        gl.uniform1f(rcasStrengthLoc, variant === "cas" ? 0.90 : 1.0);
         gl.uniform1f(rcasModeLoc, variant === "cas" ? 1.0 : 0.0);
         gl.drawArrays(gl.TRIANGLES, 0, 3);
       }
