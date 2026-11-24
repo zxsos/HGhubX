@@ -505,6 +505,10 @@ html.theme-light {
 .ios-filter-menu button[aria-checked=true] .ios-filter-menu-side { color:var(--p-primary); }
 .ios-filter-pill[aria-pressed=true] { background:var(--p-primary); border-color:var(--p-primary); color:var(--p-on-primary); box-shadow:var(--control-shadow); }
 .ios-filter-pill[aria-pressed=true]:active { scale:.96; }
+.tag-pin-pill { touch-action:manipulation; -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; }
+.tag-pin-pill[data-pressing="true"] { scale:.96; border-color:var(--p-primary); }
+.tag-pin-pill[data-pinned="true"] { border-color:var(--p-primary); background:color-mix(in srgb, var(--p-primary) 10%, var(--p-s3)); }
+.tag-pin-mark { flex:none; color:var(--p-primary); }
 .ios-sort-control { position:relative; display:inline-flex; flex:none; }
 .ios-sort-pill.is-icon { width:36px; min-width:36px; height:36px; min-height:36px; padding:0; }
 .ios-sort-pill.is-labeled { gap:6px; padding:0 11px 0 12px; white-space:nowrap; }

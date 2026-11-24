@@ -96,6 +96,7 @@ export const IInfo = S(<><circle cx="12" cy="12" r="8.5" /><path d="M12 11v5.2" 
 export const IBroom = S(<><path d="M14.5 4.5 9 10" /><path d="m9.6 8.6 5.8 5.8" /><path d="M8.4 13.6c-2 1.1-3.2 2.9-3.6 5.4 2.5-.4 4.3-1.6 5.4-3.6" /><path d="m11.6 11.4-1.2 1.2" /></>);
 export const ILayers = S(<><path d="m12 3.6 8.4 4.4L12 12.4 3.6 8Z" /><path d="m3.6 12.4 8.4 4.4 8.4-4.4" /><path d="m3.6 16.6 8.4 4.2 8.4-4.2" /></>);
 export const ITag = S(<><path d="M3.8 11.4V5.2A1.4 1.4 0 0 1 5.2 3.8h6.2a1.4 1.4 0 0 1 1 .41l7.4 7.4a1.4 1.4 0 0 1 0 1.98l-6.2 6.2a1.4 1.4 0 0 1-1.98 0l-7.4-7.4a1.4 1.4 0 0 1-.42-1Z" /><circle cx="8.2" cy="8.2" r="1.35" fill="currentColor" stroke="none" /></>);
+export const IPin = S(<><path d="M9.2 3.8h5.6" /><path d="M10.4 3.8v4.7L7.8 12v1.8h8.4v-1.8l-2.6-3.5V3.8" /><path d="M12 13.8v6.2" /></>);
 export const IFilm = S(<><rect x="3.5" y="4.5" width="17" height="15" rx="3" /><path d="M3.5 9h17" /><path d="m8.8 4.5-1.8 4.5" /><path d="m14.8 4.5-1.8 4.5" /><path d="m10.4 11.8 4.4 2.5-4.4 2.5Z" fill="currentColor" stroke="none" /></>);
 export const ISpark = S(<><path d="M11 3.5c.5 3.3 1.4 5.1 2.8 6.5 1.4 1.4 3.2 2.3 6.5 2.8-3.3.5-5.1 1.4-6.5 2.8-1.4 1.4-2.3 3.2-2.8 6.5-.5-3.3-1.4-5.1-2.8-6.5-1.4-1.4-3.2-2.3-6.5-2.8 3.3-.5 5.1-1.4 6.5-2.8C9.6 8.6 10.5 6.8 11 3.5Z" /><path d="M18.5 3.5v3M17 5h3" /></>);
 export const IAward = S(<><path d="m4 8.2 4.1 3.5L12 5.6l3.9 6.1L20 8.2l-1.7 10.3H5.7Z" /><path d="M6.5 21h11" /></>);
