@@ -50,8 +50,10 @@ try {
   await input.press("Enter");
   const segmented = page.locator('[aria-label="搜索结果类型"]');
   await segmented.waitFor();
+  await page.locator(".ios-media-grid .ios-poster-ep").first().waitFor();
+  assert.equal(await page.locator(".ios-media-grid .ios-poster-ep").first().innerText(), "全 24 集");
   await page.screenshot({ path: fileURLToPath(new URL("search-nav-reset-before.png", output)), animations: "disabled" });
-  report.checks.push("query submits and renders results");
+  report.checks.push("query submits and renders results with full episode totals for completed shows");
 
   await searchNav.click();
   await page.waitForFunction(() => {

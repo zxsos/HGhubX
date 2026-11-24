@@ -125,10 +125,15 @@ export function MediaCard({ title, cover, subtitle, badge, badgeTone = "default"
   </Button>;
 }
 
+function completedEpisodeLabel(v: VideoCard): string {
+  const total = Number(v.total_episodes) > 0 ? Number(v.total_episodes) : Number(v.episode_count);
+  return total > 0 ? tr("全 {0} 集", total) : tr("已完结");
+}
+
 export function WaterfallCard({ v, onOpen, priority = false }: { v: VideoCard; onOpen: () => void; priority?: boolean }) {
   return <MediaCard title={v.title} cover={v.cover} onOpen={onOpen} priority={priority} score={v.score}
     cornerBadges={videoCornerBadges(v)}
-    episode={v.is_finished ? tr("已完结") : tr("更新至 {0} 集", v.episode_count)}
+    episode={v.is_finished ? completedEpisodeLabel(v) : tr("更新至 {0} 集", v.episode_count)}
     subtitle={v.tags?.slice(0, 2).join(" · ") || v.author?.name || "HGhubX"}
     progress={fmt(v.hot)}
     progressLabel={tr("{0} 次播放", fmt(v.hot))} />;
@@ -145,7 +150,7 @@ export function Masonry({ videos, onOpen, wide = false, scopeKey }: {
 export function RowCard({ v, onOpen }: { v: VideoCard; onOpen: () => void }) {
   return <div className="ios-row-card"><MediaCard title={v.title} cover={v.cover} score={v.score} onOpen={onOpen}
     cornerBadges={videoCornerBadges(v)}
-    episode={v.is_finished ? tr("完结") : tr("{0} 集", v.episode_count)}
+    episode={v.is_finished ? completedEpisodeLabel(v) : tr("{0} 集", v.episode_count)}
     subtitle={v.score ? tr("{0} 分 · {1}", v.score.toFixed(1), v.tags?.[0] || tr("短剧")) : v.tags?.slice(0, 2).join(" · ")} />
   </div>;
 }

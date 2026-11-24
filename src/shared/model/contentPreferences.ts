@@ -1,28 +1,34 @@
 import { useSyncExternalStore } from "react";
 import { tr } from "../i18n";
 
-export type ContentPreferences = { blockedTags: string[]; paused: boolean; hideUntagged: boolean };
+export type ContentPreferences = { blockedTags: string[]; pinnedTags: string[]; paused: boolean; hideUntagged: boolean };
 export const CONTENT_PREFERENCES_KEY = "hghubx_content_preferences_v1";
 export const MAX_BLOCKED_TAGS = 200;
+export const MAX_PINNED_TAGS = 24;
 export const MAX_TAG_LENGTH = 64;
 
 const displayTag = (value: unknown): string => typeof value === "string" ? value.trim().replace(/\s+/g, " ") : "";
 /** Exact tag identity only: punctuation and neighbouring words are not fuzzy matched. */
 export const normalizeTag = (value: string): string => displayTag(value).toLowerCase();
-function tagList(value: unknown): string[] {
+function tagList(value: unknown, max = MAX_BLOCKED_TAGS): string[] {
   if (!Array.isArray(value)) return [];
   const seen = new Set<string>(), result: string[] = [];
   for (const candidate of value) {
     const name = displayTag(candidate), key = normalizeTag(name);
     if (!name || name.length > MAX_TAG_LENGTH || seen.has(key)) continue;
     seen.add(key); result.push(name);
-    if (result.length >= MAX_BLOCKED_TAGS) break;
+    if (result.length >= max) break;
   }
   return result;
 }
 function normalizePreferences(value: unknown): ContentPreferences {
   const data = value && typeof value === "object" ? value as Partial<ContentPreferences> : {};
-  return { blockedTags: tagList(data.blockedTags), paused: data.paused === true, hideUntagged: data.hideUntagged === true };
+  return {
+    blockedTags: tagList(data.blockedTags),
+    pinnedTags: tagList(data.pinnedTags, MAX_PINNED_TAGS),
+    paused: data.paused === true,
+    hideUntagged: data.hideUntagged === true,
+  };
 }
 function readPreferences(): ContentPreferences {
   try { return normalizePreferences(JSON.parse(localStorage.getItem(CONTENT_PREFERENCES_KEY) || "null")); }
@@ -93,10 +99,22 @@ const getSnapshot = () => snapshot;
 const actions = {
   blockTags(tags: string[]) { update({ ...snapshot.preferences, blockedTags: [...snapshot.preferences.blockedTags, ...(Array.isArray(tags) ? tags : [])] }); },
   unblockTag(tag: string) { update({ ...snapshot.preferences, blockedTags: snapshot.preferences.blockedTags.filter(name => normalizeTag(name) !== normalizeTag(tag)) }); },
+  togglePinnedTag(tag: string) {
+    const name = displayTag(tag), key = normalizeTag(name);
+    if (!name || !key || name.length > MAX_TAG_LENGTH) return;
+    const exists = snapshot.preferences.pinnedTags.some(item => normalizeTag(item) === key);
+    update({
+      ...snapshot.preferences,
+      pinnedTags: exists
+        ? snapshot.preferences.pinnedTags.filter(item => normalizeTag(item) !== key)
+        : [name, ...snapshot.preferences.pinnedTags].slice(0, MAX_PINNED_TAGS),
+    });
+  },
   setPaused(paused: boolean) { if (typeof paused === "boolean") update({ ...snapshot.preferences, paused }); },
   setHideUntagged(hideUntagged: boolean) { if (typeof hideUntagged === "boolean") update({ ...snapshot.preferences, hideUntagged }); },
   clearBlockedTags() { update({ ...snapshot.preferences, blockedTags: [] }); },
   isTagBlocked(tag: string) { return tagIndex(snapshot.preferences).has(normalizeTag(tag)); },
+  isTagPinned(tag: string) { return snapshot.preferences.pinnedTags.some(item => normalizeTag(item) === normalizeTag(tag)); },
   blockReason(tags: readonly string[] | undefined) { return blockReason(tags, snapshot.preferences); },
 };
 
