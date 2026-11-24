@@ -72,7 +72,14 @@ try {
   await board.locator('[data-tag-name="都市"]').waitFor();
   assert.deepEqual(await page.evaluate(() => (JSON.parse(localStorage.getItem("hghubx_content_preferences_v1") || "{}").pinnedTags || [])), ["都市"]);
   assert.equal(await page.locator('[data-tag-name="都市"][data-pinned="true"]').count(), 2, "pinned tag should appear on the board and remain marked in its group");
+  const boardChip = board.locator('[data-tag-name="都市"][data-pin-surface="board"]');
+  const groupChip = page.locator('[data-tag-name="都市"][data-pin-surface="group"]');
+  assert.equal(await boardChip.count(), 1, "pinned board chip should be marked as the board surface");
+  assert.equal(await groupChip.count(), 1, "pinned group chip should be marked as the group surface");
+  assert.equal(await page.locator('.tag-pin-mark').count(), 0, "pinned chips should not render a trailing pin icon");
+  assert.notEqual(await boardChip.evaluate(el => getComputedStyle(el).borderColor), await groupChip.evaluate(el => getComputedStyle(el).borderColor), "board chip should not use the pinned outline");
   report.checks.push("long-press pins a tag without opening the tag feed");
+  report.checks.push("board chip removes the pin mark and outlined highlight while group chip keeps the outline");
 
   await page.screenshot({ path: fileURLToPath(new URL("tag-pins-pinned.png", output)), animations: "disabled" });
 
@@ -123,15 +130,18 @@ try {
   report.checks.push("tag result page exposes a trailing pin centered with the header tag icon instead of search");
 
   const pinIcon = pinButton.locator("svg");
+  const unpinnedLook = await pinButton.evaluate(el => ({ background: getComputedStyle(el).backgroundColor, color: getComputedStyle(el).color }));
   assert(["none", "matrix(1, 0, 0, 1, 0, 0)"].includes(await pinIcon.evaluate(el => getComputedStyle(el).transform)), "unpinned header pin should stay diagonal");
   await detail.screenshot({ path: fileURLToPath(new URL("tag-page-pin-unpinned.png", output)), animations: "disabled" });
 
   await pinButton.click();
   await detail.getByRole("button", { name: "取消置顶此标签" }).waitFor();
   await detail.waitForTimeout(250);
+  const pinnedLook = await pinButton.evaluate(el => ({ background: getComputedStyle(el).backgroundColor, color: getComputedStyle(el).color }));
   const pinnedTransform = await pinIcon.evaluate(el => getComputedStyle(el).transform);
   assert(pinnedTransform.includes("-0.707107"), "pinned header pin should rotate to point down");
-  report.checks.push("header pin rotates from diagonal to point down when pinned");
+  assert.deepEqual(pinnedLook, unpinnedLook, "pinned state should only change the pin orientation");
+  report.checks.push("header pin keeps the circular accent treatment and rotates to point down when pinned");
   assert.deepEqual(await detail.evaluate(() => (JSON.parse(localStorage.getItem("hghubx_content_preferences_v1") || "{}").pinnedTags || [])), ["都市"]);
   await detail.screenshot({ path: fileURLToPath(new URL("tag-page-pin.png", output)), animations: "disabled" });
   report.checks.push("pinning from a direct tag page persists the tag");

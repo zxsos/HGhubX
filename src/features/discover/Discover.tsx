@@ -287,8 +287,8 @@ const TAG_PIN_HOLD_MS = 600;
 const TAG_PIN_MOVE_PX = 10;
 
 /** A tag chip that opens on tap and toggles its pinned state on a deliberate hold. */
-function TagPinChip({ name, hotScore, pinned, onOpen, onTogglePin }: {
-  name: string; hotScore?: number; pinned: boolean;
+function TagPinChip({ name, hotScore, pinned, board = false, onOpen, onTogglePin }: {
+  name: string; hotScore?: number; pinned: boolean; board?: boolean;
   onOpen: () => void; onTogglePin: (name: string) => void;
 }) {
   const [pressing, setPressing] = useState(false);
@@ -353,13 +353,12 @@ function TagPinChip({ name, hotScore, pinned, onOpen, onTogglePin }: {
   };
 
   return <Button type="button" aria-label={pinned ? tr("长按取消置顶：{0}", name) : tr("长按置顶：{0}", name)}
-    data-tag-name={name} data-pinned={pinned ? "true" : undefined} data-pressing={pressing ? "true" : undefined}
+    data-tag-name={name} data-pinned={pinned ? "true" : undefined} data-pin-surface={board ? "board" : "group"} data-pressing={pressing ? "true" : undefined}
     onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={pointerCancel}
     onPointerLeave={cancelHold} onClick={click} onContextMenu={event => event.preventDefault()}
     className="ios-filter-pill tag-pin-pill max-w-full min-w-0 gap-1.5 text-left">
     <span className="min-w-0 whitespace-normal break-words text-on/95">{name}</span>
     {!!hotScore && <span aria-label={tr("热度 {0}", fmt(hotScore))} className="shrink-0 inline-flex items-center gap-0.5 text-[11.5px] font-medium text-dim tabular-nums"><IFireF size={11} className="text-primary/85" />{fmt(hotScore)}</span>}
-    {pinned && <IPin size={12} className="tag-pin-mark" aria-hidden="true" />}
   </Button>;
 }
 
@@ -406,7 +405,7 @@ export function TagsPage({ onBack, wide }: { onBack: () => void; wide: boolean }
           </div>
           <p className="mt-1 text-[12px] leading-relaxed text-mut">{pinnedTags.length ? tr("长按标签置顶，再长按取消") : tr("长按下方标签可置顶")}</p>
           {pinnedTags.length > 0 && <div className="mt-3 flex flex-wrap gap-2">
-            {pinnedTags.map(name => <TagPinChip key={name} name={name} pinned onOpen={() => push({ kind: "tag", tag: name, name })} onTogglePin={togglePin} />)}
+            {pinnedTags.map(name => <TagPinChip key={name} name={name} pinned board onOpen={() => push({ kind: "tag", tag: name, name })} onTogglePin={togglePin} />)}
           </div>}
         </Surface>}
         {loading && !groups.length ? (
