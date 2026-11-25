@@ -32,10 +32,8 @@ try {
     "仙侠", "后宫", "大男主", "重生", "复仇", "年代",
     "豪门", "甜宠",
   ];
-  const updatedHot = ["武侠", "悬疑", "脑洞"];
-  await context.addInitScript(({ initialHot, updatedHot }) => {
+  await context.addInitScript(({ initialHot }) => {
     const orig = window.__TAURI_INTERNALS__.invoke;
-    let callCount = 0;
     window.__TAURI_INTERNALS__.invoke = async (command, args) => {
       if (command === "api_tags") {
         return {
@@ -49,13 +47,11 @@ try {
         };
       }
       if (command === "api_hot_tags") {
-        callCount += 1;
-        const list = callCount === 1 ? initialHot : updatedHot;
-        return { items: list.map((name, i) => ({ name, slug: `slug-${i}` })) };
+        return { items: initialHot.map((name, i) => ({ name, slug: `slug-${i}` })) };
       }
       return orig(command, args);
     };
-  }, { initialHot, updatedHot });
+  }, { initialHot });
 
   const page = await context.newPage();
   await page.route("**/*", route => {
@@ -85,10 +81,8 @@ try {
   assert.ok(!afterBlock.includes("古风"), "blocked tag is hidden from hot tags");
   assert.deepEqual(afterBlock, initialHot.filter(t => t !== "古风").slice(0, 10), "blocking preserves upstream order");
 
-  await region.getByRole("button", { name: "刷新题材" }).click();
-  await region.getByRole("button", { name: "武侠" }).waitFor({ timeout: 5000 });
-  assert.deepEqual(await getChips(), updatedHot, "refresh picks up updated official hot tags");
-  assert.equal(await region.getByRole("button", { name: "换一批" }).count(), 0, "batch button hides when <= 10 tags");
+  assert.equal(await region.getByRole("button", { name: /刷新题材|重试加载题材/ }).count(), 0, "the search page has no hot-tags refresh button");
+  assert.equal(await region.getByRole("button", { name: "换一批" }).count(), 1, "the next batch button remains available");
 
   console.log("PASS: search-hot-tags (4 checks)");
 } finally {
