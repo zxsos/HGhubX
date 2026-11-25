@@ -482,18 +482,21 @@ input[type="range"].hg-range::-webkit-slider-thumb { -webkit-appearance: none; w
 html[data-desktop-fs="true"] .player-surface {
   border-radius: 0;
   clip-path: none;
+  transform: none;
+  will-change: auto;
+  isolation: auto;
   background: #000;
 }
 .player-surface:fullscreen video,
 .player-surface:-webkit-full-screen video,
-html[data-desktop-fs="true"] .player-surface video { border-radius: 0; }
+html[data-desktop-fs="true"] .player-surface video { border-radius: 0; transform: none; }
 .player-surface:fullscreen::after,
 .player-surface:-webkit-full-screen::after,
 html[data-desktop-fs="true"] .player-surface::after { display: none; }
 html[data-desktop-fs="true"] .win-titlebar,
 html[data-desktop-fs="true"] .win-sidebar,
 html[data-desktop-fs="true"] .win-resize { display: none; }
-html[data-desktop-fs="true"] .win-main { margin: 0; border-radius: 0; }
+html[data-desktop-fs="true"] .win-main { margin: 0; border-radius: 0; box-shadow: none; isolation: auto; }
 
 /* —— 移动端沉浸全屏：固定铺满视口，不受外层滚动容器影响 —— */
 .fs-immersive {

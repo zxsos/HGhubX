@@ -4,7 +4,7 @@ import { isMobile } from "../../shared/api/api";
 import { registerOverlayBack } from "../../shared/lib/back";
 import {
   exitDocumentFullscreen, getFullscreenElement, onFullscreenChange,
-  requestElementFullscreen, setTauriWindowFullscreen,
+  preferTauriWindowFullscreen, requestElementFullscreen, setTauriWindowFullscreen,
 } from "../../shared/lib/fullscreen";
 
 type Activity = {
@@ -77,6 +77,11 @@ export function useInlinePlayerFullscreen({ active, src, scopeKey, videoRef, act
       setNativeFull(false);
       if (!isMobile) setTauriWindowFullscreen(true);
     };
+    if (!isMobile && preferTauriWindowFullscreen()) {
+      useFallback();
+      pending.current = false;
+      return;
+    }
     void (async () => {
       try {
         await requestElementFullscreen(target);

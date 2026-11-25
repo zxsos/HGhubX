@@ -632,11 +632,11 @@ export default function Feed({
         )}
 
         <div ref={boxRef} onScroll={onScroll}
-          className={`absolute inset-y-0 left-0 no-bar ${fs ? "overflow-hidden" : "overflow-y-scroll snap-y snap-mandatory overscroll-y-contain"}`}
+          className={`absolute inset-y-0 left-0 no-bar ${fs || fullscreen ? "overflow-hidden" : "overflow-y-scroll snap-y snap-mandatory overscroll-y-contain"}`}
           style={{ right: isDesktop && panel ? 372 : 0, transition: "right .3s cubic-bezier(.2,0,0,1)" }}>
           {effectiveVideoIds.map((vid, i) => {
             const isActive = i === index;
-            const sectionClass = `${fs && !isActive ? "hidden" : "relative w-full h-full"} snap-start snap-always overflow-hidden`;
+            const sectionClass = `${(fs || fullscreen) && !isActive ? "hidden" : "relative w-full h-full"} snap-start snap-always overflow-hidden`;
             // Preserve snap geometry while keeping only the active item and its
             // neighbours mounted; distant cards otherwise create many idle controls.
             if (Math.abs(i - index) > 1 && Math.abs(i - renderIndex) > 1) {
