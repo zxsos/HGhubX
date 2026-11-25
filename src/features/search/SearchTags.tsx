@@ -19,6 +19,7 @@ export function SearchTags({ active }: { active: boolean }) {
   const [batch, setBatch] = useState(0);
   const busy = useRef(false);
   const sequence = useRef(0);
+  const loaded = useRef(false);
 
   const load = useCallback(async () => {
     if (busy.current) return;
@@ -37,6 +38,7 @@ export function SearchTags({ active }: { active: boolean }) {
         unique.push({ name, slug: typeof item.slug === "string" ? item.slug : "" });
       }
       if (sequence.current !== token) return;
+      loaded.current = true;
       setTags(unique); setBatch(0);
     } catch (cause) {
       if (sequence.current === token) setError(cause instanceof Error ? cause.message : tr("标签加载失败，请重试"));
@@ -46,7 +48,7 @@ export function SearchTags({ active }: { active: boolean }) {
   }, []);
 
   useEffect(() => () => { sequence.current++; busy.current = false; }, []);
-  useEffect(() => { if (active) void load(); }, [active, load]);
+  useEffect(() => { if (active && !loaded.current) void load(); }, [active, load]);
   const totalLoaded = tags?.length ?? 0;
   const available = tags ? (preferences.paused ? tags : tags.filter(tag => !isTagBlocked(tag.name))) : [];
   const count = available.length;

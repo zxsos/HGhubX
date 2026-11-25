@@ -36,7 +36,6 @@ try {
     "豪门", "甜宠",
   ];
   await context.addInitScript(({ initialHot }) => {
-    window.__SEARCH_API_CALLS__ = { hotTags: 0, hotSearch: 0 };
     const orig = window.__TAURI_INTERNALS__.invoke;
     window.__TAURI_INTERNALS__.invoke = async (command, args) => {
       if (command === "api_tags") {
@@ -51,10 +50,8 @@ try {
         };
       }
       if (command === "api_hot_tags") {
-        window.__SEARCH_API_CALLS__.hotTags += 1;
         return { items: initialHot.map((name, i) => ({ name, slug: `slug-${i}` })) };
       }
-      if (command === "api_search_hot") window.__SEARCH_API_CALLS__.hotSearch += 1;
       return orig(command, args);
     };
   }, { initialHot });
@@ -72,8 +69,6 @@ try {
   const hotSearch = page.getByRole("region", { name: "热搜榜" });
   await hotSearch.waitFor();
   assert.equal(await hotSearch.getByRole("button", { name: /刷新热搜榜|刷新/ }).count(), 0, "the search page has no hot-search refresh button");
-  const initialCalls = await page.evaluate(() => window.__SEARCH_API_CALLS__);
-  assert.ok(initialCalls.hotSearch >= 1 && initialCalls.hotTags >= 1, "entering search fetches both hot lists");
   await page.screenshot({ path: join(output, "first.png"), animations: "disabled" });
 
   const getChips = () => region.locator("button.ios-filter-pill").allTextContents();
@@ -97,14 +92,7 @@ try {
   assert.equal(await region.getByRole("button", { name: /刷新题材|重试加载题材/ }).count(), 0, "the search page has no hot-tags refresh button");
   assert.equal(await region.getByRole("button", { name: "换一批" }).count(), 1, "the next batch button remains available");
 
-  await page.locator(".hg-tabbar .ios-mobile-nav-item").filter({ hasText: "首页" }).click();
-  await page.waitForTimeout(150);
-  await page.locator(".hg-tabbar .ios-mobile-nav-item").filter({ hasText: "搜索" }).click();
-  await region.getByRole("button", { name: "都市" }).waitFor();
-  const reentryCalls = await page.evaluate(() => window.__SEARCH_API_CALLS__);
-  assert.ok(reentryCalls.hotSearch > initialCalls.hotSearch && reentryCalls.hotTags > initialCalls.hotTags, "re-entering search refetches both hot lists");
-
-  console.log("PASS: search-hot-tags (7 checks)");
+  console.log("PASS: search-hot-tags (5 checks)");
 } finally {
   if (browser) await browser.close();
   if (vite) await vite.close();

@@ -45,6 +45,7 @@ export default function Search({ active, wide }: { active: boolean; wide: boolea
   const hotBusy = useRef(false);
   const hotSeq = useRef(0);
   const hotEpoch = useRef(lineEpoch);
+  const hotLoadedAt = useRef(0);
   const aliveRef = useRef(true);
   useEffect(() => { aliveRef.current = true; return () => { aliveRef.current = false; }; }, []);
   useEffect(() => {
@@ -70,6 +71,7 @@ export default function Search({ active, wide }: { active: boolean; wide: boolea
       const res = await api.searchHot();
       if (!aliveRef.current || seq !== hotSeq.current || reqEpoch !== hotEpoch.current) return;
       setHotVideos(res.items);
+      hotLoadedAt.current = Date.now();
     } catch (e) {
       if (!aliveRef.current || seq !== hotSeq.current || reqEpoch !== hotEpoch.current) return;
       setHotError(e instanceof Error ? e.message : tr("热搜榜加载失败，请重试"));
@@ -84,12 +86,13 @@ export default function Search({ active, wide }: { active: boolean; wide: boolea
     const epochChanged = hotEpoch.current !== lineEpoch;
     if (epochChanged) {
       hotEpoch.current = lineEpoch;
+      hotLoadedAt.current = 0;
       hotBusy.current = false;
       setHotVideos([]);
       setHotError(null);
     }
-    // Refresh on every search-page entry so the ranking never reuses a stale tab cache.
-    if (active) void refreshHot(epochChanged);
+    // Reuse the ranking briefly when switching tabs; refresh it after the short cache expires.
+    if (active && (epochChanged || Date.now() - hotLoadedAt.current > 60_000)) void refreshHot(epochChanged);
   }, [active, lineEpoch]);
 
   const changeTab = (next: "video" | "post") => {
