@@ -833,7 +833,6 @@ const en: Record<string, string> = {
   "刷新作者": "Refresh authors",
   "作者加载失败": "Authors failed to load",
   "作者加载失败，请重试": "Couldn't load authors. Try again.",
-  "重试加载作者": "Retry loading authors",
   "暂无作者": "No authors yet",
   "作者暂未加载成功。": "Authors haven't loaded. ",
   "刷新失败，保留已加载作者。": "Refresh failed; keeping loaded authors. ",
