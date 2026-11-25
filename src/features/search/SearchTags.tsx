@@ -8,7 +8,7 @@ import { Button, Surface } from "../../shared/ui/ios/controls";
 import { Loader } from "../../shared/ui/ios/effects";
 import { tr } from "../../shared/i18n";
 
-const BATCH_SIZE = 12;
+const BATCH_SIZE = 10;
 
 /** Use the official site's curated popular tags in upstream order. */
 export function SearchTags({ active }: { active: boolean }) {

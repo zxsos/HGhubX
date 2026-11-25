@@ -29,7 +29,8 @@ try {
   const initialHot = [
     "都市", "古风", "奇幻", "现代", "职场", "逆袭",
     "校园", "绿帽", "熟女", "母子", "乱伦", "系统",
-    "仙侠", "后宫", "大男主",
+    "仙侠", "后宫", "大男主", "重生", "复仇", "年代",
+    "豪门", "甜宠",
   ];
   const updatedHot = ["武侠", "悬疑", "脑洞"];
   await context.addInitScript(({ initialHot, updatedHot }) => {
@@ -68,11 +69,11 @@ try {
   await region.getByRole("button", { name: "都市" }).waitFor({ timeout: 8000 });
 
   const getChips = () => region.locator("button.ios-filter-pill").allTextContents();
-  assert.deepEqual(await getChips(), initialHot.slice(0, 12), "first batch matches upstream hot tag order");
+  assert.deepEqual(await getChips(), initialHot.slice(0, 10), "first batch matches upstream hot tag order");
 
   await region.getByRole("button", { name: "换一批" }).click();
   const batch2 = await getChips();
-  assert.deepEqual(batch2, initialHot.slice(12), "second batch stays within official hot tags only");
+  assert.deepEqual(batch2, initialHot.slice(10), "second batch stays within official hot tags only");
   assert.ok(!batch2.some(tag => tag.includes("非热门")), "catalog-only tags never leak into hot tags");
 
   await page.evaluate(() => {
@@ -82,12 +83,12 @@ try {
   await region.getByRole("button", { name: "换一批" }).click();
   const afterBlock = await getChips();
   assert.ok(!afterBlock.includes("古风"), "blocked tag is hidden from hot tags");
-  assert.deepEqual(afterBlock, initialHot.filter(t => t !== "古风").slice(0, 12), "blocking preserves upstream order");
+  assert.deepEqual(afterBlock, initialHot.filter(t => t !== "古风").slice(0, 10), "blocking preserves upstream order");
 
   await region.getByRole("button", { name: "刷新题材" }).click();
   await region.getByRole("button", { name: "武侠" }).waitFor({ timeout: 5000 });
   assert.deepEqual(await getChips(), updatedHot, "refresh picks up updated official hot tags");
-  assert.equal(await region.getByRole("button", { name: "换一批" }).count(), 0, "batch button hides when <= 12 tags");
+  assert.equal(await region.getByRole("button", { name: "换一批" }).count(), 0, "batch button hides when <= 10 tags");
 
   console.log("PASS: search-hot-tags (4 checks)");
 } finally {
