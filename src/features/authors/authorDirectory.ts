@@ -13,11 +13,8 @@ export type AuthorDirectory = { items: AuthorItem[]; total: number };
 export const MAX_FOLLOWED_AUTHORS = 24;
 
 const STORAGE_KEY = "hghubx_authors_cache_v1";
-const DIRECTORY_PAGE_SIZE = 100;
-const DIRECTORY_MIN_AUTHORS = 50;
-const MAX_DIRECTORY_PAGES = 20;
-const FALLBACK_PAGES = 6;
-const FALLBACK_PAGE_SIZE = 50;
+const FEED_PAGE_SIZE = 100;
+const MAX_FEED_PAGES = 60;
 const FOLLOWER_LOOKUP_LIMIT = 100;
 const FOLLOWER_LOOKUP_CONCURRENCY = 6;
 
@@ -100,35 +97,24 @@ const pageNumber = (value: unknown): number => {
 
 const pageCount = (pagination: Record<string, unknown> | null): number =>
   pageNumber(pagination?.pages ?? pagination?.total_pages ?? pagination?.page_count ?? pagination?.last_page);
-const pageTotal = (pagination: Record<string, unknown> | null, response: Record<string, unknown>): number =>
-  pageNumber(pagination?.total ?? response.total ?? response.count ?? response.total_count);
 
-async function fromUserDirectory(): Promise<AuthorDirectory> {
-  const result = new Map<number, AuthorItem>();
-  let declaredTotal = 0;
-  for (let page = 1; page <= MAX_DIRECTORY_PAGES && result.size < DIRECTORY_MIN_AUTHORS; page += 1) {
-    const value = asRecord(await api.popularAuthors(page, DIRECTORY_PAGE_SIZE));
-    const rawItems = Array.isArray(value?.items) ? value.items : Array.isArray(value?.data) ? value.data : [];
-    const pagination = asRecord(value?.pagination) ?? asRecord(value?.meta);
-    const before = result.size;
-    const items = rawItems.map(asAuthor).filter((item): item is AuthorItem => !!item);
-    merge(result, items);
-    declaredTotal = Math.max(declaredTotal, pageTotal(pagination, value ?? {}));
-    const pages = pageCount(pagination);
-    if (!items.length || (pages && page >= pages) || (page > 1 && result.size === before)) break;
-  }
-  return { items: [...result.values()], total: Math.max(declaredTotal, result.size) };
-}
-
+/**
+ * The public API has no author collection route; build the directory from the
+ * full video feed. The feed exposes at most 100 cards per page and its
+ * pagination is authoritative, so walk it to the last page instead of stopping
+ * after a fixed number of pages.
+ */
 async function fromVideoFeed(): Promise<AuthorItem[]> {
   const result = new Map<number, AuthorItem>();
-  for (let page = 1; page <= FALLBACK_PAGES; page += 1) {
-    const response = await api.feed(page, FALLBACK_PAGE_SIZE);
+  for (let page = 1; page <= MAX_FEED_PAGES; page += 1) {
+    const response = await api.feed(page, FEED_PAGE_SIZE);
     const cards = Array.isArray(response?.items) ? response.items : [];
-    const authors = (cards as VideoCard[])
+    if (!cards.length) break;
+    merge(result, (cards as VideoCard[])
       .map(card => asAuthor(card.author))
-      .filter((item): item is AuthorItem => !!item);
-    merge(result, authors);
+      .filter((item): item is AuthorItem => !!item));
+    const pages = pageCount(asRecord(response?.pagination) ?? asRecord((response as unknown as Record<string, unknown>).meta));
+    if (pages && page >= pages) break;
   }
   return [...result.values()];
 }
@@ -184,18 +170,10 @@ export function subscribeAuthors(listener: (directory: AuthorDirectory) => void)
 }
 
 async function load(epoch: number): Promise<AuthorDirectory> {
-  const found = new Map<number, AuthorItem>();
-  try {
-    const directory = await fromUserDirectory();
-    merge(found, directory.items);
-  } catch { /* Fall back to the public feed when the directory route is unavailable. */ }
-  if (found.size < DIRECTORY_MIN_AUTHORS) {
-    try { merge(found, await fromVideoFeed()); } catch { /* Keep whatever the directory returned. */ }
-  }
-  if (!found.size) throw new Error("作者目录加载失败，请重试");
-  const enriched = await enrichFollowers([...found.values()]);
-  const items = sortAuthors(enriched).slice(0, DIRECTORY_MIN_AUTHORS);
-  const directory = { items, total: items.length };
+  const items = await fromVideoFeed();
+  if (!items.length) throw new Error("作者目录加载失败，请重试");
+  const enriched = sortAuthors(await enrichFollowers(items));
+  const directory = { items: enriched, total: enriched.length };
   writeStored(epoch, directory);
   publish(directory);
   return directory;

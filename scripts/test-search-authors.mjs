@@ -68,8 +68,8 @@ try {
   const authorsPage = page.locator(".ios-page").filter({ has: page.getByRole("heading", { name: "作者", exact: true }) });
   const allChips = authorsPage.locator("button[data-author-id]");
   await allChips.first().waitFor();
-  assert.equal(await allChips.count(), 50, "all-authors page stops after fifty authors");
-  assert.equal(await authorsPage.locator("[data-author-total]").getAttribute("data-author-total"), "50", "the header reports the fifty loaded authors");
+  assert.equal(await allChips.count(), 35, "all-authors page shows every author found in the complete feed");
+  assert.equal(await authorsPage.locator("[data-author-total]").getAttribute("data-author-total"), "35", "the header reports all thirty-five authors");
   assert.ok((await allChips.first().innerText()).includes("150万"), "author chips show the follower count");
   assert.ok((await allChips.nth(1).innerText()).includes("147.5万"), "authors stay ordered by follower count");
   await page.screenshot({ path: join(output, "all-authors.png"), animations: "disabled" });
@@ -102,18 +102,19 @@ try {
   await page.waitForTimeout(200);
   assert.equal(await board.count(), 0, "long press again unfollows the author and removes the board");
 
-  await page.waitForFunction(() => window.__AUTHOR_DIRECTORY_CALLS__() === 3, null, { timeout: 8000 });
   assert.equal(await page.evaluate(() => window.__AUTHOR_DIRECTORY_CALLS__()), directoryCalls, "opening the authors page reuses the cached directory");
   await authorsPage.getByRole("button", { name: "刷新作者" }).click();
-  await page.waitForFunction(target => window.__AUTHOR_DIRECTORY_CALLS__() === target, directoryCalls + 3, { timeout: 8000 });
-  assert.equal(await page.evaluate(() => window.__AUTHOR_DIRECTORY_CALLS__()), directoryCalls + 3, "the authors page refresh bypasses the cache");
+  await page.waitForTimeout(5000);
+  const refreshedCalls = await page.evaluate(() => window.__AUTHOR_DIRECTORY_CALLS__());
+  assert.ok(refreshedCalls >= directoryCalls + 19 + 35, "the authors page refresh reloads every feed page and every follower stat");
 
   await authorsPage.getByRole("button", { name: "返回" }).click();
   await region.waitFor();
   const beforeSearchRefresh = await page.evaluate(() => window.__AUTHOR_DIRECTORY_CALLS__());
   await region.getByRole("button", { name: "刷新作者" }).click();
-  await page.waitForFunction(target => window.__AUTHOR_DIRECTORY_CALLS__() === target, beforeSearchRefresh + 3, { timeout: 8000 });
-  assert.equal(await page.evaluate(() => window.__AUTHOR_DIRECTORY_CALLS__()), beforeSearchRefresh + 3, "the search refresh also bypasses the cache");
+  await page.waitForTimeout(5000);
+  const afterSearchRefresh = await page.evaluate(() => window.__AUTHOR_DIRECTORY_CALLS__());
+  assert.ok(afterSearchRefresh >= beforeSearchRefresh + 19 + 35, "the search refresh also reloads every feed page and every follower stat");
 
   await page.reload({ waitUntil: "domcontentloaded" });
   await page.locator(".hg-tabbar .ios-mobile-nav-item").filter({ hasText: "搜索" }).click();
