@@ -157,10 +157,10 @@ export function useFeedTouchGestures({
     if (!g || isDesktop) return;
     const dx = point.x - g.x, dy = point.y - g.y;
 
-    /* 长按中：不松手左右滑可在统一速度轴（0.5x..6x）内无感跨区换挡 */
+    /* 长按中：不松手从加速区一直拖到减速区（及反向）零停顿无感跨区切换 */
     if (g.mode === "hold") {
       if (g.zone === "menu") return;
-      const step = g.speed && shiftHoldSpeed(g.speed, point.x);
+      const step = g.speed && shiftHoldSpeed(g.speed, point.x, point.width || g.width);
       if (step !== null && step !== undefined) setHoldSpeed(step);
       return;
     }

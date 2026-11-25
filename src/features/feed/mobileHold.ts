@@ -1,10 +1,15 @@
 export const HOLD_DELAY_MS = 260;
-/** 统一连续长按调速滑轨：左半屏起手 0.5x、右半屏起手 2x，不松手左右滑可穿过 1x 无感跨区切换。 */
-export const HOLD_SPEED_STEPS = [0.5, 1, 2, 3, 4, 6] as const;
+/** 统一连续长按调速滑轨：去掉 1× 停顿档，左半屏起手 0.5×、右半屏起手 2×，不松手跨区直拖零停顿切换。 */
+export const HOLD_SPEED_STEPS = [0.5, 0.75, 1.5, 2, 3, 4, 6] as const;
 export const HOLD_SLOW_START = 0.5;
 export const HOLD_FAST_START = 2;
-/** 每累计横向滑动 68px 换一档（增量累计，来回滑可升可降）。 */
-export const HOLD_STEP_DISTANCE = 68;
+/** 跨中线切入减速/加速区的首档落点，保证从加速区直拖入减速区（及反向）无 1× 停顿且不残留高档余量。 */
+export const HOLD_SLOW_EDGE = 0.75;
+export const HOLD_FAST_EDGE = 1.5;
+/** 每累计横向滑动 52px 换一档（增量累计，来回滑可升可降）。 */
+export const HOLD_STEP_DISTANCE = 52;
+/** 中线两侧防抖迟滞（±12px），避免手指停在中线微抖反复翻区。 */
+export const HOLD_ZONE_HYSTERESIS = 12;
 export type HoldZone = "fast" | "slow" | "menu";
 export type HoldMenuBounds = { left: number; top: number; size: number };
 export type HoldRotation = 0 | 90;
@@ -28,11 +33,41 @@ export function createHoldSpeed(x: number, initialRate: number = HOLD_FAST_START
   return { rate, lastX: x, travel: 0 };
 }
 
-/** 累计横向增量；跨过一档时更新档位并震动一次，返回新档位，否则返回 null。 */
-export function shiftHoldSpeed(s: HoldSpeed, x: number): number | null {
+/** 累计横向增量并在跨过屏幕中线时无感跨区切入减速/加速；档位变化时震动一次并返回新档位，否则返回 null。 */
+export function shiftHoldSpeed(s: HoldSpeed, x: number, width = 0): number | null {
   if (!Number.isFinite(x)) return null;
-  s.travel += x - s.lastX;
+  const prevX = s.lastX;
+  const dx = x - prevX;
   s.lastX = x;
+
+  const w = dimension(width);
+  if (w > 0) {
+    const mid = w * 0.5;
+    const slowLine = mid - HOLD_ZONE_HYSTERESIS;
+    const fastLine = mid + HOLD_ZONE_HYSTERESIS;
+
+    if (prevX > slowLine && x <= slowLine && s.rate > 1) {
+      const extraLeft = slowLine - x;
+      const next = extraLeft >= HOLD_STEP_DISTANCE ? HOLD_SLOW_START : HOLD_SLOW_EDGE;
+      s.travel = extraLeft >= HOLD_STEP_DISTANCE ? 0 : -extraLeft;
+      s.rate = next;
+      try { navigator.vibrate?.(15); } catch { /* ignore */ }
+      return next;
+    }
+
+    if (prevX < fastLine && x >= fastLine && s.rate < 1) {
+      const extraRight = x - fastLine;
+      const fastIdx = HOLD_SPEED_STEPS.indexOf(HOLD_FAST_EDGE);
+      const bonusSteps = Math.trunc(extraRight / HOLD_STEP_DISTANCE);
+      const next = HOLD_SPEED_STEPS[Math.min(HOLD_SPEED_STEPS.length - 1, fastIdx + bonusSteps)];
+      s.travel = extraRight - bonusSteps * HOLD_STEP_DISTANCE;
+      s.rate = next;
+      try { navigator.vibrate?.(15); } catch { /* ignore */ }
+      return next;
+    }
+  }
+
+  s.travel += dx;
   const steps = Math.trunc(s.travel / HOLD_STEP_DISTANCE);
   if (!steps) return null;
   s.travel -= steps * HOLD_STEP_DISTANCE;

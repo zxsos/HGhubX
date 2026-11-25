@@ -158,9 +158,9 @@ export function FeedPlayerShellChrome({
         />
       )}
 
-      {/* 移动端长按临时倍速指示条（统一 0.5×~6× 滑轨，慢放/原速/加速平滑变色过渡，松手即恢复） */}
+      {/* 移动端长按临时倍速指示条（0.5×~6× 连续加减速滑轨，无 1× 停顿，松手即恢复） */}
       {!isDesktop && active && holdRate > 0 && (() => {
-        const holdMode = holdRate < 1 ? "slow" : holdRate > 1 ? "fast" : "normal";
+        const holdMode = holdRate < 1 ? "slow" : "fast";
         return (
           <div
             role="status"
@@ -174,10 +174,10 @@ export function FeedPlayerShellChrome({
               <span /><span />
             </span>
             <span className="mobile-hold-speed-steps" aria-hidden="true">
-              {HOLD_SPEED_STEPS.map(step => (
+              {HOLD_SPEED_STEPS.map((step, idx) => (
                 <span
                   key={step}
-                  data-anchor={step === 1 || undefined}
+                  data-zone-gap={idx === 2 || undefined}
                   data-active={step === holdRate || undefined}
                 />
               ))}
