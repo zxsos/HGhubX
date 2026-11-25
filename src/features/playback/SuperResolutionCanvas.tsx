@@ -24,7 +24,7 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import type { DetailUpscaler } from "./detailUpscaler";
 import { superResolutionRequested, superResolutionVariant, type SuperResolutionVariant } from "./superResolutionRequest";
-import type { SuperResolutionTestDetailGain, SuperResolutionTestScale } from "../../shared/model/store";
+import type { SuperResolutionTestDetailGain, SuperResolutionTestPortraitContrast, SuperResolutionTestScale } from "../../shared/model/store";
 import { tr } from "../../shared/i18n";
 import "../../styles/super-resolution.css";
 
@@ -40,6 +40,8 @@ type Props = {
   forceScale?: SuperResolutionTestScale;
   /** Test-only gain for the FSRCNNX detail composite. */
   detailGain?: SuperResolutionTestDetailGain;
+  /** Test-only mid-frequency contrast for skin and facial detail. */
+  portraitContrast?: SuperResolutionTestPortraitContrast;
   /** Test-only status badge; omitted by production callers. */
   debug?: boolean;
 };
@@ -439,7 +441,7 @@ function outputSize(video: HTMLVideoElement, fit: Fit, variant: SuperResolutionV
   return { width: Math.round(vw * info.scale), height: Math.round(vh * info.scale), scale: info.scale };
 }
 
-export default function SuperResolutionCanvas({ videoRef, fit = "contain", active = true, enabled: enabledProp, variant: variantProp, forceScale: forceScaleProp, detailGain: detailGainProp, debug = false }: Props) {
+export default function SuperResolutionCanvas({ videoRef, fit = "contain", active = true, enabled: enabledProp, variant: variantProp, forceScale: forceScaleProp, detailGain: detailGainProp, portraitContrast: portraitContrastProp, debug = false }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const statusRef = useRef<HTMLSpanElement>(null);
   const [failed, setFailed] = useState(false);
@@ -451,7 +453,7 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
   const variant = variantProp ?? superResolutionVariant();
   const forceScale = forceScaleProp ?? "auto";
   const detailGain = detailGainProp ?? 1;
-  const detailLocalContrast = detailGain === 2 ? 0.35 : detailGain === 1.5 ? 0.18 : 0;
+  const portraitContrast = portraitContrastProp ?? 0;
   const variantLabel = variant === "detail" ? "细节" : variant === "cas" ? "CAS" : "FSR";
 
   useEffect(() => {
@@ -614,7 +616,8 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
       markOutput(true);
       canvas.dataset.scale = size.scale.toFixed(2);
       const gainLabel = variant === "detail" && detailGain !== 1 ? ` ×${detailGain.toFixed(1)}` : "";
-      writeStatus(`SR ${size.scale.toFixed(2)}x · ${variantLabel}${gainLabel} · ${size.width}×${size.height}`);
+      const contrastLabel = variant === "detail" && portraitContrast !== 0 ? ` · 对比 ${portraitContrast.toFixed(1)}` : "";
+      writeStatus(`SR ${size.scale.toFixed(2)}x · ${variantLabel}${gainLabel}${contrastLabel} · ${size.width}×${size.height}`);
       if (size.width !== width || size.height !== height) resize(size.width, size.height);
       if (!force && frames > 0 && video.paused) return;
 
@@ -659,7 +662,7 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
         gl.uniform1i(compositeDetailLoc, 1);
         gl.uniform2f(compositeOutputLoc, width, height);
         gl.uniform1f(compositeDetailGainLoc, detailGain);
-        gl.uniform1f(compositeLocalContrastLoc, detailLocalContrast);
+        gl.uniform1f(compositeLocalContrastLoc, portraitContrast);
         gl.drawArrays(gl.TRIANGLES, 0, 3);
         canvas.dataset.detailPasses = String(detailUpscaler.passCount);
       } else {
@@ -793,7 +796,7 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
     video.addEventListener("resize", drawOnce);
 
     return stop;
-  }, [active, debug, detailGain, detailLocalContrast, enabled, failed, fit, forceScale, videoRef, variant]);
+  }, [active, debug, detailGain, enabled, failed, fit, forceScale, portraitContrast, videoRef, variant]);
 
   if (!enabled) return null;
 
@@ -802,7 +805,7 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
   return (
     <div className="hg-super-resolution" aria-hidden={debug ? undefined : true} data-super-resolution={enabled ? "on" : "off"} data-super-resolution-mode={variant}
       data-super-resolution-force={forceScale} data-super-resolution-detail-gain={detailGain.toFixed(1)}
-      data-super-resolution-detail-local={detailLocalContrast.toFixed(2)} style={debug ? { display: "block" } : undefined}>
+      data-super-resolution-detail-local={portraitContrast.toFixed(1)} style={debug ? { display: "block" } : undefined}>
       {!failed && <canvas
         ref={canvasRef}
         className={`hg-super-resolution-canvas sr-fit-${fit}${compareOriginal ? " is-compare-hidden" : ""}`}

@@ -66,6 +66,9 @@ export type SuperResolutionTestScale = "auto" | "1x" | "2x";
 /** Test-only gain for the FSRCNNX detail composite. */
 export type SuperResolutionTestDetailGain = 1 | 1.5 | 2;
 
+/** Test-only mid-frequency contrast for skin and facial detail. */
+export type SuperResolutionTestPortraitContrast = 0 | 0.2 | 0.4;
+
 export type Toast = {
   id: number;
   msg: string;
@@ -244,6 +247,8 @@ type Store = {
   srTestScale: SuperResolutionTestScale; setSrTestScale: (scale: SuperResolutionTestScale) => void;
   /** Test-only gain for the FSRCNNX detail composite. */
   srTestDetailGain: SuperResolutionTestDetailGain; setSrTestDetailGain: (gain: SuperResolutionTestDetailGain) => void;
+  /** Test-only mid-frequency contrast for skin and facial detail. */
+  srTestPortraitContrast: SuperResolutionTestPortraitContrast; setSrTestPortraitContrast: (contrast: SuperResolutionTestPortraitContrast) => void;
   volume: number; setVolume: (v: number) => void;
   searchHist: string[]; addSearch: (q: string) => void; removeSearch: (q: string) => void; clearSearchHist: () => void;
   strictSecurity: boolean; strictSecurityReady: boolean; securityPending: boolean; cliRelaxed: boolean; setStrictSecurity: (on: boolean) => Promise<void>;
@@ -257,6 +262,12 @@ function readTestDetailGain(): SuperResolutionTestDetailGain {
   if (typeof window === "undefined") return 1;
   const raw = new URLSearchParams(window.location.search).get("srgain");
   return raw === "2" ? 2 : raw === "1.5" ? 1.5 : 1;
+}
+
+function readTestPortraitContrast(): SuperResolutionTestPortraitContrast {
+  if (typeof window === "undefined") return 0;
+  const raw = new URLSearchParams(window.location.search).get("srcontrast");
+  return raw === "0.4" ? 0.4 : raw === "0.2" ? 0.2 : 0;
 }
 
 const Ctx = createContext<Store>(null as unknown as Store);
@@ -361,6 +372,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [tab, setTabRaw] = useState<Tab>(p.startupTab);
   const [srTestScale, setSrTestScale] = useState<SuperResolutionTestScale>("auto");
   const [srTestDetailGain, setSrTestDetailGain] = useState<SuperResolutionTestDetailGain>(readTestDetailGain);
+  const [srTestPortraitContrast, setSrTestPortraitContrast] = useState<SuperResolutionTestPortraitContrast>(readTestPortraitContrast);
   const tabRef = useRef(tab);
   tabRef.current = tab;
   const [stack, setStack] = useState<Page[]>([]);
@@ -648,12 +660,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     enhanceMode: p.enhanceMode, setEnhanceMode,
     srTestScale, setSrTestScale,
     srTestDetailGain, setSrTestDetailGain,
+    srTestPortraitContrast, setSrTestPortraitContrast,
     searchHist: p.searchHist, addSearch, removeSearch, clearSearchHist,
     strictSecurity, strictSecurityReady, securityPending, cliRelaxed, setStrictSecurity,
     get toasts() { return toastList; }, toast, lineEpoch,
   }), [theme, themePreference, setTheme, tab, setTab, stack, push, openRootPage, pop, user, loginOpen, logout,
     p, account,
-    setMuted, setMuteOnStartup, setSwipeEp, setPreferHevc, setBalanceVolume, setFsIdleSecs, setStartupTab, setAmbientGlow, setEnhanceMode, srTestScale, srTestDetailGain, setVolume, addSearch, removeSearch, clearSearchHist, strictSecurity, strictSecurityReady, securityPending, cliRelaxed, setStrictSecurity,
+    setMuted, setMuteOnStartup, setSwipeEp, setPreferHevc, setBalanceVolume, setFsIdleSecs, setStartupTab, setAmbientGlow, setEnhanceMode, srTestScale, srTestDetailGain, srTestPortraitContrast, setVolume, addSearch, removeSearch, clearSearchHist, strictSecurity, strictSecurityReady, securityPending, cliRelaxed, setStrictSecurity,
     toast, lineEpoch, theater, setTheater, fs, setFs, clean, setClean, locked, setLocked]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

@@ -93,6 +93,7 @@ const VideoSurface = forwardRef<VideoHandle, Props>(function VideoSurface(
   const enhanceMode = store?.enhanceMode ?? "off";
   const srTestScale = store?.srTestScale ?? "auto";
   const srTestDetailGain = store?.srTestDetailGain ?? 1;
+  const srTestPortraitContrast = store?.srTestPortraitContrast ?? 0;
   const querySuperResolution = superResolutionRequested();
   const superResolution = querySuperResolution || enhanceMode !== "off";
   const activeSuperResolutionVariant: SuperResolutionVariant = enhanceMode !== "off" ? enhanceMode : superResolutionVariant();
@@ -329,7 +330,7 @@ const VideoSurface = forwardRef<VideoHandle, Props>(function VideoSurface(
       {SuperResolutionCanvas && active && (
         <SuperResolutionCanvas videoRef={videoRef} fit={fit} active={active}
           enabled={superResolution} variant={activeSuperResolutionVariant}
-          forceScale={srTestScale} detailGain={srTestDetailGain} debug />
+          forceScale={srTestScale} detailGain={srTestDetailGain} portraitContrast={srTestPortraitContrast} debug />
       )}
       <video
         ref={(node) => {

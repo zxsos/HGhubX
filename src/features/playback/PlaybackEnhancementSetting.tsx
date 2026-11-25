@@ -1,7 +1,7 @@
 import { Button, SegmentedControl } from "../../shared/ui/ios/controls";
 import { ISpark } from "../../shared/ui/icons";
 import { N_, tr } from "../../shared/i18n";
-import { useStore, type EnhanceMode, type SuperResolutionTestDetailGain, type SuperResolutionTestScale } from "../../shared/model/store";
+import { useStore, type EnhanceMode, type SuperResolutionTestDetailGain, type SuperResolutionTestPortraitContrast, type SuperResolutionTestScale } from "../../shared/model/store";
 
 type ModeCopy = { value: EnhanceMode; label: string; summary: string };
 
@@ -24,13 +24,20 @@ const DETAIL_GAINS: { value: SuperResolutionTestDetailGain; label: string }[] = 
   { value: 2, label: "2.0×" },
 ];
 
+const PORTRAIT_CONTRASTS: { value: SuperResolutionTestPortraitContrast; label: string }[] = [
+  { value: 0, label: "0" },
+  { value: 0.2, label: "0.2" },
+  { value: 0.4, label: "0.4" },
+];
+
 /** Shared four-way picture-enhancement control for Settings and the player's More sheet. */
 export function PlaybackEnhancementSetting({ className = "" }: { className?: string }) {
-  const { enhanceMode, setEnhanceMode, srTestScale, setSrTestScale, srTestDetailGain, setSrTestDetailGain } = useStore();
+  const { enhanceMode, setEnhanceMode, srTestScale, setSrTestScale, srTestDetailGain, setSrTestDetailGain, srTestPortraitContrast, setSrTestPortraitContrast } = useStore();
   const active = Math.max(0, MODES.findIndex(mode => mode.value === enhanceMode));
   const summary = MODES[active].summary;
   const scaleActive = Math.max(0, TEST_SCALES.findIndex(scale => scale.value === srTestScale));
   const detailGainActive = Math.max(0, DETAIL_GAINS.findIndex(gain => gain.value === srTestDetailGain));
+  const portraitContrastActive = Math.max(0, PORTRAIT_CONTRASTS.findIndex(contrast => contrast.value === srTestPortraitContrast));
 
   return <div className={`ios-settings-row flex-wrap gap-y-2 ${className}`}>
     <span className="ios-setting-icon"><ISpark size={16} /></span>
@@ -57,6 +64,12 @@ export function PlaybackEnhancementSetting({ className = "" }: { className?: str
             onClick={() => setSrTestDetailGain(gain.value)}>{gain.label}</Button>)}
         </SegmentedControl>
         <div className="text-[11px] text-mut mt-1">{tr("越高人物纹理越强，也更容易出现噪点和硬边")}</div>
+        <div className="text-[12px] text-mut mb-1 mt-2">{tr("人像对比（仅测试包）")}</div>
+        <SegmentedControl className="w-full" aria-label={tr("人像对比（仅测试包）")} activeIndex={portraitContrastActive}>
+          {PORTRAIT_CONTRASTS.map(contrast => <Button key={contrast.value} aria-pressed={srTestPortraitContrast === contrast.value}
+            onClick={() => setSrTestPortraitContrast(contrast.value)}>{contrast.label}</Button>)}
+        </SegmentedControl>
+        <div className="text-[11px] text-mut mt-1">{tr("只加皮肤和眼窝的中频对比，越高越硬")}</div>
       </div>}
     </div>}
   </div>;

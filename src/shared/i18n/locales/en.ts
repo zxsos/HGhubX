@@ -863,6 +863,8 @@ const en: Record<string, string> = {
   "自动": "Auto",
   "按住看原画": "Hold to view original",
   "松手看超分": "Release to view SR",
+  "人像对比（仅测试包）": "Portrait Contrast (Test Build Only)",
+  "只加皮肤和眼窝的中频对比，越高越硬": "Adds mid-frequency contrast to skin and eye sockets; higher is harder",
   "细节强度（仅测试包）": "Detail Strength (Test Build Only)",
   "越高人物纹理越强，也更容易出现噪点和硬边": "Higher values add more facial texture but also more noise and hard edges",
   "按住看原画会自动暂停，松手保持暂停，方便同帧对比": "Hold to view original auto-pauses and stays paused for same-frame comparison",
