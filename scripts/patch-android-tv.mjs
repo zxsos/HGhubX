@@ -75,12 +75,17 @@ function setFeature(xml, name) {
   return xml.slice(0, start) + `<uses-feature android:name="${name}" android:required="false" />\n\n    ` + xml.slice(start);
 }
 function setUpdateFileProvider(xml) {
-  const authority = "com.hghubx.tv.fileprovider";
-  const block = `<provider\n            android:name="androidx.core.content.FileProvider"\n            android:authorities="${authority}"\n            android:exported="false"\n            android:grantUriPermissions="true">\n            <meta-data\n                android:name="android.support.FILE_PROVIDER_PATHS"\n                android:resource="@xml/hghubx_tv_file_paths" />\n        </provider>`;
+  // Tauri's Android template already declares androidx.core.content.FileProvider with
+  // android:authorities="${applicationId}.fileprovider". Replace it in place instead of
+  // appending a second FileProvider with the same resolved authority (which crashes on TV launch).
+  const block = `<provider\n            android:name="androidx.core.content.FileProvider"\n            android:authorities="\${applicationId}.fileprovider"\n            android:exported="false"\n            android:grantUriPermissions="true">\n            <meta-data\n                android:name="android.support.FILE_PROVIDER_PATHS"\n                android:resource="@xml/hghubx_tv_file_paths" />\n        </provider>`;
   const providers = matches(xml, /<provider\b[\s\S]*?<\/provider\s*>/g)
-    .filter((match) => attr(match[0], "android:authorities") === authority);
-  if (providers.length > 1) fail(`Manifest 重复 provider ${authority}`);
-  if (providers.length) return replaceMatch(xml, providers[0], block);
+    .filter((match) =>
+      attr(match[0], "android:name") === "androidx.core.content.FileProvider" ||
+      ["${applicationId}.fileprovider", "com.hghubx.tv.fileprovider"].includes(attr(match[0], "android:authorities")),
+    );
+  if (providers.length > 1) fail("Manifest 重复 FileProvider");
+  if (providers.length === 1) return replaceMatch(xml, providers[0], block);
   const closings = matches(xml, /<\/application\s*>/g);
   if (closings.length !== 1) fail("Manifest 缺少唯一 application 结束标签");
   return xml.slice(0, closings[0].index) + `    ${block}\n    ` + xml.slice(closings[0].index);
