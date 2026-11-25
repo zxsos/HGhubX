@@ -7,8 +7,8 @@ import { AuthorChip } from "./AuthorChip";
 import { useAuthorFollow } from "./useAuthorFollow";
 import { loadAuthors, subscribeAuthors, type AuthorItem } from "./authorDirectory";
 
-const TOP_COUNT = 16;
-const BATCH_SIZE = 8;
+const TOP_COUNT = 14;
+const BATCH_SIZE = 7;
 
 /** Popular authors on the search landing page, with hold-to-follow author chips. */
 export function SearchAuthors({ active }: { active: boolean }) {

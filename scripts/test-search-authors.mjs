@@ -47,7 +47,7 @@ try {
   await region.getByRole("button", { name: "全部作者 ›" }).waitFor({ timeout: 8000 });
   const topChips = region.locator("button[data-author-id]");
   await topChips.first().waitFor();
-  assert.equal(await topChips.count(), 8, "search page shows the first eight of the top sixteen authors");
+  assert.equal(await topChips.count(), 7, "search page shows the first seven of the top fourteen authors");
   assert.ok((await topChips.first().innerText()).includes("都市阿城"), "top author follows follower-count order");
   assert.ok(!(await topChips.first().innerText()).includes("万"), "search author chips hide follower counts");
   assert.equal(await region.getByRole("button", { name: "全部作者 ›" }).count(), 1, "all-authors link is present");
@@ -59,8 +59,8 @@ try {
   await page.screenshot({ path: join(output, "search-hot-authors.png"), animations: "disabled" });
   await region.getByRole("button", { name: "换一批" }).click();
   await page.waitForTimeout(120);
-  assert.equal(await topChips.count(), 8, "the next batch still shows eight authors");
-  assert.ok((await topChips.first().innerText()).includes("仙侠青禾"), "the next batch starts at the ninth author");
+  assert.equal(await topChips.count(), 7, "the next batch still shows seven authors");
+  assert.ok((await topChips.first().innerText()).includes("奇幻阿泽"), "the next batch starts at the eighth author");
   await page.screenshot({ path: join(output, "search-hot-authors-batch2.png"), animations: "disabled" });
 
   const directoryCalls = await page.evaluate(() => window.__AUTHOR_DIRECTORY_CALLS__());
