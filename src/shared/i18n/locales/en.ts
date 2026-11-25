@@ -236,7 +236,6 @@ const en: Record<string, string> = {
   "安全设置保存失败，已保持原模式": "Failed to save security setting; previous mode retained",
   "安全设置尚未读取，请重新启动应用": "Security setting not ready yet; please restart the app",
   "完成": "Done",
-  "完结": "Completed",
   "密码": "Password",
   "对话框": "Dialog",
   "封面加载中": "Loading cover",

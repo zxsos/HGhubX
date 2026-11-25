@@ -120,10 +120,11 @@ try {
 
     const badgesOf = (title) => page.getByRole("button", { name: title }).locator(".ios-poster-flag").allInnerTexts();
     assert.deepEqual(await badgesOf("全角标测试剧"), ["原创", "热播", "新片"]);
-    assert.deepEqual(await badgesOf("仅原创完结剧"), ["原创", "完结"]);
+    assert.deepEqual(await badgesOf("仅原创完结剧"), ["原创"]);
     assert.deepEqual(await badgesOf("热播新片剧"), ["热播", "新片"]);
     assert.deepEqual(await badgesOf("过期新片不显示"), []);
     assert.equal(await page.getByRole("button", { name: "仅原创完结剧" }).locator(".ios-poster-ep").innerText(), "全 24 集");
+    assert.equal((await badgesOf("仅原创完结剧")).includes("完结"), false, "completed works never get a corner badge");
 
     const overlap = await page.evaluate(() => {
       const card = Array.from(document.querySelectorAll("button.ios-poster"))

@@ -10,7 +10,7 @@ import { tr } from "../i18n";
 const NEW_BADGE_WINDOW_SECONDS = 72 * 3600;
 const NEW_BADGE_CLOCK_SKEW_SECONDS = 600;
 
-export type CornerBadge = { label: string; tone: "original" | "hot" | "new" | "finished" | "update" };
+export type CornerBadge = { label: string; tone: "original" | "hot" | "new" | "update" };
 
 function isNewRelease(newAt?: number): boolean {
   if (!newAt || !Number.isFinite(newAt) || newAt <= 0) return false;
@@ -24,7 +24,6 @@ function videoCornerBadges(v: VideoCard): CornerBadge[] {
   if (Number(v.is_original) === 1) badges.push({ label: tr("原创"), tone: "original" });
   if (v.is_hot === true || Number(v.is_hot) === 1) badges.push({ label: tr("热播"), tone: "hot" });
   if (isNewRelease(v.new_at)) badges.push({ label: tr("新片"), tone: "new" });
-  if (v.is_finished) badges.push({ label: tr("完结"), tone: "finished" });
   return badges;
 }
 
@@ -35,7 +34,7 @@ function ScoreBadge({ score }: { score: number }) {
 }
 
 export function MediaCard({ title, cover, subtitle, badge, badgeTone = "default", cornerBadges, episode, progress, progressLabel, score, priority = false, onOpen, blockedReason, onLongPress, selectionMode = false, selected = false }: {
-  title: string; cover: string; subtitle?: string; badge?: string; badgeTone?: "default" | "update" | "finished"; cornerBadges?: CornerBadge[]; episode?: string; progress?: string; progressLabel?: string; score?: number; priority?: boolean; onOpen: () => void; blockedReason?: string | null;
+  title: string; cover: string; subtitle?: string; badge?: string; badgeTone?: "default" | "update"; cornerBadges?: CornerBadge[]; episode?: string; progress?: string; progressLabel?: string; score?: number; priority?: boolean; onOpen: () => void; blockedReason?: string | null;
   onLongPress?: () => void; selectionMode?: boolean; selected?: boolean;
 }) {
   const pressTimer = useRef<number | undefined>(undefined);
@@ -103,7 +102,7 @@ export function MediaCard({ title, cover, subtitle, badge, badgeTone = "default"
             <span key={item.tone} className={`ios-poster-flag is-${item.tone}`}>{item.label}</span>
           ))}
         </span>
-      ) : badge && <span className={`ios-poster-badge${badgeTone === "update" ? " is-update" : badgeTone === "finished" ? " is-finished" : ""}`}>{badge}</span>}
+      ) : badge && <span className={`ios-poster-badge${badgeTone === "update" ? " is-update" : ""}`}>{badge}</span>}
       {hasScore && <ScoreBadge score={score} />}
       {hasBottomMeta && (
         episode && progress ? (
