@@ -1,7 +1,7 @@
 import { Button, SegmentedControl } from "../../shared/ui/ios/controls";
 import { ISpark } from "../../shared/ui/icons";
 import { N_, tr } from "../../shared/i18n";
-import { useStore, type EnhanceMode, type SuperResolutionTestScale } from "../../shared/model/store";
+import { useStore, type EnhanceMode, type SuperResolutionTestDetailGain, type SuperResolutionTestScale } from "../../shared/model/store";
 
 type ModeCopy = { value: EnhanceMode; label: string; summary: string };
 
@@ -18,12 +18,19 @@ const TEST_SCALES: { value: SuperResolutionTestScale; label: string }[] = [
   { value: "2x", label: "2x" },
 ];
 
+const DETAIL_GAINS: { value: SuperResolutionTestDetailGain; label: string }[] = [
+  { value: 1, label: "1.0×" },
+  { value: 1.5, label: "1.5×" },
+  { value: 2, label: "2.0×" },
+];
+
 /** Shared four-way picture-enhancement control for Settings and the player's More sheet. */
 export function PlaybackEnhancementSetting({ className = "" }: { className?: string }) {
-  const { enhanceMode, setEnhanceMode, srTestScale, setSrTestScale } = useStore();
+  const { enhanceMode, setEnhanceMode, srTestScale, setSrTestScale, srTestDetailGain, setSrTestDetailGain } = useStore();
   const active = Math.max(0, MODES.findIndex(mode => mode.value === enhanceMode));
   const summary = MODES[active].summary;
   const scaleActive = Math.max(0, TEST_SCALES.findIndex(scale => scale.value === srTestScale));
+  const detailGainActive = Math.max(0, DETAIL_GAINS.findIndex(gain => gain.value === srTestDetailGain));
 
   return <div className={`ios-settings-row flex-wrap gap-y-2 ${className}`}>
     <span className="ios-setting-icon"><ISpark size={16} /></span>
@@ -43,6 +50,14 @@ export function PlaybackEnhancementSetting({ className = "" }: { className?: str
       </SegmentedControl>
       <div className="text-[11px] text-mut mt-1">{tr("1x 保持源分辨率；2x 会渲染到源分辨率的 2 倍，可能很慢")}</div>
       <div className="text-[11px] text-mut mt-1">{tr("按住看原画会自动暂停，松手保持暂停，方便同帧对比")}</div>
+      {enhanceMode === "detail" && <div className="w-full pt-2" data-sr-detail-gain>
+        <div className="text-[12px] text-mut mb-1">{tr("细节强度（仅测试包）")}</div>
+        <SegmentedControl className="w-full" aria-label={tr("细节强度（仅测试包）")} activeIndex={detailGainActive}>
+          {DETAIL_GAINS.map(gain => <Button key={gain.value} aria-pressed={srTestDetailGain === gain.value}
+            onClick={() => setSrTestDetailGain(gain.value)}>{gain.label}</Button>)}
+        </SegmentedControl>
+        <div className="text-[11px] text-mut mt-1">{tr("越高人物纹理越强，也更容易出现噪点和硬边")}</div>
+      </div>}
     </div>}
   </div>;
 }

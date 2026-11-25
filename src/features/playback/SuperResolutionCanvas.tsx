@@ -24,7 +24,7 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import type { DetailUpscaler } from "./detailUpscaler";
 import { superResolutionRequested, superResolutionVariant, type SuperResolutionVariant } from "./superResolutionRequest";
-import type { SuperResolutionTestScale } from "../../shared/model/store";
+import type { SuperResolutionTestDetailGain, SuperResolutionTestScale } from "../../shared/model/store";
 import { tr } from "../../shared/i18n";
 import "../../styles/super-resolution.css";
 
@@ -38,6 +38,8 @@ type Props = {
   variant?: SuperResolutionVariant;
   /** Test-only override for the output canvas size. */
   forceScale?: SuperResolutionTestScale;
+  /** Test-only gain for the FSRCNNX detail composite. */
+  detailGain?: SuperResolutionTestDetailGain;
   /** Test-only status badge; omitted by production callers. */
   debug?: boolean;
 };
@@ -283,6 +285,8 @@ precision highp float;
 uniform sampler2D uColor;
 uniform sampler2D uDetail;
 uniform vec2 uOutputSize;
+uniform float uDetailGain;
+uniform float uLocalContrast;
 out vec4 outColor;
 
 vec3 rgbToYcbcr(vec3 c) {
@@ -316,8 +320,19 @@ void main() {
   ) * 0.25;
   float high = detail - blurred;
 
+  // A wider residual restores mid-frequency skin texture; restrict it to midtones so
+  // subtitles and hard edges do not gain white halos.
+  float broad = (
+    texture(uDetail, uv + vec2(texel.x * 2.0, 0.0)).r +
+    texture(uDetail, uv - vec2(texel.x * 2.0, 0.0)).r +
+    texture(uDetail, uv + vec2(0.0, texel.y * 2.0)).r +
+    texture(uDetail, uv - vec2(0.0, texel.y * 2.0)).r
+  ) * 0.25;
+  float middle = detail - broad;
+
   vec3 ycc = rgbToYcbcr(color);
-  ycc.x = clamp(ycc.x + high, 0.0, 1.0);
+  float midtone = smoothstep(0.08, 0.25, ycc.x) * (1.0 - smoothstep(0.8, 0.97, ycc.x));
+  ycc.x = clamp(ycc.x + high * uDetailGain + middle * uLocalContrast * midtone, 0.0, 1.0);
   outColor = vec4(clamp(ycbcrToRgb(ycc), 0.0, 1.0), 1.0);
 }`;
 
@@ -424,7 +439,7 @@ function outputSize(video: HTMLVideoElement, fit: Fit, variant: SuperResolutionV
   return { width: Math.round(vw * info.scale), height: Math.round(vh * info.scale), scale: info.scale };
 }
 
-export default function SuperResolutionCanvas({ videoRef, fit = "contain", active = true, enabled: enabledProp, variant: variantProp, forceScale: forceScaleProp, debug = false }: Props) {
+export default function SuperResolutionCanvas({ videoRef, fit = "contain", active = true, enabled: enabledProp, variant: variantProp, forceScale: forceScaleProp, detailGain: detailGainProp, debug = false }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const statusRef = useRef<HTMLSpanElement>(null);
   const [failed, setFailed] = useState(false);
@@ -435,6 +450,8 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
   const enabled = enabledProp ?? superResolutionRequested();
   const variant = variantProp ?? superResolutionVariant();
   const forceScale = forceScaleProp ?? "auto";
+  const detailGain = detailGainProp ?? 1;
+  const detailLocalContrast = detailGain === 2 ? 0.35 : detailGain === 1.5 ? 0.18 : 0;
   const variantLabel = variant === "detail" ? "细节" : variant === "cas" ? "CAS" : "FSR";
 
   useEffect(() => {
@@ -497,6 +514,8 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
     let compositeColorLoc: WebGLUniformLocation | null = null;
     let compositeDetailLoc: WebGLUniformLocation | null = null;
     let compositeOutputLoc: WebGLUniformLocation | null = null;
+    let compositeDetailGainLoc: WebGLUniformLocation | null = null;
+    let compositeLocalContrastLoc: WebGLUniformLocation | null = null;
 
     const onContextLost = (event: Event) => {
       event.preventDefault();
@@ -594,7 +613,8 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
       canvas.dataset.active = "on";
       markOutput(true);
       canvas.dataset.scale = size.scale.toFixed(2);
-      writeStatus(`SR ${size.scale.toFixed(2)}x · ${variantLabel} · ${size.width}×${size.height}`);
+      const gainLabel = variant === "detail" && detailGain !== 1 ? ` ×${detailGain.toFixed(1)}` : "";
+      writeStatus(`SR ${size.scale.toFixed(2)}x · ${variantLabel}${gainLabel} · ${size.width}×${size.height}`);
       if (size.width !== width || size.height !== height) resize(size.width, size.height);
       if (!force && frames > 0 && video.paused) return;
 
@@ -638,6 +658,8 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
         gl.bindTexture(gl.TEXTURE_2D, detailTexture);
         gl.uniform1i(compositeDetailLoc, 1);
         gl.uniform2f(compositeOutputLoc, width, height);
+        gl.uniform1f(compositeDetailGainLoc, detailGain);
+        gl.uniform1f(compositeLocalContrastLoc, detailLocalContrast);
         gl.drawArrays(gl.TRIANGLES, 0, 3);
         canvas.dataset.detailPasses = String(detailUpscaler.passCount);
       } else {
@@ -741,6 +763,8 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
         compositeColorLoc = gl.getUniformLocation(programComposite, "uColor");
         compositeDetailLoc = gl.getUniformLocation(programComposite, "uDetail");
         compositeOutputLoc = gl.getUniformLocation(programComposite, "uOutputSize");
+        compositeDetailGainLoc = gl.getUniformLocation(programComposite, "uDetailGain");
+        compositeLocalContrastLoc = gl.getUniformLocation(programComposite, "uLocalContrast");
       }
       videoTexture = createTexture(gl, video.videoWidth || 2, video.videoHeight || 2);
       vertexArray = gl.createVertexArray();
@@ -769,7 +793,7 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
     video.addEventListener("resize", drawOnce);
 
     return stop;
-  }, [active, debug, enabled, failed, fit, forceScale, videoRef, variant]);
+  }, [active, debug, detailGain, detailLocalContrast, enabled, failed, fit, forceScale, videoRef, variant]);
 
   if (!enabled) return null;
 
@@ -777,7 +801,8 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
 
   return (
     <div className="hg-super-resolution" aria-hidden={debug ? undefined : true} data-super-resolution={enabled ? "on" : "off"} data-super-resolution-mode={variant}
-      data-super-resolution-force={forceScale} style={debug ? { display: "block" } : undefined}>
+      data-super-resolution-force={forceScale} data-super-resolution-detail-gain={detailGain.toFixed(1)}
+      data-super-resolution-detail-local={detailLocalContrast.toFixed(2)} style={debug ? { display: "block" } : undefined}>
       {!failed && <canvas
         ref={canvasRef}
         className={`hg-super-resolution-canvas sr-fit-${fit}${compareOriginal ? " is-compare-hidden" : ""}`}

@@ -863,6 +863,8 @@ const en: Record<string, string> = {
   "自动": "Auto",
   "按住看原画": "Hold to view original",
   "松手看超分": "Release to view SR",
+  "细节强度（仅测试包）": "Detail Strength (Test Build Only)",
+  "越高人物纹理越强，也更容易出现噪点和硬边": "Higher values add more facial texture but also more noise and hard edges",
   "按住看原画会自动暂停，松手保持暂停，方便同帧对比": "Hold to view original auto-pauses and stays paused for same-frame comparison",
   "1x 保持源分辨率；2x 会渲染到源分辨率的 2 倍，可能很慢": "1x keeps source resolution; 2x renders at twice the source size and may be slow",
 

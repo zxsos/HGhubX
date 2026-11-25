@@ -63,6 +63,9 @@ export type EnhanceMode = "off" | "fsr" | "cas" | "detail";
 /** Test-only output scale override; "auto" keeps the normal display-driven sizing. */
 export type SuperResolutionTestScale = "auto" | "1x" | "2x";
 
+/** Test-only gain for the FSRCNNX detail composite. */
+export type SuperResolutionTestDetailGain = 1 | 1.5 | 2;
+
 export type Toast = {
   id: number;
   msg: string;
@@ -239,6 +242,8 @@ type Store = {
   enhanceMode: EnhanceMode; setEnhanceMode: (mode: EnhanceMode) => void;
   /** Test-only override for the super-resolution canvas size. */
   srTestScale: SuperResolutionTestScale; setSrTestScale: (scale: SuperResolutionTestScale) => void;
+  /** Test-only gain for the FSRCNNX detail composite. */
+  srTestDetailGain: SuperResolutionTestDetailGain; setSrTestDetailGain: (gain: SuperResolutionTestDetailGain) => void;
   volume: number; setVolume: (v: number) => void;
   searchHist: string[]; addSearch: (q: string) => void; removeSearch: (q: string) => void; clearSearchHist: () => void;
   strictSecurity: boolean; strictSecurityReady: boolean; securityPending: boolean; cliRelaxed: boolean; setStrictSecurity: (on: boolean) => Promise<void>;
@@ -246,6 +251,13 @@ type Store = {
   /** 线路切换计数：变了就让列表页重挂载，重新拉一遍数据 */
   lineEpoch: number;
 };
+
+/** Test-only query override used by the playback fixture; defaults to the standard gain. */
+function readTestDetailGain(): SuperResolutionTestDetailGain {
+  if (typeof window === "undefined") return 1;
+  const raw = new URLSearchParams(window.location.search).get("srgain");
+  return raw === "2" ? 2 : raw === "1.5" ? 1.5 : 1;
+}
 
 const Ctx = createContext<Store>(null as unknown as Store);
 export const useStore = () => useContext(Ctx);
@@ -348,6 +360,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const themeRef = useRef(theme);
   const [tab, setTabRaw] = useState<Tab>(p.startupTab);
   const [srTestScale, setSrTestScale] = useState<SuperResolutionTestScale>("auto");
+  const [srTestDetailGain, setSrTestDetailGain] = useState<SuperResolutionTestDetailGain>(readTestDetailGain);
   const tabRef = useRef(tab);
   tabRef.current = tab;
   const [stack, setStack] = useState<Page[]>([]);
@@ -634,12 +647,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     ambientGlow: p.ambientGlow, setAmbientGlow,
     enhanceMode: p.enhanceMode, setEnhanceMode,
     srTestScale, setSrTestScale,
+    srTestDetailGain, setSrTestDetailGain,
     searchHist: p.searchHist, addSearch, removeSearch, clearSearchHist,
     strictSecurity, strictSecurityReady, securityPending, cliRelaxed, setStrictSecurity,
     get toasts() { return toastList; }, toast, lineEpoch,
   }), [theme, themePreference, setTheme, tab, setTab, stack, push, openRootPage, pop, user, loginOpen, logout,
     p, account,
-    setMuted, setMuteOnStartup, setSwipeEp, setPreferHevc, setBalanceVolume, setFsIdleSecs, setStartupTab, setAmbientGlow, setEnhanceMode, srTestScale, setVolume, addSearch, removeSearch, clearSearchHist, strictSecurity, strictSecurityReady, securityPending, cliRelaxed, setStrictSecurity,
+    setMuted, setMuteOnStartup, setSwipeEp, setPreferHevc, setBalanceVolume, setFsIdleSecs, setStartupTab, setAmbientGlow, setEnhanceMode, srTestScale, srTestDetailGain, setVolume, addSearch, removeSearch, clearSearchHist, strictSecurity, strictSecurityReady, securityPending, cliRelaxed, setStrictSecurity,
     toast, lineEpoch, theater, setTheater, fs, setFs, clean, setClean, locked, setLocked]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
