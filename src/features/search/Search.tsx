@@ -45,7 +45,6 @@ export default function Search({ active, wide }: { active: boolean; wide: boolea
   const hotBusy = useRef(false);
   const hotSeq = useRef(0);
   const hotEpoch = useRef(lineEpoch);
-  const hotLoadedAt = useRef(0);
   const aliveRef = useRef(true);
   useEffect(() => { aliveRef.current = true; return () => { aliveRef.current = false; }; }, []);
   useEffect(() => {
@@ -71,7 +70,6 @@ export default function Search({ active, wide }: { active: boolean; wide: boolea
       const res = await api.searchHot();
       if (!aliveRef.current || seq !== hotSeq.current || reqEpoch !== hotEpoch.current) return;
       setHotVideos(res.items);
-      hotLoadedAt.current = Date.now();
     } catch (e) {
       if (!aliveRef.current || seq !== hotSeq.current || reqEpoch !== hotEpoch.current) return;
       setHotError(e instanceof Error ? e.message : tr("热搜榜加载失败，请重试"));
@@ -86,13 +84,12 @@ export default function Search({ active, wide }: { active: boolean; wide: boolea
     const epochChanged = hotEpoch.current !== lineEpoch;
     if (epochChanged) {
       hotEpoch.current = lineEpoch;
-      hotLoadedAt.current = 0;
       hotBusy.current = false;
       setHotVideos([]);
       setHotError(null);
     }
-    // 切换主导航时短暂复用榜单；手动刷新或切线路后重新获取官网内容。
-    if (active && (epochChanged || Date.now() - hotLoadedAt.current > 60_000)) void refreshHot(epochChanged);
+    // Refresh on every search-page entry so the ranking never reuses a stale tab cache.
+    if (active) void refreshHot(epochChanged);
   }, [active, lineEpoch]);
 
   const changeTab = (next: "video" | "post") => {
@@ -234,10 +231,6 @@ export default function Search({ active, wide }: { active: boolean; wide: boolea
             <Surface role="region" aria-label={tr("热搜榜")} className="mt-1 rounded-(--r-md) bg-s2 p-3.5 a-rise">
                 <div className="flex items-center justify-between gap-2">
                   <h2 className="flex items-center gap-1.5 text-[14px] font-semibold text-on/90"><IFireF size={15} className="text-primary" />{tr("热搜榜")}</h2>
-                  <Button onClick={() => void refreshHot()} disabled={hotLoading} aria-label={tr("刷新热搜榜")}
-                    className="-mr-2 px-2 inline-flex items-center justify-end gap-1 text-[12px] text-mut pressable">
-                    {hotLoading ? <Loader className="w-3 h-3" /> : <IRefresh size={12} />}{hotLoading ? tr("刷新中") : tr("刷新")}
-                  </Button>
                 </div>
                 {hotError && <p role="status" className="mt-2 text-[12px] text-mut leading-relaxed">
                   {hotVideos.length > 0 ? tr("刷新失败，保留上次榜单。") : tr("热搜榜暂不可用。")}{hotError}
