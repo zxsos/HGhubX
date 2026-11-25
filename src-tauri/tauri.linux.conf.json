@@ -7,7 +7,7 @@
     }
   },
   "bundle": {
-    "targets": ["deb"],
+    "targets": ["deb", "rpm"],
     "linux": {
       "deb": {
         "depends": [
@@ -18,6 +18,20 @@
           "gstreamer1.0-libav",
           "gstreamer1.0-vaapi",
           "intel-media-va-driver"
+        ]
+      },
+      "rpm": {
+        "depends": [
+          "webkit2gtk4.1",
+          "gtk3",
+          "gstreamer1-plugins-base",
+          "gstreamer1-plugins-good",
+          "gstreamer1-plugins-bad-free"
+        ],
+        "recommends": [
+          "gstreamer1-plugins-ugly-free",
+          "gstreamer1-libav",
+          "gstreamer1-vaapi"
         ]
       }
     }

@@ -88,7 +88,7 @@ ad-hoc 签名都不应进入仓库或本机脚本输出。
    - iOS：`pnpm tauri ios init --ci`，用 PlistBuddy 补横竖屏和 ATS，再跑
      `scripts/build-ios-unsigned.sh <version>`；Xcode `CODE_SIGNING_ALLOWED=NO`，产出
      `HGhubX_<version>_ios.ipa`。
-   - Linux：`pnpm tauri build` 产出 deb，文件名 `HGhubX_<version>_amd64.deb`。
+   - Linux：`pnpm tauri build` 按 `src-tauri/tauri.linux.conf.json` 同时产出 deb 与 rpm，文件名 `HGhubX_<version>_amd64.deb` 与 `HGhubX_<version>_x86_64.rpm`。
 7. 标准版 `release` job（`release.yml`）依赖五个标准版平台构建 job（不含 TV），在 `!cancelled()` 且
    `windows`、`android`、`macos`、`linux` 全部成功（`ios` 允许成功或失败）时执行；发布条件是 `v*` tag ref，
    或手动触发且 `tag` 非空、`platforms=all`、`quick=false`。它下载已有 artifact，用
