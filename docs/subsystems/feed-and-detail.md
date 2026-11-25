@@ -36,7 +36,10 @@ Feed 负责列表播放页的条目位置、详情/帖子读取、标签门、�
 
 ## 主运行时路径
 
-1. Feed 使用 `api_feed`/分类/搜索/list page 传入的 `videoIds`，不自行重新请求列表。
+1. Feed 使用 `api_feed`/分类/搜索/list page 传入的 `videoIds`，不自行重新请求列表；
+   首页 [`src/features/feed/Home.tsx`](../../src/features/feed/Home.tsx) 在内容偏好 `pinnedTags`
+   非空时，按并发上限 4 从置顶标签分批调用 `api.tagVideos(tag, page, 30)` 去重并随机洗牌推送，
+   置顶标签变化时重置首页列表并丢弃旧作用域在途结果；未置顶任何标签时保持原有 `api.feed` 规则（#269）。
    当前条目由 `position` 与 `effectiveVideoIds` 锚定；列表变化时优先保持正在播放的 id，
    找不到才取相邻可见项。
 2. 详情读取走 `useFeedDetails.requestDetail(id)`。single-flight key 是
