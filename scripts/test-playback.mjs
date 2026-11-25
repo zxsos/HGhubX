@@ -605,24 +605,44 @@ async function superResolutionQualityChecks(page, dir, variant = "fsr") {
   assert.equal((await compare.innerText()).trim(), "按住看原画");
   const compareBox = await compare.boundingBox();
   assert.ok(compareBox, "Hold-to-compare control must have a hit target");
+  const beforeCompare = await page.evaluate(() => {
+    const video = document.querySelector("video");
+    return { paused: video?.paused, currentTime: video?.currentTime };
+  });
+  assert.equal(beforeCompare.paused, false, "A/B check expects playback to be running");
   await page.mouse.move(compareBox.x + compareBox.width / 2, compareBox.y + compareBox.height / 2);
   await page.mouse.down();
   await page.waitForTimeout(120);
-  const held = await page.locator(".hg-super-resolution-canvas").evaluate(canvas => ({
-    visibility: getComputedStyle(canvas).visibility,
-    label: document.querySelector(".hg-super-resolution-compare")?.textContent?.trim(),
-  }));
+  const held = await page.evaluate(() => {
+    const canvas = document.querySelector(".hg-super-resolution-canvas");
+    const video = document.querySelector("video");
+    return {
+      visibility: canvas ? getComputedStyle(canvas).visibility : null,
+      label: document.querySelector(".hg-super-resolution-compare")?.textContent?.trim(),
+      paused: video?.paused,
+      currentTime: video?.currentTime,
+    };
+  });
   assert.equal(held.visibility, "hidden", "Holding the comparison control must hide the SR canvas");
   assert.equal(held.label, "松手看超分");
+  assert.equal(held.paused, true, "Holding the comparison control must freeze the video");
   await page.screenshot({ path: join(dir, `super-resolution-2x-${variant}-original.png`) });
   await page.mouse.up();
   await page.waitForTimeout(120);
-  const released = await page.locator(".hg-super-resolution-canvas").evaluate(canvas => ({
-    visibility: getComputedStyle(canvas).visibility,
-    label: document.querySelector(".hg-super-resolution-compare")?.textContent?.trim(),
-  }));
+  const released = await page.evaluate(() => {
+    const canvas = document.querySelector(".hg-super-resolution-canvas");
+    const video = document.querySelector("video");
+    return {
+      visibility: canvas ? getComputedStyle(canvas).visibility : null,
+      label: document.querySelector(".hg-super-resolution-compare")?.textContent?.trim(),
+      paused: video?.paused,
+      currentTime: video?.currentTime,
+    };
+  });
   assert.equal(released.visibility, "visible", "Releasing the comparison control must restore the SR canvas");
   assert.equal(released.label, "按住看原画");
+  assert.equal(released.paused, true, "A/B comparison must stay paused for repeatable checks");
+  assert.ok(Math.abs((released.currentTime ?? 0) - (held.currentTime ?? 0)) < 0.05, "A/B comparison must not advance the frame");
 
   await page.evaluate(() => {
     const video = document.querySelector("video");

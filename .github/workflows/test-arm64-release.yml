@@ -110,7 +110,7 @@ jobs:
             - PR #267: hot tags show 10 + 10 and the search-page hot tags/hot-search refresh buttons are kept
             - Super resolution: experimental WebGL2 FSR, CAS/detail modes from `feat/super-resolution` are included for testing.
             - Test controls: More → Picture Enhancement has Auto / 1x / 2x output scaling and an on-video SR status badge.
-            - Hold-to-compare: hold the on-video "按住看原画" button to reveal the native video at the same frame; release restores SR.
+            - Hold-to-compare: hold the on-video "按住看原画" button to pause and reveal the native video at the same frame; releasing restores SR and keeps playback paused for repeatable checks.
             - 1x applies the shader at source resolution; 2x renders at twice the source size (1080p becomes 2160p internally) and is test-only.
             - Detail mode still rejects sources above 1.5MP, so 1080p detail shows "unavailable" in the badge.
             - Signing: ephemeral test key (uninstall the official app before installing this build)

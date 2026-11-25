@@ -42,6 +42,7 @@ export function PlaybackEnhancementSetting({ className = "" }: { className?: str
           onClick={() => setSrTestScale(scale.value)}>{tr(scale.label)}</Button>)}
       </SegmentedControl>
       <div className="text-[11px] text-mut mt-1">{tr("1x 保持源分辨率；2x 会渲染到源分辨率的 2 倍，可能很慢")}</div>
+      <div className="text-[11px] text-mut mt-1">{tr("按住看原画会自动暂停，松手保持暂停，方便同帧对比")}</div>
     </div>}
   </div>;
 }

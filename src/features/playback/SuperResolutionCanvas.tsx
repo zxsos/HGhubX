@@ -430,6 +430,7 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
   const [failed, setFailed] = useState(false);
   const [hasOutput, setHasOutput] = useState(false);
   const hasOutputRef = useRef(false);
+  const forceDrawRef = useRef<(() => void) | null>(null);
   const [compareOriginal, setCompareOriginal] = useState(false);
   const enabled = enabledProp ?? superResolutionRequested();
   const variant = variantProp ?? superResolutionVariant();
@@ -506,6 +507,7 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
 
     const stop = () => {
       disposed = true;
+      forceDrawRef.current = null;
       if (frameHandle && video.cancelVideoFrameCallback) video.cancelVideoFrameCallback(frameHandle);
       if (fallbackTimer) window.clearInterval(fallbackTimer);
       if (gl) {
@@ -684,6 +686,7 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
         stop();
       }
     };
+    forceDrawRef.current = () => safeDraw(true);
 
     const schedule = () => {
       if (disposed) return;
@@ -790,6 +793,10 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
           onPointerDown={(event) => {
             event.preventDefault();
             event.stopPropagation();
+            const video = videoRef.current;
+            // Freeze the frame so both sides of the comparison are identical.
+            if (video && !video.paused) video.pause();
+            forceDrawRef.current?.();
             setCompareOriginal(true);
             try {
               event.currentTarget.setPointerCapture(event.pointerId);
