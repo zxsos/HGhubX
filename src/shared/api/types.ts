@@ -148,6 +148,7 @@ export type TagItem = {
   is_hot?: boolean;
   sort?: number;
   trend?: number;
+  video_count?: number;
 };
 
 export type TagGroup = {
