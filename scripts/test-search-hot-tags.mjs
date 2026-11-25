@@ -1,14 +1,17 @@
 import assert from "node:assert/strict";
-import { access } from "node:fs/promises";
+import { access, mkdir } from "node:fs/promises";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
 import { chromium } from "playwright-core";
 import { installFixture } from "./fixtures/app-ui.mjs";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
+const output = fileURLToPath(new URL("../test-results/hot-tags-batch", import.meta.url));
 let vite, browser;
 
 try {
+  await mkdir(output, { recursive: true });
   vite = await createServer({ root, server: { host: "127.0.0.1", port: 0, strictPort: false } });
   await vite.listen();
   const origin = vite.resolvedUrls.local[0];
@@ -71,6 +74,7 @@ try {
   assert.equal(await hotSearch.getByRole("button", { name: /刷新热搜榜|刷新/ }).count(), 0, "the search page has no hot-search refresh button");
   const initialCalls = await page.evaluate(() => window.__SEARCH_API_CALLS__);
   assert.ok(initialCalls.hotSearch >= 1 && initialCalls.hotTags >= 1, "entering search fetches both hot lists");
+  await page.screenshot({ path: join(output, "first.png"), animations: "disabled" });
 
   const getChips = () => region.locator("button.ios-filter-pill").allTextContents();
   assert.deepEqual(await getChips(), initialHot.slice(0, 10), "first batch matches upstream hot tag order");
@@ -79,6 +83,7 @@ try {
   const batch2 = await getChips();
   assert.deepEqual(batch2, initialHot.slice(10), "second batch stays within official hot tags only");
   assert.ok(!batch2.some(tag => tag.includes("非热门")), "catalog-only tags never leak into hot tags");
+  await page.screenshot({ path: join(output, "second.png"), animations: "disabled" });
 
   await page.evaluate(() => {
     localStorage.setItem("hghubx_content_preferences_v1", JSON.stringify({ blockedTags: ["古风"], hideUntagged: false, paused: false }));
