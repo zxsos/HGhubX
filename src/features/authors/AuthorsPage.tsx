@@ -81,17 +81,17 @@ export function AuthorsPage({ onBack, wide }: { onBack: () => void; wide: boolea
       </div>
     </div>
     <div className="flex-1 scroll-y pt-3.5 pb-8" aria-busy={loading}>
-      {followedAuthors.length > 0 && <Surface data-followed-board aria-label={tr("已关注作者")} className="mb-3.5 rounded-[22px] bg-s1 p-4 a-rise">
+      {authors?.length ? <Surface data-followed-board aria-label={tr("已关注作者")} className="mb-3.5 rounded-[22px] bg-s1 p-4 a-rise">
         <div className="flex items-baseline justify-between gap-2">
           <h2 className="flex items-center gap-1.5 text-[14.5px] font-bold text-on"><IHeart size={15} className="text-primary" />{tr("已关注作者")}</h2>
           <span className="text-[12px] text-dim tabular-nums" aria-live="polite">{tr("共 {0} 位", follows.length)}</span>
         </div>
-        <p className="mt-1 text-[12px] leading-relaxed text-mut">{tr("长按作者可关注或取消关注")}</p>
-        <div className="mt-3 flex flex-wrap gap-2">
+        <p className="mt-1 text-[12px] leading-relaxed text-mut">{follows.length ? tr("长按作者可关注或取消关注") : tr("长按下方作者可关注")}</p>
+        {followedAuthors.length > 0 && <div className="mt-3 flex flex-wrap gap-2">
           {followedAuthors.map(author => <AuthorChip key={author.id} author={author} followed showFollowers={false} highlight={false}
             busy={busyId === author.id} onOpen={() => openAuthor(author)} onToggleFollow={toggleFollow} />)}
-        </div>
-      </Surface>}
+        </div>}
+      </Surface> : null}
       {loading && !authors ? (
         <div className="flex justify-center py-12"><Loader className="w-8 h-8 spinner" /></div>
       ) : error && !authors ? (

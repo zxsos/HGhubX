@@ -73,6 +73,11 @@ try {
   assert.equal(await authorsPage.locator("[data-author-total]").getAttribute("data-author-total"), "35", "the header reports all thirty-five authors");
   assert.ok((await allChips.first().innerText()).includes("150万"), "author chips show the follower count");
   assert.ok((await allChips.nth(1).innerText()).includes("147.5万"), "authors stay ordered by follower count");
+  const board = authorsPage.locator("[data-followed-board]");
+  await board.waitFor();
+  assert.equal(await board.getByRole("button", { name: /都市阿城/ }).count(), 0, "empty followed board is still visible");
+  assert.ok((await board.innerText()).includes("共 0 位"), "empty followed board reports zero");
+  assert.ok((await board.innerText()).includes("长按下方作者可关注"), "empty followed board keeps the follow hint");
   await page.screenshot({ path: join(output, "all-authors.png"), animations: "disabled" });
 
   const first = allChips.first();
@@ -83,10 +88,9 @@ try {
   await page.waitForTimeout(700);
   await page.mouse.up();
   await page.waitForTimeout(200);
-  const board = authorsPage.locator("[data-followed-board]");
-  await board.waitFor();
-  assert.equal(await board.getByRole("button", { name: /都市阿城/ }).count(), 1, "long press follows the author and adds the followed board");
+  assert.equal(await board.getByRole("button", { name: /都市阿城/ }).count(), 1, "long press follows the author and adds the chip to the followed board");
   assert.ok((await board.innerText()).includes("共 1 位"), "followed count updates");
+  assert.ok((await board.innerText()).includes("长按作者可关注或取消关注"), "followed board shows the follow/unfollow hint");
   assert.ok(!(await board.locator(".tag-pin-pill").innerText()).includes("150万"), "followed chips keep only the author name");
   const followedChip = authorsPage.locator('button[data-author-id="100"]').last();
   assert.equal(await followedChip.getAttribute("data-following"), "true", "author chip reflects the followed state");
@@ -101,7 +105,9 @@ try {
   await page.waitForTimeout(700);
   await page.mouse.up();
   await page.waitForTimeout(200);
-  assert.equal(await board.count(), 0, "long press again unfollows the author and removes the board");
+  assert.equal(await board.getByRole("button", { name: /都市阿城/ }).count(), 0, "long press again unfollows the author and removes the chip");
+  assert.ok((await board.innerText()).includes("共 0 位"), "empty followed board stays visible after unfollowing");
+  assert.ok((await board.innerText()).includes("长按下方作者可关注"), "empty followed board restores the follow hint");
 
   assert.equal(await page.evaluate(() => window.__AUTHOR_DIRECTORY_CALLS__()), directoryCalls, "opening the authors page reuses the cached directory");
   await authorsPage.getByRole("button", { name: "刷新作者" }).click();

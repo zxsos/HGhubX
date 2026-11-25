@@ -843,6 +843,7 @@ const en: Record<string, string> = {
   "已关注作者": "Followed authors",
   "长按关注作者：{0}": "Long-press to follow author: {0}",
   "长按取消关注作者：{0}": "Long-press to unfollow author: {0}",
+  "长按下方作者可关注": "Long-press an author below to follow",
   "长按作者可关注或取消关注": "Long-press an author to follow or unfollow",
   "{0} 位作者 · {1} 位已关注": "{0} authors · {1} followed",
   "已取消关注 {0}": "Unfollowed {0}",
