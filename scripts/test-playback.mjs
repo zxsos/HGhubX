@@ -598,6 +598,32 @@ async function superResolutionQualityChecks(page, dir, variant = "fsr") {
   assert.equal(on.scale, "2.00", `2x scale must be exactly 2.00: ${JSON.stringify({ source, on })}`);
   assert.equal(on.active, "block", "2x canvas must be visible");
   assert.equal(on.mode, variant, `2x canvas mode must be ${variant}`);
+
+  // A test-only hold gesture must reveal the untouched native video at the same frame.
+  const compare = page.locator(".hg-super-resolution-compare");
+  assert.equal(await compare.count(), 1, "Test build must expose the hold-to-compare control");
+  assert.equal((await compare.innerText()).trim(), "按住看原画");
+  const compareBox = await compare.boundingBox();
+  assert.ok(compareBox, "Hold-to-compare control must have a hit target");
+  await page.mouse.move(compareBox.x + compareBox.width / 2, compareBox.y + compareBox.height / 2);
+  await page.mouse.down();
+  await page.waitForTimeout(120);
+  const held = await page.locator(".hg-super-resolution-canvas").evaluate(canvas => ({
+    visibility: getComputedStyle(canvas).visibility,
+    label: document.querySelector(".hg-super-resolution-compare")?.textContent?.trim(),
+  }));
+  assert.equal(held.visibility, "hidden", "Holding the comparison control must hide the SR canvas");
+  assert.equal(held.label, "松手看超分");
+  await page.screenshot({ path: join(dir, `super-resolution-2x-${variant}-original.png`) });
+  await page.mouse.up();
+  await page.waitForTimeout(120);
+  const released = await page.locator(".hg-super-resolution-canvas").evaluate(canvas => ({
+    visibility: getComputedStyle(canvas).visibility,
+    label: document.querySelector(".hg-super-resolution-compare")?.textContent?.trim(),
+  }));
+  assert.equal(released.visibility, "visible", "Releasing the comparison control must restore the SR canvas");
+  assert.equal(released.label, "按住看原画");
+
   await page.evaluate(() => {
     const video = document.querySelector("video");
     video.pause();
@@ -628,7 +654,7 @@ async function superResolutionQualityChecks(page, dir, variant = "fsr") {
   await page.waitForTimeout(500);
   assert.equal(await page.locator(".hg-super-resolution-canvas").count(), 0, "2x native path must not create a canvas");
   await page.screenshot({ path: join(dir, "super-resolution-2x-off.png") });
-  return { source, on, quality: true };
+  return { source, on, quality: true, ab: true };
 }
 
 async function ambientGlowChecks(page) {

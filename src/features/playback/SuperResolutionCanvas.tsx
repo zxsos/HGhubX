@@ -25,6 +25,7 @@ import { useEffect, useRef, useState, type RefObject } from "react";
 import type { DetailUpscaler } from "./detailUpscaler";
 import { superResolutionRequested, superResolutionVariant, type SuperResolutionVariant } from "./superResolutionRequest";
 import type { SuperResolutionTestScale } from "../../shared/model/store";
+import { tr } from "../../shared/i18n";
 import "../../styles/super-resolution.css";
 
 type Fit = "contain" | "cover";
@@ -427,10 +428,26 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const statusRef = useRef<HTMLSpanElement>(null);
   const [failed, setFailed] = useState(false);
+  const [hasOutput, setHasOutput] = useState(false);
+  const hasOutputRef = useRef(false);
+  const [compareOriginal, setCompareOriginal] = useState(false);
   const enabled = enabledProp ?? superResolutionRequested();
   const variant = variantProp ?? superResolutionVariant();
   const forceScale = forceScaleProp ?? "auto";
   const variantLabel = variant === "detail" ? "细节" : variant === "cas" ? "CAS" : "FSR";
+
+  useEffect(() => {
+    if (!compareOriginal) return;
+    const release = () => setCompareOriginal(false);
+    window.addEventListener("pointerup", release);
+    window.addEventListener("pointercancel", release);
+    window.addEventListener("blur", release);
+    return () => {
+      window.removeEventListener("pointerup", release);
+      window.removeEventListener("pointercancel", release);
+      window.removeEventListener("blur", release);
+    };
+  }, [compareOriginal]);
 
   useEffect(() => {
     if (!enabled || !active || failed) return;
@@ -439,6 +456,11 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
     if (!video || !canvas) return;
     const writeStatus = (text: string) => {
       if (statusRef.current) statusRef.current.textContent = text;
+    };
+    const markOutput = (value: boolean) => {
+      if (hasOutputRef.current === value) return;
+      hasOutputRef.current = value;
+      setHasOutput(value);
     };
     if (debug && canvas.parentElement) canvas.parentElement.style.display = "block";
     writeStatus("SR 准备中");
@@ -562,11 +584,13 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
         canvas.dataset.active = "off";
         canvas.style.display = "none";
         if (canvas.parentElement) canvas.parentElement.style.display = debug ? "block" : "none";
+        markOutput(false);
         return;
       }
       canvas.style.display = "block";
       if (canvas.parentElement) canvas.parentElement.style.display = "block";
       canvas.dataset.active = "on";
+      markOutput(true);
       canvas.dataset.scale = size.scale.toFixed(2);
       writeStatus(`SR ${size.scale.toFixed(2)}x · ${variantLabel} · ${size.width}×${size.height}`);
       if (size.width !== width || size.height !== height) resize(size.width, size.height);
@@ -746,15 +770,49 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
 
   if (!enabled) return null;
 
+  const compareLabel = compareOriginal ? tr("松手看超分") : tr("按住看原画");
+
   return (
-    <div className="hg-super-resolution" aria-hidden="true" data-super-resolution={enabled ? "on" : "off"} data-super-resolution-mode={variant}
+    <div className="hg-super-resolution" aria-hidden={debug ? undefined : true} data-super-resolution={enabled ? "on" : "off"} data-super-resolution-mode={variant}
       data-super-resolution-force={forceScale} style={debug ? { display: "block" } : undefined}>
       {!failed && <canvas
         ref={canvasRef}
-        className={`hg-super-resolution-canvas sr-fit-${fit}`}
+        className={`hg-super-resolution-canvas sr-fit-${fit}${compareOriginal ? " is-compare-hidden" : ""}`}
         data-super-resolution-canvas={enabled ? "on" : "off"}
       />}
       {debug && <span ref={statusRef} className="hg-super-resolution-status">{failed ? "SR 初始化失败" : "SR 准备中"}</span>}
+      {debug && !failed && hasOutput && (
+        <button
+          type="button"
+          className="hg-super-resolution-compare"
+          data-compare-held={compareOriginal ? "true" : "false"}
+          aria-label={compareLabel}
+          onPointerDown={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            setCompareOriginal(true);
+            try {
+              event.currentTarget.setPointerCapture(event.pointerId);
+            } catch {
+              // Pointer capture is unavailable in some embedded webviews.
+            }
+          }}
+          onPointerUp={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            setCompareOriginal(false);
+          }}
+          onPointerCancel={() => setCompareOriginal(false)}
+          onLostPointerCapture={() => setCompareOriginal(false)}
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+          }}
+          onContextMenu={(event) => event.preventDefault()}
+        >
+          {compareLabel}
+        </button>
+      )}
     </div>
   );
 }

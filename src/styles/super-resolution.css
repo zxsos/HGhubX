@@ -41,3 +41,35 @@
   text-overflow: ellipsis;
   pointer-events: none;
 }
+
+.hg-super-resolution-canvas.is-compare-hidden {
+  visibility: hidden;
+}
+
+/* Test-only hold-to-compare control. Keep it away from the bottom controls. */
+.hg-super-resolution-compare {
+  position: absolute;
+  top: 50%;
+  left: 8px;
+  z-index: 4;
+  transform: translateY(-50%);
+  padding: 5px 8px;
+  border: 1px solid rgba(184, 245, 230, 0.35);
+  border-radius: 7px;
+  background: rgba(8, 10, 14, 0.72);
+  color: #b8f5e6;
+  font: 600 11px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
+  white-space: nowrap;
+  pointer-events: auto;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  cursor: pointer;
+}
+
+.hg-super-resolution-compare[data-compare-held="true"] {
+  border-color: rgba(255, 224, 138, 0.7);
+  background: rgba(40, 30, 8, 0.82);
+  color: #ffe08a;
+}
