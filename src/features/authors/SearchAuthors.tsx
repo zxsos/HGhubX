@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useStore } from "../../shared/model/store";
 import { Button, Surface } from "../../shared/ui/ios/controls";
-import { IUserF } from "../../shared/ui/icons";
+import { Loader } from "../../shared/ui/ios/effects";
+import { IRefresh, IUserF } from "../../shared/ui/icons";
 import { tr } from "../../shared/i18n";
 import { AuthorChip } from "./AuthorChip";
 import { useAuthorFollow } from "./useAuthorFollow";
@@ -21,12 +22,12 @@ export function SearchAuthors({ active }: { active: boolean }) {
   const sequence = useRef(0);
   const loadedKey = useRef("");
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (force = false) => {
     const token = ++sequence.current;
     setLoading(true);
     setError("");
     try {
-      const directory = await loadAuthors(lineEpoch);
+      const directory = await loadAuthors(lineEpoch, force);
       if (sequence.current !== token) return;
       setAuthors(directory.items);
       setBatch(0);
@@ -64,9 +65,13 @@ export function SearchAuthors({ active }: { active: boolean }) {
     </div> : !error && <p role="status" className="mt-3 text-[13px] text-mut">
       {loading || authors === null ? tr("正在加载作者…") : tr("暂无可用作者")}
     </p>}
-    {topAuthors.length > BATCH_SIZE && <div className="mt-2.5 flex justify-end">
-      <Button onClick={() => setBatch(value => (value + 1) % batchCount)}
-        className="-mr-2 px-2 min-h-9 inline-flex items-center justify-end text-[12px] text-primary pressable">{tr("换一批")}</Button>
-    </div>}
+    <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2">
+      <Button onClick={() => void load(true)} disabled={loading} aria-label={tr("刷新作者")}
+        className="-ml-2 px-2 min-h-9 inline-flex items-center gap-1 text-[12px] text-mut pressable">
+        {loading ? <Loader className="w-3 h-3" /> : <IRefresh size={13} />}{loading ? tr("加载中…") : tr("刷新")}
+      </Button>
+      {topAuthors.length > BATCH_SIZE && <Button onClick={() => setBatch(value => (value + 1) % batchCount)}
+        className="-mr-2 px-2 min-h-9 inline-flex items-center justify-end text-[12px] text-primary pressable">{tr("换一批")}</Button>}
+    </div>
   </Surface>;
 }

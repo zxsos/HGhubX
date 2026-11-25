@@ -52,7 +52,7 @@ try {
   assert.ok(!(await topChips.first().innerText()).includes("万"), "search author chips hide follower counts");
   assert.equal(await region.getByRole("button", { name: "全部作者 ›" }).count(), 1, "all-authors link is present");
   assert.equal(await region.getByRole("button", { name: "换一批" }).count(), 1, "the next batch button is present");
-  assert.equal(await region.getByRole("button", { name: /刷新作者|重试加载作者/ }).count(), 0, "the search page has no refresh button");
+  assert.equal(await region.getByRole("button", { name: "刷新作者" }).count(), 1, "the hot-authors refresh button is always available");
 
   await region.evaluate(element => element.scrollIntoView({ block: "center" }));
   await page.waitForTimeout(120);
@@ -119,7 +119,7 @@ try {
   await authorsPage.getByRole("button", { name: "返回" }).click();
   await region.waitFor();
   assert.equal(await page.evaluate(() => window.__AUTHOR_DIRECTORY_CALLS__()), beforeBack, "returning to search does not trigger a request");
-  assert.equal(await region.getByRole("button", { name: /刷新作者|重试加载作者/ }).count(), 0, "the search page still has no refresh button after returning");
+  assert.equal(await region.getByRole("button", { name: "刷新作者" }).count(), 1, "the hot-authors refresh button remains after returning");
 
   await page.reload({ waitUntil: "domcontentloaded" });
   await page.locator(".hg-tabbar .ios-mobile-nav-item").filter({ hasText: "搜索" }).click();
