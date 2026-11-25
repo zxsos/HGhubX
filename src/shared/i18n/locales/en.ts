@@ -859,6 +859,10 @@ const en: Record<string, string> = {
   "作品状态筛选": "Work status filter",
   "筛选作品状态": "Filter works",
   "筛选作品状态：{0}": "Filter works: {0}",
+  "测试缩放（仅测试包）": "Test Scale (Test Build Only)",
+  "自动": "Auto",
+  "1x 保持源分辨率；2x 会渲染到源分辨率的 2 倍，可能很慢": "1x keeps source resolution; 2x renders at twice the source size and may be slow",
+
 };
 
 export default en;

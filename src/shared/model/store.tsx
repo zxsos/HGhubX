@@ -60,6 +60,9 @@ export type PageInput =
 /** Player picture-enhancement mode. CAS only sharpens; detail is the FSRCNNX 2x path. */
 export type EnhanceMode = "off" | "fsr" | "cas" | "detail";
 
+/** Test-only output scale override; "auto" keeps the normal display-driven sizing. */
+export type SuperResolutionTestScale = "auto" | "1x" | "2x";
+
 export type Toast = {
   id: number;
   msg: string;
@@ -234,6 +237,8 @@ type Store = {
   startupTab: Tab; setStartupTab: (t: Tab) => void;
   ambientGlow: boolean; setAmbientGlow: (on: boolean) => void;
   enhanceMode: EnhanceMode; setEnhanceMode: (mode: EnhanceMode) => void;
+  /** Test-only override for the super-resolution canvas size. */
+  srTestScale: SuperResolutionTestScale; setSrTestScale: (scale: SuperResolutionTestScale) => void;
   volume: number; setVolume: (v: number) => void;
   searchHist: string[]; addSearch: (q: string) => void; removeSearch: (q: string) => void; clearSearchHist: () => void;
   strictSecurity: boolean; strictSecurityReady: boolean; securityPending: boolean; cliRelaxed: boolean; setStrictSecurity: (on: boolean) => Promise<void>;
@@ -342,6 +347,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [theme, setThemeState] = useState<Theme>(() => resolveTheme(readThemePreference()));
   const themeRef = useRef(theme);
   const [tab, setTabRaw] = useState<Tab>(p.startupTab);
+  const [srTestScale, setSrTestScale] = useState<SuperResolutionTestScale>("auto");
   const tabRef = useRef(tab);
   tabRef.current = tab;
   const [stack, setStack] = useState<Page[]>([]);
@@ -627,12 +633,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     startupTab: p.startupTab, setStartupTab,
     ambientGlow: p.ambientGlow, setAmbientGlow,
     enhanceMode: p.enhanceMode, setEnhanceMode,
+    srTestScale, setSrTestScale,
     searchHist: p.searchHist, addSearch, removeSearch, clearSearchHist,
     strictSecurity, strictSecurityReady, securityPending, cliRelaxed, setStrictSecurity,
     get toasts() { return toastList; }, toast, lineEpoch,
   }), [theme, themePreference, setTheme, tab, setTab, stack, push, openRootPage, pop, user, loginOpen, logout,
     p, account,
-    setMuted, setMuteOnStartup, setSwipeEp, setPreferHevc, setBalanceVolume, setFsIdleSecs, setStartupTab, setAmbientGlow, setEnhanceMode, setVolume, addSearch, removeSearch, clearSearchHist, strictSecurity, strictSecurityReady, securityPending, cliRelaxed, setStrictSecurity,
+    setMuted, setMuteOnStartup, setSwipeEp, setPreferHevc, setBalanceVolume, setFsIdleSecs, setStartupTab, setAmbientGlow, setEnhanceMode, srTestScale, setVolume, addSearch, removeSearch, clearSearchHist, strictSecurity, strictSecurityReady, securityPending, cliRelaxed, setStrictSecurity,
     toast, lineEpoch, theater, setTheater, fs, setFs, clean, setClean, locked, setLocked]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

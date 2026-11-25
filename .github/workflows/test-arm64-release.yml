@@ -9,7 +9,7 @@ on:
       version:
         description: "Test build version (for example 2.2.11)"
         type: string
-        default: "2.2.11"
+        default: "2.2.12"
         required: true
 
 permissions:
@@ -109,5 +109,8 @@ jobs:
             - PR #262: hot authors show 7 + 7 (top 14) and the hot-author refresh stays on the search page
             - PR #267: hot tags show 10 + 10 and the search-page hot tags/hot-search refresh buttons are kept
             - Super resolution: experimental WebGL2 FSR, CAS/detail modes from `feat/super-resolution` are included for testing.
+            - Test controls: More → Picture Enhancement has Auto / 1x / 2x output scaling and an on-video SR status badge.
+            - 1x applies the shader at source resolution; 2x renders at twice the source size (1080p becomes 2160p internally) and is test-only.
+            - Detail mode still rejects sources above 1.5MP, so 1080p detail shows "unavailable" in the badge.
             - Signing: ephemeral test key (uninstall the official app before installing this build)
           files: artifacts/HGhubX_*_test_arm64.apk

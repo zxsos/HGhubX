@@ -24,6 +24,7 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import type { DetailUpscaler } from "./detailUpscaler";
 import { superResolutionRequested, superResolutionVariant, type SuperResolutionVariant } from "./superResolutionRequest";
+import type { SuperResolutionTestScale } from "../../shared/model/store";
 import "../../styles/super-resolution.css";
 
 type Fit = "contain" | "cover";
@@ -34,6 +35,10 @@ type Props = {
   active?: boolean;
   enabled?: boolean;
   variant?: SuperResolutionVariant;
+  /** Test-only override for the output canvas size. */
+  forceScale?: SuperResolutionTestScale;
+  /** Test-only status badge; omitted by production callers. */
+  debug?: boolean;
 };
 
 type FrameVideo = HTMLVideoElement & {
@@ -368,11 +373,16 @@ function createTexture(gl: WebGL2RenderingContext, width: number, height: number
   return texture;
 }
 
-function outputSize(video: HTMLVideoElement, fit: Fit, variant: SuperResolutionVariant) {
+/** Test-only 2x output is capped to a conservative mobile texture side limit. */
+const MAX_FORCED_TEXTURE_SIDE = 4096;
+
+type ScaleInfo = { scale: number; detailTooLarge: boolean };
+
+/** Display-driven scale before the "is it worth upscaling?" cutoff is applied. */
+function measureScale(video: HTMLVideoElement, fit: Fit, variant: SuperResolutionVariant): ScaleInfo | null {
   const vw = video.videoWidth;
   const vh = video.videoHeight;
   if (!vw || !vh) return null;
-  if (variant === "detail" && vw * vh > MAX_DETAIL_SOURCE_PIXELS) return null;
   const rect = video.getBoundingClientRect();
   if (!rect.width || !rect.height) return null;
 
@@ -391,21 +401,47 @@ function outputSize(video: HTMLVideoElement, fit: Fit, variant: SuperResolutionV
   const pixelBudget = variant === "detail" ? MAX_DETAIL_OUTPUT_PIXELS : MAX_OUTPUT_PIXELS;
   const pixelScale = Math.sqrt(pixelBudget / (vw * vh));
   const scale = Math.min((displayW * dpr) / vw, (displayH * dpr) / vh, 3, pixelScale);
-  if (!Number.isFinite(scale) || scale <= 1.01) return null;
-  return { width: Math.round(vw * scale), height: Math.round(vh * scale), scale };
+  return { scale, detailTooLarge: variant === "detail" && vw * vh > MAX_DETAIL_SOURCE_PIXELS };
 }
 
-export default function SuperResolutionCanvas({ videoRef, fit = "contain", active = true, enabled: enabledProp, variant: variantProp }: Props) {
+function outputSize(video: HTMLVideoElement, fit: Fit, variant: SuperResolutionVariant, forceScale: SuperResolutionTestScale = "auto") {
+  const vw = video.videoWidth;
+  const vh = video.videoHeight;
+  if (!vw || !vh) return null;
+  const info = measureScale(video, fit, variant);
+  if (!info || info.detailTooLarge) return null;
+
+  if (forceScale === "1x") return { width: vw, height: vh, scale: 1 };
+  if (forceScale === "2x") {
+    const width = vw * 2;
+    const height = vh * 2;
+    if (width > MAX_FORCED_TEXTURE_SIDE || height > MAX_FORCED_TEXTURE_SIDE) return null;
+    return { width, height, scale: 2 };
+  }
+
+  if (!Number.isFinite(info.scale) || info.scale <= 1.01) return null;
+  return { width: Math.round(vw * info.scale), height: Math.round(vh * info.scale), scale: info.scale };
+}
+
+export default function SuperResolutionCanvas({ videoRef, fit = "contain", active = true, enabled: enabledProp, variant: variantProp, forceScale: forceScaleProp, debug = false }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const statusRef = useRef<HTMLSpanElement>(null);
   const [failed, setFailed] = useState(false);
   const enabled = enabledProp ?? superResolutionRequested();
   const variant = variantProp ?? superResolutionVariant();
+  const forceScale = forceScaleProp ?? "auto";
+  const variantLabel = variant === "detail" ? "细节" : variant === "cas" ? "CAS" : "FSR";
 
   useEffect(() => {
     if (!enabled || !active || failed) return;
     const video = videoRef.current as FrameVideo | null;
     const canvas = canvasRef.current;
     if (!video || !canvas) return;
+    const writeStatus = (text: string) => {
+      if (statusRef.current) statusRef.current.textContent = text;
+    };
+    if (debug && canvas.parentElement) canvas.parentElement.style.display = "block";
+    writeStatus("SR 准备中");
 
     let gl: WebGL2RenderingContext | null = null;
     let programEasu: WebGLProgram | null = null;
@@ -441,6 +477,7 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
 
     const onContextLost = (event: Event) => {
       event.preventDefault();
+      writeStatus("SR 初始化失败 · WebGL2 context lost");
       setFailed(true);
       stop();
     };
@@ -467,7 +504,7 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
       window.removeEventListener("resize", drawOnce);
       canvas.removeEventListener("webglcontextlost", onContextLost);
       canvas.style.display = "none";
-      if (canvas.parentElement) canvas.parentElement.style.display = "none";
+      if (canvas.parentElement) canvas.parentElement.style.display = debug ? "block" : "none";
     };
 
     const drawOnce = () => safeDraw(true);
@@ -498,23 +535,40 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
     };
 
     const draw = (force = false) => {
-      if (disposed || !gl || !video || video.readyState < 2 || !video.videoWidth) return;
+      if (disposed || !gl || !video) return;
+      if (video.readyState < 2 || !video.videoWidth) {
+        writeStatus("SR 等待视频帧");
+        return;
+      }
       const now = performance.now();
       if (force || !measuredSize || now - measuredAt > 500) {
-        measuredSize = outputSize(video, fit, variant);
+        measuredSize = outputSize(video, fit, variant, forceScale);
         measuredAt = now;
       }
       const size = measuredSize;
       if (!size) {
+        const vw = video.videoWidth;
+        const vh = video.videoHeight;
+        const info = measureScale(video, fit, variant);
+        if (info?.detailTooLarge) {
+          writeStatus(`SR 细节不可用 · 源 ${vw}×${vh} 超过 1.5MP`);
+        } else if (forceScale === "2x" && (vw * 2 > MAX_FORCED_TEXTURE_SIDE || vh * 2 > MAX_FORCED_TEXTURE_SIDE)) {
+          writeStatus(`SR 2x 超出 ${MAX_FORCED_TEXTURE_SIDE} 纹理上限`);
+        } else if (info) {
+          writeStatus(`SR 未启用 · 源 ${vw}×${vh} · 显示 ${info.scale.toFixed(2)}x`);
+        } else {
+          writeStatus("SR 等待视频尺寸");
+        }
         canvas.dataset.active = "off";
         canvas.style.display = "none";
-        if (canvas.parentElement) canvas.parentElement.style.display = "none";
+        if (canvas.parentElement) canvas.parentElement.style.display = debug ? "block" : "none";
         return;
       }
       canvas.style.display = "block";
       if (canvas.parentElement) canvas.parentElement.style.display = "block";
       canvas.dataset.active = "on";
       canvas.dataset.scale = size.scale.toFixed(2);
+      writeStatus(`SR ${size.scale.toFixed(2)}x · ${variantLabel} · ${size.width}×${size.height}`);
       if (size.width !== width || size.height !== height) resize(size.width, size.height);
       if (!force && frames > 0 && video.paused) return;
 
@@ -524,6 +578,7 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
       try {
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, video);
       } catch {
+        writeStatus("SR 绘制失败 · 视频帧不可读");
         setFailed(true);
         stop();
         return;
@@ -600,6 +655,7 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
         draw(force);
       } catch (error) {
         console.error("[super-resolution] draw failed", error);
+        writeStatus("SR 绘制失败");
         setFailed(true);
         stop();
       }
@@ -674,6 +730,7 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
       schedule();
     } catch (error) {
       console.error("[super-resolution] init failed", error);
+      writeStatus("SR 初始化失败 · WebGL2");
       setFailed(true);
       stop();
       return;
@@ -685,17 +742,19 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
     video.addEventListener("resize", drawOnce);
 
     return stop;
-  }, [active, enabled, failed, fit, videoRef, variant]);
+  }, [active, debug, enabled, failed, fit, forceScale, videoRef, variant]);
 
-  if (!enabled || failed) return null;
+  if (!enabled) return null;
 
   return (
-    <div className="hg-super-resolution" aria-hidden="true" data-super-resolution={enabled ? "on" : "off"} data-super-resolution-mode={variant}>
-      <canvas
+    <div className="hg-super-resolution" aria-hidden="true" data-super-resolution={enabled ? "on" : "off"} data-super-resolution-mode={variant}
+      data-super-resolution-force={forceScale} style={debug ? { display: "block" } : undefined}>
+      {!failed && <canvas
         ref={canvasRef}
         className={`hg-super-resolution-canvas sr-fit-${fit}`}
         data-super-resolution-canvas={enabled ? "on" : "off"}
-      />
+      />}
+      {debug && <span ref={statusRef} className="hg-super-resolution-status">{failed ? "SR 初始化失败" : "SR 准备中"}</span>}
     </div>
   );
 }

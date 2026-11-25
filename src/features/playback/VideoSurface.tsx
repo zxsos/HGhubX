@@ -91,6 +91,7 @@ const VideoSurface = forwardRef<VideoHandle, Props>(function VideoSurface(
 
   const store = useStore();
   const enhanceMode = store?.enhanceMode ?? "off";
+  const srTestScale = store?.srTestScale ?? "auto";
   const querySuperResolution = superResolutionRequested();
   const superResolution = querySuperResolution || enhanceMode !== "off";
   const activeSuperResolutionVariant: SuperResolutionVariant = enhanceMode !== "off" ? enhanceMode : superResolutionVariant();
@@ -326,7 +327,8 @@ const VideoSurface = forwardRef<VideoHandle, Props>(function VideoSurface(
       {ambientGlow && active && <AmbientGlow videoRef={videoRef} active={active} />}
       {SuperResolutionCanvas && active && (
         <SuperResolutionCanvas videoRef={videoRef} fit={fit} active={active}
-          enabled={superResolution} variant={activeSuperResolutionVariant} />
+          enabled={superResolution} variant={activeSuperResolutionVariant}
+          forceScale={srTestScale} debug />
       )}
       <video
         ref={(node) => {
