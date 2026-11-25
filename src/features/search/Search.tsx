@@ -234,6 +234,10 @@ export default function Search({ active, wide }: { active: boolean; wide: boolea
             <Surface role="region" aria-label={tr("热搜榜")} className="mt-1 rounded-(--r-md) bg-s2 p-3.5 a-rise">
                 <div className="flex items-center justify-between gap-2">
                   <h2 className="flex items-center gap-1.5 text-[14px] font-semibold text-on/90"><IFireF size={15} className="text-primary" />{tr("热搜榜")}</h2>
+                  <Button onClick={() => void refreshHot()} disabled={hotLoading} aria-label={tr("刷新热搜榜")}
+                    className="-mr-2 px-2 inline-flex items-center justify-end gap-1 text-[12px] text-mut pressable">
+                    {hotLoading ? <Loader className="w-3 h-3" /> : <IRefresh size={12} />}{hotLoading ? tr("刷新中") : tr("刷新")}
+                  </Button>
                 </div>
                 {hotError && <p role="status" className="mt-2 text-[12px] text-mut leading-relaxed">
                   {hotVideos.length > 0 ? tr("刷新失败，保留上次榜单。") : tr("热搜榜暂不可用。")}{hotError}

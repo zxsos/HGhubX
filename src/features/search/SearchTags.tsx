@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Loader } from "../../shared/ui/ios/effects";
 import { api } from "../../shared/api/api";
 import type { HotTagItem } from "../../shared/api/types";
 import { useContentPreferences } from "../../shared/model/contentPreferences";
 import { useStore } from "../../shared/model/store";
-import { IFireF } from "../../shared/ui/icons";
+import { IFireF, IRefresh } from "../../shared/ui/icons";
 import { Button, Surface } from "../../shared/ui/ios/controls";
 import { tr } from "../../shared/i18n";
 
@@ -63,7 +64,7 @@ export function SearchTags({ active }: { active: boolean }) {
       <Button onClick={() => push({ kind: "tags" })} className="-mr-2 px-2 inline-flex items-center justify-end min-h-9 text-[12px] text-primary font-semibold pressable">{tr("全部标签 ›")}</Button>
     </div>
     {error && <p role="status" className="mt-2 text-[12px] text-mut break-words">
-      {tr("标签暂未加载成功。")}{error}
+      {totalLoaded > 0 ? tr("刷新失败，保留已加载标签。") : tr("标签暂未加载成功。")}{error}
     </p>}
     {count > 0 ? <div className="flex flex-wrap gap-2 mt-3">
       {visible.map(tag => <Button key={tag.name}
@@ -72,9 +73,13 @@ export function SearchTags({ active }: { active: boolean }) {
     </div> : !error && <p role="status" className="mt-3 text-[13px] text-mut">
       {loading || tags === null ? tr("正在加载题材…") : totalLoaded > 0 ? tr("热门题材均已屏蔽，可在内容偏好中调整") : tr("暂无可用标签")}
     </p>}
-    {count > BATCH_SIZE && <div className="mt-2.5 flex justify-end">
-      <Button onClick={() => setBatch(value => (value + 1) % batchCount)}
-        className="-mr-2 px-2 min-h-9 inline-flex items-center justify-end text-[12px] text-primary pressable">{tr("换一批")}</Button>
-    </div>}
+    <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2">
+      <Button onClick={() => void load()} disabled={loading} aria-label={tr("刷新题材")}
+        className="-ml-2 px-2 min-h-9 inline-flex items-center gap-1 text-[12px] text-mut pressable">
+        {loading ? <Loader className="w-3 h-3" /> : <IRefresh size={13} />}{loading ? tr("加载中…") : tr("刷新")}
+      </Button>
+      {count > BATCH_SIZE && <Button onClick={() => setBatch(value => (value + 1) % batchCount)}
+        className="-mr-2 px-2 min-h-9 inline-flex items-center justify-end text-[12px] text-primary pressable">{tr("换一批")}</Button>}
+    </div>
   </Surface>;
 }

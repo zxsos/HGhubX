@@ -68,7 +68,7 @@ try {
   await region.getByRole("button", { name: "都市" }).waitFor({ timeout: 8000 });
   const hotSearch = page.getByRole("region", { name: "热搜榜" });
   await hotSearch.waitFor();
-  assert.equal(await hotSearch.getByRole("button", { name: /刷新热搜榜|刷新/ }).count(), 0, "the search page has no hot-search refresh button");
+  assert.equal(await hotSearch.getByRole("button", { name: "刷新热搜榜" }).count(), 1, "the hot-search refresh button is always available");
   await page.screenshot({ path: join(output, "first.png"), animations: "disabled" });
 
   const getChips = () => region.locator("button.ios-filter-pill").allTextContents();
@@ -89,7 +89,7 @@ try {
   assert.ok(!afterBlock.includes("古风"), "blocked tag is hidden from hot tags");
   assert.deepEqual(afterBlock, initialHot.filter(t => t !== "古风").slice(0, 10), "blocking preserves upstream order");
 
-  assert.equal(await region.getByRole("button", { name: /刷新题材|重试加载题材/ }).count(), 0, "the search page has no hot-tags refresh button");
+  assert.equal(await region.getByRole("button", { name: "刷新题材" }).count(), 1, "the hot-tags refresh button is always available");
   assert.equal(await region.getByRole("button", { name: "换一批" }).count(), 1, "the next batch button remains available");
 
   console.log("PASS: search-hot-tags (5 checks)");
