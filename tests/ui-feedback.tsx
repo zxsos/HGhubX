@@ -26,17 +26,19 @@ function FeedActionsProbe() {
   const videoRef = useRef<VideoHandle | null>(null);
   const liked = useRef(false);
   const collected = useRef(false);
+  const following = useRef(false);
   const actions = useFeedActions({
     videoRef, mounted, actionContext, accountScope: "guest", lineEpoch: 0, curId: 1, curEp: 1, kind: "video",
     meta: { title: "示例", cover: "", desc: "", author: "作者", authorId: 7, tags: [], score: 0, like: 1, comment: 0, collect: 0, episodes: [] },
-    detail: undefined, posts: {}, user: null, setLoginOpen: () => {}, follows: [],
+    detail: undefined, posts: {}, user: null, follows: following.current ? [7] : [],
+    toggleFollowLocal: () => { following.current = !following.current; return following.current; },
     isLiked: () => liked.current, isFav: () => collected.current,
     setLiked: async (_kind, _id, _ep, on) => { liked.current = on; },
     setCollected: async (_kind, _id, on) => { collected.current = on; },
     setFollowing: async () => {}, actionPending: () => false, toast,
   });
   useEffect(() => {
-    Object.assign(window, { feedActionProbe: { like: () => actions.onLike(), fav: () => actions.onFav() } });
+    Object.assign(window, { feedActionProbe: { like: () => actions.onLike(), fav: () => actions.onFav(), follow: () => actions.onFollow() } });
   }, [actions]);
   return null;
 }

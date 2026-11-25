@@ -23,13 +23,64 @@ function shuffle<T>(arr: T[]): T[] {
   return a;
 }
 
+const PINNED_FETCH_CONCURRENCY = 4;
+
+async function fetchPinnedTagsPage(
+  tags: string[],
+  page: number,
+  exhausted: Set<string>,
+): Promise<{ items: VideoCard[]; done: boolean }> {
+  const candidates = tags.filter((tag) => !exhausted.has(tag));
+  if (!candidates.length) return { items: [], done: true };
+  let cursor = 0;
+  let succeeded = 0;
+  let failed = 0;
+  let firstError: unknown = null;
+  const collected: VideoCard[] = [];
+
+  const worker = async () => {
+    while (true) {
+      const idx = cursor++;
+      if (idx >= candidates.length) return;
+      const tag = candidates[idx];
+      try {
+        const res = await api.tagVideos(tag, page, 30);
+        succeeded++;
+        const list = res?.items || [];
+        collected.push(...list);
+        if (!list.length || (res?.pagination && page >= res.pagination.pages)) {
+          exhausted.add(tag);
+        }
+      } catch (err) {
+        failed++;
+        if (firstError === null) firstError = err;
+      }
+    }
+  };
+
+  await Promise.all(
+    Array.from({ length: Math.min(PINNED_FETCH_CONCURRENCY, candidates.length) }, () => worker()),
+  );
+
+  if (succeeded === 0 && firstError !== null) throw firstError;
+  const deduped = new Map<number, VideoCard>();
+  for (const item of collected) deduped.set(item.id, item);
+  return {
+    items: shuffle([...deduped.values()]),
+    done: failed === 0 && tags.every((tag) => exhausted.has(tag)),
+  };
+}
+
 export default function Home({ active, bottomInset }: { active: boolean; bottomInset: number }) {
   const { toast, lineEpoch, push } = useStore();
   const { preferences, revision, blockReason, storageError } = useContentPreferences();
+  const pinnedTags = preferences.pinnedTags;
+  const pinnedKey = useMemo(() => [...pinnedTags].sort().join("\0"), [pinnedTags]);
+  const feedScope = `${lineEpoch}:${pinnedKey}`;
   const filtering = !preferences.paused && (preferences.blockedTags.length > 0 || preferences.hideUntagged);
   const [excluded, setExcluded] = useState<{ revision: number; epoch: number; ids: number[] }>({ revision, epoch: lineEpoch, ids: [] });
   const autoFill = useRef(1);
-  useEffect(() => { autoFill.current = 1; }, [revision, lineEpoch]);
+  useEffect(() => { autoFill.current = 1; }, [revision, lineEpoch, pinnedKey]);
   const [items, setItems] = useState<VideoCard[]>([]);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
@@ -39,7 +90,8 @@ export default function Home({ active, bottomInset }: { active: boolean; bottomI
   const activeRef = useRef(active);
   activeRef.current = active;
   const mounted = useRef(false);
-  const attemptedEpoch = useRef<number | null>(null);
+  const attemptedScope = useRef<string | null>(null);
+  const exhaustedTagsRef = useRef(new Set<string>());
   const [feedMounted, setFeedMounted] = useState(false);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   /* 翻页失败退避：失败后 5 秒内不再因滚动触发重试，连续失败只提示一次 */
@@ -47,48 +99,87 @@ export default function Home({ active, bottomInset }: { active: boolean; bottomI
   const failStreak = useRef(0);
   const lineEpochRef = useRef(lineEpoch);
   lineEpochRef.current = lineEpoch;
+  const pinnedTagsRef = useRef(pinnedTags);
+  pinnedTagsRef.current = pinnedTags;
+  const pinnedKeyRef = useRef(pinnedKey);
+  const feedScopeRef = useRef(feedScope);
+  feedScopeRef.current = feedScope;
   const itemsRef = useRef(items);
   itemsRef.current = items;
+
+  useEffect(() => {
+    if (pinnedKeyRef.current === pinnedKey) return;
+    pinnedKeyRef.current = pinnedKey;
+    exhaustedTagsRef.current.clear();
+    attemptedScope.current = null;
+    failStreak.current = 0;
+    retryAt.current = 0;
+    setItems([]);
+    setPage(1);
+    setDone(false);
+    setError("");
+  }, [pinnedKey]);
 
   const load = useCallback(async (p: number): Promise<void> => {
     if (!activeRef.current || loadingRef.current || (done && p > 1)) return;
     const requestEpoch = lineEpochRef.current;
-    if (p === 1) attemptedEpoch.current = requestEpoch;
-    let retryAfterLineChange = false;
+    const requestPinnedKey = pinnedKeyRef.current;
+    const requestPinned = [...pinnedTagsRef.current];
+    const requestScope = `${requestEpoch}:${requestPinnedKey}`;
+    if (p === 1) {
+      attemptedScope.current = requestScope;
+      exhaustedTagsRef.current.clear();
+    }
+    let retryAfterScopeChange = false;
     loadingRef.current = true;
     setLoading(true);
     setError("");
     if (p === 1) setDone(false);
     try {
-      const res = await api.feed(p, 30);
+      let ordered: VideoCard[];
+      let nextDone: boolean;
+      if (requestPinned.length > 0) {
+        const res = await fetchPinnedTagsPage(requestPinned, p, exhaustedTagsRef.current);
+        ordered = res.items;
+        nextDone = res.done;
+      } else {
+        const res = await api.feed(p, 30);
+        const list = res?.items || [];
+        ordered = p === 1 ? shuffle(list) : list;
+        nextDone = !list.length || !!(res?.pagination && p >= res.pagination.pages);
+      }
       if (!mounted.current) return;
-      if (requestEpoch !== lineEpochRef.current) { retryAfterLineChange = !itemsRef.current.length; return; }
-      const list = res?.items || [];
-      const ordered = p === 1 ? shuffle(list) : list;
+      if (requestScope !== feedScopeRef.current) {
+        retryAfterScopeChange = requestPinnedKey !== pinnedKeyRef.current || !itemsRef.current.length;
+        return;
+      }
       setItems((prev) => {
-        const seen = new Set(prev.map((x) => x.id));
-        return [...prev, ...ordered.filter((x) => !seen.has(x.id))];
+        const base = p === 1 ? [] : prev;
+        const seen = new Set(base.map((x) => x.id));
+        return [...base, ...ordered.filter((x) => !seen.has(x.id))];
       });
       setPage(p);
       failStreak.current = 0;
       retryAt.current = 0;
-      setDone(!list.length || !!(res?.pagination && p >= res.pagination.pages));
+      setDone(nextDone);
     } catch (e) {
       if (!mounted.current) return;
       const message = (e as Error).message || tr("加载失败");
-      const stale = requestEpoch !== lineEpochRef.current;
+      const stale = requestScope !== feedScopeRef.current;
       if (!stale) {
         setError(message);
         if (p > 1) retryAt.current = Date.now() + 5000;
         if (failStreak.current++ === 0) toast(message, "info");
       }
-      /* 请求在旧线路上发出、期间线路已切换：等 finally 里用新线路补拉一次 */
-      if (stale && !itemsRef.current.length) retryAfterLineChange = true;
+      /* 请求在旧线路或旧置顶集合上发出：等 finally 里按新作用域补拉一次 */
+      if (stale && (requestPinnedKey !== pinnedKeyRef.current || !itemsRef.current.length)) {
+        retryAfterScopeChange = true;
+      }
     } finally {
       loadingRef.current = false;
       if (!mounted.current) return;
       setLoading(false);
-      if (retryAfterLineChange && activeRef.current) {
+      if (retryAfterScopeChange && activeRef.current) {
         setDone(false);
         setError("");
         void load(1);
@@ -96,13 +187,13 @@ export default function Home({ active, bottomInset }: { active: boolean; bottomI
     }
   }, [done, toast]);
 
-  /* A never-visited/hidden home does no new work. New-line retries resume on return.
+  /* A never-visited/hidden home does no new work. New-line/pin retries resume on return.
      Loaded pages and an already mounted player remain intact across navigation. */
   useEffect(() => {
-    if (!active || items.length || loadingRef.current || attemptedEpoch.current === lineEpoch) return;
+    if (!active || items.length || loadingRef.current || attemptedScope.current === feedScope) return;
     void loadFeed();
     void load(1);
-  }, [active, lineEpoch, items.length, load]);
+  }, [active, feedScope, items.length, load]);
   useEffect(() => { if (active && items.length) setFeedMounted(true); }, [active, items.length]);
 
   const ids = useMemo(() => {

@@ -1,4 +1,5 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { platform } from "../api/api";
 
 type WebkitFullscreenDocument = Document & {
   webkitFullscreenElement?: Element | null;
@@ -56,4 +57,13 @@ export function setTauriWindowFullscreen(fullscreen: boolean): void {
   } catch {
     /* Detached or non-window test contexts ignore window fullscreen. */
   }
+}
+
+/**
+ * Windows WebView2 borderless windows frequently black-screen 16:9 landscape
+ * videos under HTML5 Element Fullscreen due to DirectComposition MPO hardware
+ * overlay promotion (#270). Prefer native Tauri window fullscreen instead.
+ */
+export function preferTauriWindowFullscreen(): boolean {
+  return platform === "windows" && typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }

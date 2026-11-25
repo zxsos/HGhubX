@@ -158,32 +158,34 @@ export function FeedPlayerShellChrome({
         />
       )}
 
-      {/* 移动端长按临时倍速指示条（仿 Telegram 顶部平滑胶囊，松手即恢复） */}
-      {!isDesktop && active && holdRate > 0 && (
-        <div
-          role="status"
-          aria-live="polite"
-          data-hold-speed-pill
-          className="mobile-hold-speed-pill"
-          style={{ top: rotated ? 18 : "calc(var(--sat, 0px) + 18px)" }}>
-          <span className="mobile-hold-speed-value">{holdRate}×</span>
-          {holdRate > 1 ? (
-            <>
-              <span className="mobile-hold-speed-chevrons" aria-hidden="true">
-                <span /><span />
-              </span>
-              <span className="mobile-hold-speed-steps" aria-hidden="true">
-                {HOLD_SPEED_STEPS.map(step => (
-                  <span key={step} data-active={step === holdRate || undefined} />
-                ))}
-              </span>
-              <span className="mobile-hold-speed-hint">{tr("左右滑调速")}</span>
-            </>
-          ) : (
-            <span className="mobile-hold-speed-hint">{tr("慢速播放")}</span>
-          )}
-        </div>
-      )}
+      {/* 移动端长按临时倍速指示条（0.5×~6× 连续加减速滑轨，无 1× 停顿，松手即恢复） */}
+      {!isDesktop && active && holdRate > 0 && (() => {
+        const holdMode = holdRate < 1 ? "slow" : "fast";
+        return (
+          <div
+            role="status"
+            aria-live="polite"
+            data-hold-speed-pill
+            data-hold-mode={holdMode}
+            className="mobile-hold-speed-pill"
+            style={{ top: rotated ? 18 : "calc(var(--sat, 0px) + 18px)" }}>
+            <span className="mobile-hold-speed-value">{holdRate}×</span>
+            <span className="mobile-hold-speed-chevrons" data-dir={holdMode} aria-hidden="true">
+              <span /><span />
+            </span>
+            <span className="mobile-hold-speed-steps" aria-hidden="true">
+              {HOLD_SPEED_STEPS.map((step, idx) => (
+                <span
+                  key={step}
+                  data-zone-gap={idx === 2 || undefined}
+                  data-active={step === holdRate || undefined}
+                />
+              ))}
+            </span>
+            <span className="mobile-hold-speed-hint">{tr("左右滑调速")}</span>
+          </div>
+        );
+      })()}
 
       {/* 移动端全屏进度条（横竖屏统一在底部突出显示，闲置隐藏时横拖画面自动唤起底部条） */}
       {!isDesktop && fs && (!idle || scrubbing) && (

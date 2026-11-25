@@ -1,12 +1,9 @@
 import { useMemo, useRef, useState, type MutableRefObject, type RefObject } from "react";
 import type { Detail, Episode, Post, User } from "../../shared/api/types";
 import { detailEpisodeCount } from "../../shared/model/favoriteProgress";
-import type { Toast } from "../../shared/model/store";
+import { ACTION_TOAST_SLOT, type Toast } from "../../shared/model/store";
 import type { VideoHandle } from "../playback";
 import { tr } from "../../shared/i18n";
-
-/* Action confirmations share the player hint slot so rapid taps replace instead of stacking. */
-const ACTION_TOAST_SLOT = "playback-hint";
 
 export type FeedMeta = {
   title: string;
@@ -43,20 +40,20 @@ type Args = {
   detail?: Detail;
   posts: Record<number, Post>;
   user: User | null;
-  setLoginOpen: (open: boolean) => void;
   follows: number[];
   isLiked: (id: number, ep: number, kind?: "video" | "post") => boolean;
   isFav: (id: number, kind?: "video" | "post") => boolean;
   setLiked: (kind: "video" | "post", id: number, ep: number, on: boolean) => Promise<void>;
   setCollected: (kind: "video" | "post", id: number, on: boolean, knownEpisodes?: number) => Promise<void>;
   setFollowing: (uid: number, on: boolean) => Promise<void>;
+  toggleFollowLocal: (uid: number) => boolean;
   actionPending: (key: string) => boolean;
   toast: (msg: string, icon?: Toast["icon"], tag?: string) => void;
 };
 
 export function useFeedActions({
   videoRef, mounted, actionContext, accountScope, lineEpoch, curId, curEp, kind, meta, detail, posts,
-  user, setLoginOpen, follows, isLiked, isFav, setLiked, setCollected, setFollowing, actionPending, toast,
+  user, follows, isLiked, isFav, setLiked, setCollected, setFollowing, toggleFollowLocal, actionPending, toast,
 }: Args) {
   const [heartBurst, setHeartBurst] = useState(0);
   const pendingActions = useRef(new Set<string>());
@@ -106,7 +103,11 @@ export function useFeedActions({
     const uid = meta.authorId > 0 ? meta.authorId : undefined;
     const pendingKey = `${accountScope}:${followActionKey}`;
     if (!uid || followPending || pendingActions.current.has(pendingKey)) return;
-    if (!user) { setLoginOpen(true); return; }
+    if (!user) {
+      const on = toggleFollowLocal(uid);
+      if (actionIsCurrent()) toast(on ? tr("已关注 {0}", meta.author) : tr("已取消关注"), on ? "ok" : "info", ACTION_TOAST_SLOT);
+      return;
+    }
     pendingActions.current.add(pendingKey);
     const on = !follows.includes(uid);
     try {

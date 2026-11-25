@@ -90,20 +90,27 @@
   移动沉浸全屏按设置 `fsIdleSecs`（`hghubx_app_v1` 内，0/3/5/10 秒，默认 3，0=不自动隐藏），
   单击画面切换显隐、双击仍是暂停/播放；暂停时屏幕中心显示播放图标，同时在同一 `playback-hint` toast 槽展示「第 X 集 / Y」，卡片随暂停图标同步显示，恢复播放、退出全屏、拖动预览、屏幕锁定或播放出错时同步收起；该卡片使用无 TTL 的 sticky 提示，不会在 2.2 秒后自行消失。桌面与内嵌全屏统一经
   `src/shared/lib/fullscreen.ts` 兼容标准与 `webkit` 前缀 Fullscreen API，不支持或被拒绝时
-  回退至应用内全屏并同步 Tauri 窗口全屏。桌面闲置隐藏（`.player-root.is-idle`）同时淡出
+  回退至应用内全屏并同步 Tauri 窗口全屏；Windows 桌面端 Tauri 宿主（`preferTauriWindowFullscreen`）
+  直接使用应用内全屏 + Tauri 原生窗口全屏（`html[data-desktop-fs="true"]`）并清除全屏态的
+  `transform`/`will-change`/`isolation`，规避 WebView2 无边框窗口下 16:9 横屏视频 HTML5 全屏触发
+  DirectComposition MPO 硬件叠加层黑屏（#270）。桌面闲置隐藏（`.player-root.is-idle`）同时淡出
   控制条、社交栏、左下信息、上下切换按钮与上下文页左上角标题栏（`.desktop-context-header`），
   并把媒体容器内的鼠标指针设为 `cursor: none`，移动鼠标由 `wake()` 恢复；锁定
   （`.player-root.is-locked`）同样隐藏左上角标题栏的按钮与文字。桌面原生/回退全屏由
   `useFeedViewport` 的 `fullscreen` 跟踪（不经过 `store.fs`）：进入全屏前先按当前条目重锚
-  `scrollTop` 并清掉待定滚动切换，全屏期间 `onScroll` 与重锚 effect 都跳过，避免容器高度
-  变化后按旧像素偏移切到别的剧（issue #180）。移动端 Feed 底部信息容器保持 `pointer-events: none`
+  `scrollTop` 并清掉待定滚动切换，全屏期间 `Feed` 隐藏非当前 `<section>` 并锁死纵向滚动、
+  `onScroll` 与重锚 effect 都认 `fs || fullscreen`，避免容器高度变化或 `scrollTop = 0`
+  落到空白首屏或切到别的剧（#180、#270）。移动端 Feed 底部信息容器保持 `pointer-events: none`
   （仅对详情按钮与进度条显式开启命中），避免跨宽布局盒遮挡右侧操作栏（如「全屏」）与画面手势。CSS 旋转舞台（`.fs-landscape`）上
   的分区判定/横拖定位/上下划切集/长按换挡都先经 `getHoldPoint` 把屏幕坐标换算回
   播放器坐标（rotate(90deg)：播放器 x=屏幕 dy、y=屏幕 -dx）。长按触发延迟 260ms，按播放器坐标
-  左右半屏切分：右半屏（`x >= w * 0.5`）触发 2× 加速并可横向滑动（每 68px 换挡 2×/3×/4×/6×），
-  左半屏触发 0.5× 慢放；长按期间顶部显示无 `backdrop-filter` 的只读倍速胶囊指示当前倍速与档位。
-  长按加速/减速只临时改变倍速，松手恢复原速度；不提供拖动到顶部胶囊的持久锁定，持久倍速统一通过
-  全屏倍速按钮或「更多」里的倍速选项设置。全屏 overlay 的 touch-action
+  左右半屏切分：左半屏起手 0.5× 减速、右半屏（`x >= w * 0.5`）起手 2× 加速，两者共享同一条
+  连续加减速滑轨（`HOLD_SPEED_STEPS = [0.5, 0.75, 1.5, 2, 3, 4, 6]`，去掉中间 `1×` 停顿档，每 52px 换一档）；
+  从加速区一直向左拖跨过屏幕中线（`w * 0.5 - 12px` 迟滞带）即刻无感切入减速区（`0.75×`→`0.5×`），
+  反向从减速区一直向右拖跨过中线（`w * 0.5 + 12px`）即刻无感切入加速区（`1.5×`→`2×`→`3×`→`4×`→`6×`），
+  全程无需松手或停顿。长按期间顶部显示无 `backdrop-filter` 的只读倍速胶囊指示当前倍速与 7 档轨道
+  （慢放/加速两态平滑过渡色标与箭头方向）。长按加速/减速只临时改变倍速，松手恢复原速度；不提供拖动到顶部胶囊
+  的持久锁定，持久倍速统一通过全屏倍速按钮或「更多」里的倍速选项设置。全屏 overlay 的 touch-action
   固定为 none，避免原生 pan-y 把视觉横滑取消掉。
 - 媒体错误：hls fatal 显示 `type/details/status`，原生错误走
   `mediaErrorMessage`；手动重试走同一个 `useProxyPlaybackRecovery` 路径。

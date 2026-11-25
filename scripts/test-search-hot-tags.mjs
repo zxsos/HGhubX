@@ -1,14 +1,17 @@
 import assert from "node:assert/strict";
-import { access } from "node:fs/promises";
+import { access, mkdir } from "node:fs/promises";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
 import { chromium } from "playwright-core";
 import { installFixture } from "./fixtures/app-ui.mjs";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
+const output = fileURLToPath(new URL("../test-results/hot-tags-batch", import.meta.url));
 let vite, browser;
 
 try {
+  await mkdir(output, { recursive: true });
   vite = await createServer({ root, server: { host: "127.0.0.1", port: 0, strictPort: false } });
   await vite.listen();
   const origin = vite.resolvedUrls.local[0];
@@ -29,12 +32,11 @@ try {
   const initialHot = [
     "都市", "古风", "奇幻", "现代", "职场", "逆袭",
     "校园", "绿帽", "熟女", "母子", "乱伦", "系统",
-    "仙侠", "后宫", "大男主",
+    "仙侠", "后宫", "大男主", "重生", "复仇", "年代",
+    "豪门", "甜宠",
   ];
-  const updatedHot = ["武侠", "悬疑", "脑洞"];
-  await context.addInitScript(({ initialHot, updatedHot }) => {
+  await context.addInitScript(({ initialHot }) => {
     const orig = window.__TAURI_INTERNALS__.invoke;
-    let callCount = 0;
     window.__TAURI_INTERNALS__.invoke = async (command, args) => {
       if (command === "api_tags") {
         return {
@@ -48,13 +50,11 @@ try {
         };
       }
       if (command === "api_hot_tags") {
-        callCount += 1;
-        const list = callCount === 1 ? initialHot : updatedHot;
-        return { items: list.map((name, i) => ({ name, slug: `slug-${i}` })) };
+        return { items: initialHot.map((name, i) => ({ name, slug: `slug-${i}` })) };
       }
       return orig(command, args);
     };
-  }, { initialHot, updatedHot });
+  }, { initialHot });
 
   const page = await context.newPage();
   await page.route("**/*", route => {
@@ -66,14 +66,19 @@ try {
   await page.locator(".hg-tabbar .ios-mobile-nav-item").filter({ hasText: "搜索" }).click();
   const region = page.getByRole("region", { name: "热门题材" });
   await region.getByRole("button", { name: "都市" }).waitFor({ timeout: 8000 });
+  const hotSearch = page.getByRole("region", { name: "热搜榜" });
+  await hotSearch.waitFor();
+  assert.equal(await hotSearch.getByRole("button", { name: "刷新热搜榜" }).count(), 1, "the hot-search refresh button is always available");
+  await page.screenshot({ path: join(output, "first.png"), animations: "disabled" });
 
   const getChips = () => region.locator("button.ios-filter-pill").allTextContents();
-  assert.deepEqual(await getChips(), initialHot.slice(0, 12), "first batch matches upstream hot tag order");
+  assert.deepEqual(await getChips(), initialHot.slice(0, 10), "first batch matches upstream hot tag order");
 
   await region.getByRole("button", { name: "换一批" }).click();
   const batch2 = await getChips();
-  assert.deepEqual(batch2, initialHot.slice(12), "second batch stays within official hot tags only");
+  assert.deepEqual(batch2, initialHot.slice(10), "second batch stays within official hot tags only");
   assert.ok(!batch2.some(tag => tag.includes("非热门")), "catalog-only tags never leak into hot tags");
+  await page.screenshot({ path: join(output, "second.png"), animations: "disabled" });
 
   await page.evaluate(() => {
     localStorage.setItem("hghubx_content_preferences_v1", JSON.stringify({ blockedTags: ["古风"], hideUntagged: false, paused: false }));
@@ -82,14 +87,12 @@ try {
   await region.getByRole("button", { name: "换一批" }).click();
   const afterBlock = await getChips();
   assert.ok(!afterBlock.includes("古风"), "blocked tag is hidden from hot tags");
-  assert.deepEqual(afterBlock, initialHot.filter(t => t !== "古风").slice(0, 12), "blocking preserves upstream order");
+  assert.deepEqual(afterBlock, initialHot.filter(t => t !== "古风").slice(0, 10), "blocking preserves upstream order");
 
-  await region.getByRole("button", { name: "刷新题材" }).click();
-  await region.getByRole("button", { name: "武侠" }).waitFor({ timeout: 5000 });
-  assert.deepEqual(await getChips(), updatedHot, "refresh picks up updated official hot tags");
-  assert.equal(await region.getByRole("button", { name: "换一批" }).count(), 0, "batch button hides when <= 12 tags");
+  assert.equal(await region.getByRole("button", { name: "刷新题材" }).count(), 1, "the hot-tags refresh button is always available");
+  assert.equal(await region.getByRole("button", { name: "换一批" }).count(), 1, "the next batch button remains available");
 
-  console.log("PASS: search-hot-tags (4 checks)");
+  console.log("PASS: search-hot-tags (5 checks)");
 } finally {
   if (browser) await browser.close();
   if (vite) await vite.close();

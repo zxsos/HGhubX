@@ -36,7 +36,10 @@ Feed 负责列表播放页的条目位置、详情/帖子读取、标签门、�
 
 ## 主运行时路径
 
-1. Feed 使用 `api_feed`/分类/搜索/list page 传入的 `videoIds`，不自行重新请求列表。
+1. Feed 使用 `api_feed`/分类/搜索/list page 传入的 `videoIds`，不自行重新请求列表；
+   首页 [`src/features/feed/Home.tsx`](../../src/features/feed/Home.tsx) 在内容偏好 `pinnedTags`
+   非空时，按并发上限 4 从置顶标签分批调用 `api.tagVideos(tag, page, 30)` 去重并随机洗牌推送，
+   置顶标签变化时重置首页列表并丢弃旧作用域在途结果；未置顶任何标签时保持原有 `api.feed` 规则（#269）。
    当前条目由 `position` 与 `effectiveVideoIds` 锚定；列表变化时优先保持正在播放的 id，
    找不到才取相邻可见项。
 2. 详情读取走 `useFeedDetails.requestDetail(id)`。single-flight key 是
@@ -112,7 +115,7 @@ Feed 负责列表播放页的条目位置、详情/帖子读取、标签门、�
 - 搜索页热门题材/标签读取（`api_hot_tags`，[`src-tauri/src/search_hot.rs`](../../src-tauri/src/search_hot.rs) 的 `parse_hot_tags` / `fetch_hot_tags`）直接请求干净路径 `{base}/`，按 DOM 顺序解析 `section.hg-home-popular-tags a.hg-tagrow__item` 并校验同源 `/tag/{slug}/` 路径；前端 [`src/features/search/SearchTags.tsx`](../../src/features/search/SearchTags.tsx) 严格保留官网热门标签集合与顺序，不混入全量 `/api/tags` 中的非热门标签，屏蔽过滤与每批 12 个「换一批」均只在官网热门集合内生效。
 - 搜索页复位（[`src/features/search/Search.tsx`](../../src/features/search/Search.tsx)）：提交查询后，点底栏当前「搜索」tab 与点输入框右侧 X 等效，统一清空查询与结果、回到热搜/历史态并滚回顶部；底栏触发不重新聚焦输入框，避免大屏单手操作时软键盘再次弹出。
 - 标签短剧列表（`api_tag_videos`）默认向 `/api/videos/tag/{tag}` 显式传 `sort=latest`（仅显式请求 `"hot"` 时用 `sort=hot`），使标准版标签页与 TV 端标签筛选同官网 `/tag/{slug}/` 默认 `latest` 排序保持一致。
-- 标签聚合页（`TagsPage`）顶部提供「置顶标签」板块；长按标签 600ms 切换置顶，再次长按取消，点击仍进入对应标签结果页。置顶项保存到内容偏好 `pinnedTags`（最多 24 个，按最近置顶优先），刷新或重启后保留；普通点按不会误置顶，横向拖动超过 10px 会取消长按。置顶板内的标签只显示名称，不使用高亮边框；分类分组内的已置顶标签保留高亮外框，但不再追加 pin 图标。
+- 标签聚合页（`TagsPage`）顶部提供「置顶标签」板块；长按标签 600ms 切换置顶，再次长按取消，点击仍进入对应标签结果页。置顶项保存到内容偏好 `pinnedTags`（最多 24 个，按最近置顶优先），刷新或重启后保留；普通点按不会误置顶，横向拖动超过 10px 会取消长按。置顶板内的标签只显示名称，不使用高亮边框；分类分组内的已置顶标签保留高亮外框，但不再追加 pin 图标。分类分组展示经 [`src/features/discover/useNonEmptyTags.ts`](../../src/features/discover/useNonEmptyTags.ts) 过滤确认无作品的空标签（优先读接口 `video_count`，缺失时以并发上限 5 调用 `api.tagVideos(name, 1, 1)` 轻量探测，结果按 `lineEpoch` 与 10 分钟 TTL 缓存，手动刷新清空当前代次缓存）；仅确认 `pagination.total === 0` 且无条目时隐藏标签及全空分组，探测失败或总数缺失时保留展示（未知不作空处理，#271）。搜索页热门标签不受影响。
 - 标签结果页（`TagPage`）标题栏右侧提供同一置顶开关：pin 占原搜索按钮槽位，与左侧标签图标垂直居中对齐；未置顶和已置顶都使用同款圆形强调底，仅针尖朝向不同（未置顶斜向、置顶后针尖向下）。原搜索图标与页脚搜索入口已移出该页，从首页视频标签、详情页标签等直接进入时也能置顶。
 - 吃瓜频道最新列表（`api_post_category("remen-chigua", page, size, "latest" | "new")`）优先抓取并解析官网服务端渲染吃瓜页 `/blog/gossip/` 与 `/blog/gossip/{page}/`（[`src-tauri/src/channel_page.rs`](../../src-tauri/src/channel_page.rs) 的 `parse_gossip_posts_html` / `fetch_gossip_posts`），与官网 `created_at` 倒序及实时阅读数保持一致，并发请求邻近窗口 `/api/posts/category/remen-chigua` 补全 `tags`、`created_at` 与 `publish_time` 供 `FilteredContent` 标签过滤使用；`Category` 首屏预览（`page=1 && size < 12`）按 `size` 截断，`PostsPage` 分页保留官网整页 12 条防止跨页跳项；抓取或解析失败时自动回退既有 JSON 接口。
 - 分页列表（频道页、吃瓜列表、专题/标签详情、关注/创作者作品与全局/栏目搜索）统一使用 [`src/shared/lib/useAutoLoadMore.ts`](../../src/shared/lib/useAutoLoadMore.ts)（`IntersectionObserver` + 滚动位置检查）在接近底部哨兵时自动加载下一页，正常态不再展示手动「加载更多」按钮；开启标签屏蔽时同样保持上滑自动加载，仅当连续 2 页过滤后均无可见条目（`AUTO_LOAD_EMPTY_PAGE_LIMIT = 2`）才暂停自动续载并显示手动「加载更多」兜底按钮，点击手动加载或调整筛选会重置计数。

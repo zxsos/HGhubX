@@ -290,7 +290,7 @@ jobs:
           if-no-files-found: error
 
   linux:
-    name: Linux (deb)
+    name: Linux (deb / rpm)
     needs: [preflight]
     runs-on: ubuntu-22.04
     timeout-minutes: 60
@@ -317,7 +317,7 @@ jobs:
         with:
           workspaces: src-tauri -> target
           key: linux
-      - name: 构建（deb）
+      - name: 构建（deb / rpm）
         run: pnpm tauri build
       - name: 收集产物
         shell: bash
@@ -325,6 +325,7 @@ jobs:
           set -euo pipefail
           mkdir -p artifacts
           cp src-tauri/target/release/bundle/deb/*.deb "artifacts/HGhubX_${{ needs.preflight.outputs.version }}_amd64.deb"
+          cp src-tauri/target/release/bundle/rpm/*.rpm "artifacts/HGhubX_${{ needs.preflight.outputs.version }}_x86_64.rpm"
           ls -lh artifacts
       - uses: actions/upload-artifact@v7
         with:

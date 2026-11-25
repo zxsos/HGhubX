@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { registerOverlayBack } from "../../shared/lib/back";
 import {
   exitDocumentFullscreen, getFullscreenElement, onFullscreenChange,
-  requestElementFullscreen, setTauriWindowFullscreen,
+  preferTauriWindowFullscreen, requestElementFullscreen, setTauriWindowFullscreen,
 } from "../../shared/lib/fullscreen";
 import { useFsOrientation } from "../playback/useFsOrientation";
 import type { VideoHandle } from "../playback";
@@ -116,13 +116,13 @@ export function useFeedViewport({
     // The scroll container is recreated after the tag gate/one-time prompt.
     // Anchor by content ID before paint, including a nonzero starting position.
     if (boxRef.current) {
-      const top = index * (boxRef.current.clientHeight || 1);
+      const top = (fs || fullscreen) ? 0 : index * (boxRef.current.clientHeight || 1);
       if (Math.abs(boxRef.current.scrollTop - top) > 1) {
         anchoredScroll.current = top;
         boxRef.current.scrollTop = top;
       }
     }
-  }, [boxRef, effectiveVideoIds, index, position.id, position.index, allowed, active]);
+  }, [boxRef, effectiveVideoIds, index, position.id, position.index, allowed, active, fs, fullscreen]);
 
   const swipeTimer = useRef(0);
   const resolveSwipe = useCallback((target: number) => {
@@ -310,6 +310,12 @@ export function useFeedViewport({
     wake();
     keepAlive();
     const token = ++fsTokenRef.current;
+    if (isDesktop && preferTauriWindowFullscreen()) {
+      fallbackFsRef.current = true;
+      setFallbackFs(true);
+      setTauriWindowFullscreen(true);
+      return;
+    }
     void (async () => {
       try {
         await requestElementFullscreen(el);
@@ -394,7 +400,9 @@ export function useFeedViewport({
     const syncScroll = () => {
       const box = boxRef.current;
       if (!box || fs || fullscreen) return;
-      box.scrollTop = index * (box.clientHeight || 1);
+      const top = index * (box.clientHeight || 1);
+      anchoredScroll.current = top;
+      box.scrollTop = top;
     };
     syncScroll();
     const raf = requestAnimationFrame(syncScroll);

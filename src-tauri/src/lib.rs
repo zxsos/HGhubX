@@ -1,5 +1,6 @@
 mod api;
 mod apple_proxy;
+mod authors;
 mod cache;
 mod channel_page;
 mod edge_crypto;
@@ -276,6 +277,7 @@ pub fn run() {
             api::feed::api_user,
             api::feed::api_user_stats,
             api::feed::api_user_videos,
+            authors::api_popular_authors,
             api::video::api_video,
             api::video::api_play,
             api::video::api_comments,

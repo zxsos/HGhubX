@@ -1,7 +1,11 @@
 import { useEffect, useRef, useState, type Dispatch, type MutableRefObject, type PointerEvent as ReactPointerEvent, type RefObject, type SetStateAction } from "react";
 import type { PlaybackClock, VideoHandle } from "../playback";
 import type { Toast } from "../../shared/model/store";
-import { createHoldSpeed, getHoldPoint, getHoldZone, shiftHoldSpeed, HOLD_DELAY_MS, type HoldRect, type HoldRotation, type HoldSpeed, type HoldZone } from "./mobileHold";
+import {
+  createHoldSpeed, getHoldPoint, getHoldZone, shiftHoldSpeed,
+  HOLD_DELAY_MS, HOLD_FAST_START, HOLD_SLOW_START,
+  type HoldRect, type HoldRotation, type HoldSpeed, type HoldZone,
+} from "./mobileHold";
 import { resolveFullscreenEpisodeSwipe } from "./fullscreenEpisodeSwipe";
 import type { FeedPanel, PinchState } from "./useFeedViewport";
 import { tr } from "../../shared/i18n";
@@ -124,8 +128,10 @@ export function useFeedTouchGestures({
           return;
         }
         holdRef.current = true;
-        if (cur.zone === "slow") setHoldSlow(true);
-        else { cur.speed = createHoldSpeed(cur.x); setHoldSpeed(cur.speed.rate); }
+        const startRate = cur.zone === "slow" ? HOLD_SLOW_START : HOLD_FAST_START;
+        cur.speed = createHoldSpeed(cur.x, startRate);
+        setHoldSlow(false);
+        setHoldSpeed(cur.speed.rate);
         try { navigator.vibrate?.(25); } catch { /* ignore */ }
       }, HOLD_DELAY_MS) as unknown as number,
     };
@@ -151,10 +157,11 @@ export function useFeedTouchGestures({
     if (!g || isDesktop) return;
     const dx = point.x - g.x, dy = point.y - g.y;
 
-    /* 长按中：加速区左右滑换挡；减速/中心区不换挡 */
+    /* 长按中：不松手从加速区一直拖到减速区（及反向）零停顿无感跨区切换 */
     if (g.mode === "hold") {
-      if (g.zone !== "fast") return;
-      const step = g.speed && shiftHoldSpeed(g.speed, point.x); if (step) setHoldSpeed(step);
+      if (g.zone === "menu") return;
+      const step = g.speed && shiftHoldSpeed(g.speed, point.x, point.width || g.width);
+      if (step !== null && step !== undefined) setHoldSpeed(step);
       return;
     }
 

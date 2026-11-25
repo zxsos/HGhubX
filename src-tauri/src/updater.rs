@@ -313,13 +313,47 @@ fn asset_rank(name: &str) -> u8 {
         if n.ends_with(".dmg") { 3 } else { 0 }
     } else if cfg!(target_os = "ios") {
         if n.ends_with(".ipa") { 3 } else { 0 }
-    } else if cfg!(target_os = "linux") && n.ends_with(".deb") {
-        3
-    } else if cfg!(target_os = "linux") && n.ends_with(".appimage") {
-        2
+    } else if cfg!(target_os = "linux") {
+        let prefer_rpm = linux_prefers_rpm();
+        if n.ends_with(".rpm") {
+            if prefer_rpm { 4 } else { 2 }
+        } else if n.ends_with(".deb") {
+            if prefer_rpm { 3 } else { 4 }
+        } else if n.ends_with(".appimage") {
+            2
+        } else {
+            0
+        }
     } else {
         0
     }
+}
+
+fn linux_prefers_rpm() -> bool {
+    if !cfg!(target_os = "linux") {
+        return false;
+    }
+    if let Ok(content) = std::fs::read_to_string("/etc/os-release") {
+        for line in content.lines() {
+            let trimmed = line.trim();
+            let value = trimmed
+                .strip_prefix("ID=")
+                .or_else(|| trimmed.strip_prefix("ID_LIKE="));
+            if let Some(raw) = value {
+                let lower = raw.trim_matches('"').to_ascii_lowercase();
+                if lower.split_whitespace().any(|tok| {
+                    matches!(
+                        tok,
+                        "fedora" | "rhel" | "centos" | "rocky" | "almalinux" | "suse" | "opensuse"
+                    )
+                }) {
+                    return true;
+                }
+            }
+        }
+    }
+    std::path::Path::new("/usr/bin/rpm").exists()
+        && !std::path::Path::new("/usr/bin/dpkg").exists()
 }
 
 fn tv_asset_rank(name: &str) -> u8 {

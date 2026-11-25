@@ -11,6 +11,7 @@ import { FilteredContent } from "../../shared/ui/FilteredContent";
 import { Empty } from "../../shared/ui/ui";
 import { useSearchResults } from "./useSearchResults";
 import { SearchTags } from "./SearchTags";
+import { SearchAuthors } from "../authors/SearchAuthors";
 import { SearchHistory } from "./SearchHistory";
 import { useRankSwipe } from "./useRankSwipe";
 import { useTabSwipe } from "../../shared/ui/hooks/useTabSwipe";
@@ -91,7 +92,7 @@ export default function Search({ active, wide }: { active: boolean; wide: boolea
       setHotVideos([]);
       setHotError(null);
     }
-    // 切换主导航时短暂复用榜单；手动刷新或切线路后重新获取官网内容。
+    // Reuse the ranking briefly when switching tabs; refresh it after the short cache expires.
     if (active && (epochChanged || Date.now() - hotLoadedAt.current > 60_000)) void refreshHot(epochChanged);
   }, [active, lineEpoch]);
 
@@ -276,6 +277,8 @@ export default function Search({ active, wide }: { active: boolean; wide: boolea
             )}
 
             <SearchTags key={JSON.stringify([lineEpoch, accountScope])} active={active} />
+
+            <SearchAuthors key={lineEpoch} active={active} />
           </>
         ) : (
           <>

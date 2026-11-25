@@ -50,7 +50,7 @@ impl Api {
         edge(&origin, "POST", path, body, token.as_deref()).await
     }
 
-    async fn get(&self, path: &str) -> Result<Value, String> {
+    pub(crate) async fn get(&self, path: &str) -> Result<Value, String> {
         let origin = base();
         let token = self.session.token(&origin).filter(|_| {
             !crate::network_policy::strict_security() || crate::net::trusted_auth_origin(&origin)

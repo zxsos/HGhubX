@@ -144,6 +144,23 @@ try {
   await sleep(2400);
   await page.waitForFunction(() => document.querySelectorAll(".a-toast").length === 0);
 
+  // ---- 契约：未登录也能关注；本地状态来回切换，不打开登录框 ----
+  await page.evaluate(() => window.feedActionProbe.follow());
+  await page.waitForFunction(() => document.querySelector(".a-toast")?.textContent?.includes("已关注 作者"));
+  assert.equal(await toastCount(), 1, "guest follow should show exactly one toast");
+  assert.equal(await page.evaluate(() => window.uiFeedbackProbe.toasts()[0]?.tag), "playback-hint");
+  await page.evaluate(() => window.feedActionProbe.follow());
+  await page.waitForFunction(() => document.querySelector(".a-toast")?.textContent?.includes("已取消关注"));
+  report.passed.push("guest-follow-without-login");
+  await page.waitForFunction(() => document.querySelectorAll(".a-toast").length === 0);
+  // rapid repeated follow taps must update one tagged toast instead of stacking three cards.
+  await page.evaluate(() => { window.feedActionProbe.follow(); window.feedActionProbe.follow(); window.feedActionProbe.follow(); });
+  await page.waitForFunction(() => document.querySelector(".a-toast")?.textContent?.includes("已关注 作者"));
+  assert.equal(await toastCount(), 1, "three rapid guest follows should keep one toast");
+  assert.equal(await page.evaluate(() => window.uiFeedbackProbe.toasts()[0]?.tag), "playback-hint");
+  report.passed.push("guest-follow-rapid-single-slot");
+  await page.waitForFunction(() => document.querySelectorAll(".a-toast").length === 0);
+
   // ---- 契约 1：点赞/收藏连续触发共用 playback-hint 单槽 ----
   await page.evaluate(async () => {
     await window.feedActionProbe.fav();

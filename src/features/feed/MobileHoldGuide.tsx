@@ -90,7 +90,7 @@ function GuideContent({ target, bottomInset, onClose }: Omit<Props, "open">) {
       </div>
     </>}
     <div className="mobile-hold-guide-footer">
-      <p>{tr("长按右半屏 2× 倍速 · 左右滑顺滑换挡")}</p>
+      <p>{tr("按住不松手 · 左右滑可在 0.5× ~ 6× 间无感切换")}</p>
       <p>{tr("双击暂停播放")}</p>
       <Button className="mobile-hold-guide-done" onClick={onClose} data-autofocus>{tr("知道了")}</Button>
     </div>

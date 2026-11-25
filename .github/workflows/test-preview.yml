@@ -368,7 +368,7 @@ jobs:
           if-no-files-found: error
 
   linux:
-    name: Test · Linux (deb)
+    name: Test · Linux (deb / rpm)
     needs: [prepare]
     if: >-
       needs.prepare.outputs.should_build == 'true' &&
@@ -403,7 +403,7 @@ jobs:
         with:
           workspaces: src-tauri -> target
           key: linux
-      - name: 构建（deb）
+      - name: 构建（deb / rpm）
         run: pnpm tauri build
       - name: 收集产物
         shell: bash
@@ -411,6 +411,7 @@ jobs:
           set -euo pipefail
           mkdir -p artifacts
           cp src-tauri/target/release/bundle/deb/*.deb "artifacts/HGhubX_${{ steps.ver.outputs.version }}_amd64.deb"
+          cp src-tauri/target/release/bundle/rpm/*.rpm "artifacts/HGhubX_${{ steps.ver.outputs.version }}_x86_64.rpm"
           ls -lh artifacts
       - uses: actions/upload-artifact@v7
         with:

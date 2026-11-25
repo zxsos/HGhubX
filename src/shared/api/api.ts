@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { tracePlayback } from "../diagnostics/playbackDiagnostics";
 import type {
-  AccountHistoryPage, AccountIdentity, AccountSnapshot, CommentPage, Detail, HotSearchVideo, HotTagItem, Paged, PlayInfo, Post, PostCategory, RankItem, TagGroup, TopicCard, TopicDetail, User, UserProfile, VideoCard,
+  AccountHistoryPage, AccountIdentity, AccountSnapshot, CommentPage, Detail, HotSearchVideo, HotTagItem, Paged, PlayInfo, Post, PostCategory, RankItem, TagGroup, TopicCard, TopicDetail, User, UserDirectory, UserProfile, VideoCard,
 } from "./types";
 import { tr } from "../i18n";
 
@@ -59,7 +59,7 @@ const READ_ONLY = new Set([
   "api_me", "api_feed", "api_original_videos", "api_category", "api_rank", "api_search",
   "api_posts", "api_post", "api_post_comments", "api_video", "api_play", "api_comments",
   "api_topics", "api_topic", "api_tags", "api_hot_tags", "api_tag_videos", "api_search_hot",
-  "api_post_playback", "api_post_categories", "api_post_category", "api_post_tag", "api_related", "api_following", "api_user", "api_user_stats", "api_user_videos",
+  "api_post_playback", "api_post_categories", "api_post_category", "api_post_tag", "api_related", "api_following", "api_user", "api_user_stats", "api_user_videos", "api_popular_authors",
 ]);
 /** 给自动选线用的观察点。api.ts 不反向依赖 autoLine，避免循环 import。 */
 export type NetObserver = (r: { ok: boolean; cmd: string; msg?: string; networkish?: boolean }) => void;
@@ -183,6 +183,7 @@ export const api = {
     call<Paged<Post>>("api_post_category", { route, page, size, sort: sort ?? null }),
   related: (id: number) => call<{ items: VideoCard[] }>("api_related", { id }),
   following: (page = 1, size = 20) => call<Paged<VideoCard>>("api_following", { page, size }),
+  popularAuthors: (page = 1, size = 100) => call<UserDirectory>("api_popular_authors", { page, size }),
   user: (id: number) => call<UserProfile>("api_user", { id }),
   userStats: (id: number) => call<{ user_id: number; like_count: number; following: number; followers: number; video_count: number; post_count: number }>("api_user_stats", { id }),
   userVideos: (id: number, page = 1, size = 20) => call<Paged<VideoCard>>("api_user_videos", { id, page, size }),

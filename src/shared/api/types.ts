@@ -148,6 +148,7 @@ export type TagItem = {
   is_hot?: boolean;
   sort?: number;
   trend?: number;
+  video_count?: number;
 };
 
 export type TagGroup = {
@@ -177,6 +178,8 @@ export type UserProfile = {
   user_type?: string;
   counts?: Record<string, number>;
 };
+
+export type UserDirectory = { items: UserProfile[]; pagination?: Pagination };
 
 export type User = {
   id: number;

@@ -119,6 +119,7 @@ try {
   });
   await detail.goto(new URL("/tests/tag-pin-detail.html?tag=都市", origin).href, { waitUntil: "networkidle" });
   const pinButton = detail.getByRole("button", { name: "置顶此标签" });
+  const pinControl = detail.locator(".tag-page-pin");
   await pinButton.waitFor();
   assert.equal(await detail.getByRole("button", { name: "搜索短剧" }).count(), 0, "tag result header must replace search with pin");
   const titleBox = await detail.getByRole("heading", { name: "都市" }).boundingBox();
@@ -134,19 +135,28 @@ try {
   assert(["none", "matrix(1, 0, 0, 1, 0, 0)"].includes(await pinIcon.evaluate(el => getComputedStyle(el).transform)), "unpinned header pin should stay diagonal");
   await detail.screenshot({ path: fileURLToPath(new URL("tag-page-pin-unpinned.png", output)), animations: "disabled" });
 
-  await pinButton.click();
+  for (let click = 0; click < 3; click += 1) await pinControl.click();
   await detail.getByRole("button", { name: "取消置顶此标签" }).waitFor();
   await detail.waitForTimeout(250);
-  const pinnedLook = await pinButton.evaluate(el => ({ background: getComputedStyle(el).backgroundColor, color: getComputedStyle(el).color }));
+  const pinnedLook = await pinControl.evaluate(el => ({ background: getComputedStyle(el).backgroundColor, color: getComputedStyle(el).color }));
   const pinnedTransform = await pinIcon.evaluate(el => getComputedStyle(el).transform);
   assert(pinnedTransform.includes("-0.707107"), "pinned header pin should rotate to point down");
   assert.deepEqual(pinnedLook, unpinnedLook, "pinned state should only change the pin orientation");
+  assert.equal(await detail.locator(".a-toast").count(), 1, "rapid pin taps must replace the same toast slot");
+  assert.equal((await detail.locator(".a-toast").innerText()).trim(), "已置顶标签：都市", "the remaining toast must describe the final pin state");
   report.checks.push("header pin keeps the circular accent treatment and rotates to point down when pinned");
+  report.checks.push("rapid pin taps replace one toast instead of stacking");
   assert.deepEqual(await detail.evaluate(() => (JSON.parse(localStorage.getItem("hghubx_content_preferences_v1") || "{}").pinnedTags || [])), ["都市"]);
   await detail.screenshot({ path: fileURLToPath(new URL("tag-page-pin.png", output)), animations: "disabled" });
   report.checks.push("pinning from a direct tag page persists the tag");
 
+  await detail.evaluate(() => window.tagPinToastProbe.toast("播放提示占位", "info", "playback-hint"));
+  assert.equal(await detail.locator(".a-toast").count(), 1, "pin and playback hints must share one toast slot");
+  assert.equal((await detail.locator(".a-toast").innerText()).trim(), "播放提示占位", "a later playback hint must replace the pin toast");
+  report.checks.push("pin and playback hints share one toast slot");
+
   await detail.getByRole("button", { name: "取消置顶此标签" }).click();
+  await detail.waitForFunction(() => document.querySelector(".a-toast")?.textContent?.includes("已取消置顶：都市"));
   assert.deepEqual(await detail.evaluate(() => (JSON.parse(localStorage.getItem("hghubx_content_preferences_v1") || "{}").pinnedTags || [])), []);
   report.checks.push("pinning again from the tag page unpins it");
 

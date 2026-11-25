@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Loader } from "../../shared/ui/ios/effects";
 import { api } from "../../shared/api/api";
 import type { HotTagItem } from "../../shared/api/types";
 import { useContentPreferences } from "../../shared/model/contentPreferences";
 import { useStore } from "../../shared/model/store";
 import { IFireF, IRefresh } from "../../shared/ui/icons";
 import { Button, Surface } from "../../shared/ui/ios/controls";
-import { Loader } from "../../shared/ui/ios/effects";
 import { tr } from "../../shared/i18n";
 
-const BATCH_SIZE = 12;
+const BATCH_SIZE = 10;
 
 /** Use the official site's curated popular tags in upstream order. */
 export function SearchTags({ active }: { active: boolean }) {
@@ -74,9 +74,9 @@ export function SearchTags({ active }: { active: boolean }) {
       {loading || tags === null ? tr("正在加载题材…") : totalLoaded > 0 ? tr("热门题材均已屏蔽，可在内容偏好中调整") : tr("暂无可用标签")}
     </p>}
     <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2">
-      <Button onClick={() => void load()} disabled={loading} aria-label={error ? tr("重试加载题材") : tr("刷新题材")}
+      <Button onClick={() => void load()} disabled={loading} aria-label={tr("刷新题材")}
         className="-ml-2 px-2 min-h-9 inline-flex items-center gap-1 text-[12px] text-mut pressable">
-        {loading ? <Loader className="w-3 h-3" /> : <IRefresh size={13} />}{loading ? tr("加载中…") : error ? tr("重试") : tr("刷新")}
+        {loading ? <Loader className="w-3 h-3" /> : <IRefresh size={13} />}{loading ? tr("加载中…") : tr("刷新")}
       </Button>
       {count > BATCH_SIZE && <Button onClick={() => setBatch(value => (value + 1) % batchCount)}
         className="-mr-2 px-2 min-h-9 inline-flex items-center justify-end text-[12px] text-primary pressable">{tr("换一批")}</Button>}

@@ -38,6 +38,7 @@ export type Page =
   | { kind: "topic"; key: string; slug: string; name: string }
   | { kind: "tags"; key: string }
   | { kind: "tag"; key: string; tag: string; name: string }
+  | { kind: "authors"; key: string }
   | { kind: "following"; key: string }
   | { kind: "user"; key: string; id: number; name?: string };
 
@@ -52,6 +53,7 @@ export type PageInput =
   | { kind: "topic"; slug: string; name: string }
   | { kind: "tags" }
   | { kind: "tag"; tag: string; name: string }
+  | { kind: "authors" }
   | { kind: "following" }
   | { kind: "user"; id: number; name?: string };
 
@@ -64,6 +66,9 @@ export type Toast = {
   /** 同 tag 的 toast 原地替换（如 playback-hint 统一承载播放状态提示），快速触发不堆叠；无 tag 正常堆叠。 */
   tag?: string;
 };
+
+/** Shared slot for transient action and playback hints; same-tag toasts replace in place. */
+export const ACTION_TOAST_SLOT = "playback-hint";
 
 /** 观看记录：看到第几集、第几秒（`dur` 用来判断是否已看完） */
 export type WatchProgress = { id: number; ep: number; t: number; dur: number; at: number };
