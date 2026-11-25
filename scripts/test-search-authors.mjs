@@ -46,6 +46,7 @@ try {
   const region = page.getByRole("region", { name: "热门作者" });
   await region.getByRole("button", { name: "全部作者 ›" }).waitFor({ timeout: 8000 });
   const topChips = region.locator("button[data-author-id]");
+  await topChips.first().waitFor();
   assert.equal(await topChips.count(), 10, "search page shows the first ten of the top twenty authors");
   assert.ok((await topChips.first().innerText()).includes("都市阿城"), "top author follows follower-count order");
   assert.ok(!(await topChips.first().innerText()).includes("万"), "search author chips hide follower counts");
@@ -61,12 +62,17 @@ try {
   assert.ok((await topChips.first().innerText()).includes("脑洞小鹿"), "the next batch starts at the eleventh author");
   await page.screenshot({ path: join(output, "search-hot-authors-batch2.png"), animations: "disabled" });
 
+  const directoryCalls = await page.evaluate(() => window.__AUTHOR_DIRECTORY_CALLS__());
   await region.getByRole("button", { name: "全部作者 ›" }).click();
   await page.getByRole("heading", { name: "作者", exact: true }).waitFor();
   const authorsPage = page.locator(".ios-page").filter({ has: page.getByRole("heading", { name: "作者", exact: true }) });
   const allChips = authorsPage.locator("button[data-author-id]");
   await allChips.first().waitFor();
-  assert.equal(await allChips.count(), 24, "all-authors page shows the full directory");
+  assert.equal(await allChips.count(), 50, "all-authors page stops after fifty authors");
+  assert.equal(await authorsPage.locator("[data-author-total]").getAttribute("data-author-total"), "50", "the header reports the fifty loaded authors");
+  assert.ok((await allChips.first().innerText()).includes("150万"), "author chips show the follower count");
+  assert.ok((await allChips.nth(1).innerText()).includes("147.5万"), "authors stay ordered by follower count");
+  await page.screenshot({ path: join(output, "all-authors.png"), animations: "disabled" });
 
   const first = allChips.first();
   const box = await first.boundingBox();
@@ -80,9 +86,10 @@ try {
   await board.waitFor();
   assert.equal(await board.getByRole("button", { name: /都市阿城/ }).count(), 1, "long press follows the author and adds the followed board");
   assert.ok((await board.innerText()).includes("共 1 位"), "followed count updates");
-  assert.ok(!(await board.locator(".tag-pin-pill").innerText()).includes("120万"), "followed chip hides the follower count");
+  assert.ok(!(await board.locator(".tag-pin-pill").innerText()).includes("150万"), "followed chips keep only the author name");
   const followedChip = authorsPage.locator('button[data-author-id="100"]').last();
   assert.equal(await followedChip.getAttribute("data-following"), "true", "author chip reflects the followed state");
+  await page.waitForTimeout(2200);
   await page.screenshot({ path: join(output, "all-authors-followed.png"), animations: "disabled" });
 
   const boardChip = board.locator('button[data-author-id="100"]');
@@ -95,7 +102,28 @@ try {
   await page.waitForTimeout(200);
   assert.equal(await board.count(), 0, "long press again unfollows the author and removes the board");
 
-  console.log("PASS: search-authors (13 checks)");
+  await page.waitForFunction(() => window.__AUTHOR_DIRECTORY_CALLS__() === 3, null, { timeout: 8000 });
+  assert.equal(await page.evaluate(() => window.__AUTHOR_DIRECTORY_CALLS__()), directoryCalls, "opening the authors page reuses the cached directory");
+  await authorsPage.getByRole("button", { name: "刷新作者" }).click();
+  await page.waitForFunction(target => window.__AUTHOR_DIRECTORY_CALLS__() === target, directoryCalls + 3, { timeout: 8000 });
+  assert.equal(await page.evaluate(() => window.__AUTHOR_DIRECTORY_CALLS__()), directoryCalls + 3, "the authors page refresh bypasses the cache");
+
+  await authorsPage.getByRole("button", { name: "返回" }).click();
+  await region.waitFor();
+  const beforeSearchRefresh = await page.evaluate(() => window.__AUTHOR_DIRECTORY_CALLS__());
+  await region.getByRole("button", { name: "刷新作者" }).click();
+  await page.waitForFunction(target => window.__AUTHOR_DIRECTORY_CALLS__() === target, beforeSearchRefresh + 3, { timeout: 8000 });
+  assert.equal(await page.evaluate(() => window.__AUTHOR_DIRECTORY_CALLS__()), beforeSearchRefresh + 3, "the search refresh also bypasses the cache");
+
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.locator(".hg-tabbar .ios-mobile-nav-item").filter({ hasText: "搜索" }).click();
+  const reloadedRegion = page.getByRole("region", { name: "热门作者" });
+  await reloadedRegion.getByRole("button", { name: "全部作者 ›" }).waitFor({ timeout: 8000 });
+  await reloadedRegion.locator("button[data-author-id]").first().waitFor();
+  assert.equal(await page.evaluate(() => window.__AUTHOR_DIRECTORY_CALLS__()), 0, "the cached directory survives a reload without a request");
+  assert.ok((await reloadedRegion.locator("button[data-author-id]").first().innerText()).includes("都市阿城"), "the cached order stays by follower count");
+
+  console.log("PASS: search-authors (20 checks)");
 } finally {
   if (browser) await browser.close();
   if (vite) await vite.close();

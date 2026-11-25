@@ -6,7 +6,7 @@ import { IRefresh, IUserF } from "../../shared/ui/icons";
 import { tr } from "../../shared/i18n";
 import { AuthorChip } from "./AuthorChip";
 import { useAuthorFollow } from "./useAuthorFollow";
-import { loadAuthors, type AuthorItem } from "./authorDirectory";
+import { loadAuthors, subscribeAuthors, type AuthorItem } from "./authorDirectory";
 
 const TOP_COUNT = 20;
 const BATCH_SIZE = 10;
@@ -27,9 +27,9 @@ export function SearchAuthors({ active }: { active: boolean }) {
     setLoading(true);
     setError("");
     try {
-      const items = await loadAuthors(lineEpoch, force);
+      const directory = await loadAuthors(lineEpoch, force);
       if (sequence.current !== token) return;
-      setAuthors(items);
+      setAuthors(directory.items);
       setBatch(0);
       loadedKey.current = String(lineEpoch);
     } catch (cause) {
@@ -40,6 +40,7 @@ export function SearchAuthors({ active }: { active: boolean }) {
   }, [lineEpoch]);
 
   useEffect(() => { if (active && loadedKey.current !== String(lineEpoch)) void load(); }, [active, lineEpoch, load]);
+  useEffect(() => subscribeAuthors(directory => setAuthors(directory.items)), []);
   useEffect(() => () => { sequence.current++; }, []);
 
   const openAuthor = (author: AuthorItem) => push({ kind: "user", id: author.id, name: author.name });

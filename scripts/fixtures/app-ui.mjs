@@ -21,6 +21,7 @@ export function installFixture({ theme, titles, metrics = [], metricPages = 1, m
   localStorage.setItem("hghubx_swipe_ep_v2", "1");
   const callbacks = new Map();
   let nextCallback = 0;
+  let authorDirectoryCalls = 0;
   // Real Tauri keeps every registered listener: the app shell and the launch
   // overlay can both listen for back-button, and unregister removes exactly one.
   const backChannels = new Map();
@@ -31,6 +32,7 @@ export function installFixture({ theme, titles, metrics = [], metricPages = 1, m
     },
     hasHardwareBack() { return backChannels.size > 0; },
   };
+  window.__AUTHOR_DIRECTORY_CALLS__ = () => authorDirectoryCalls;
   window.__TAURI_INTERNALS__ = {
     metadata: { currentWindow: { label: "main" }, currentWebview: { label: "main" } },
     transformCallback(callback) { const id = ++nextCallback; callbacks.set(id, callback); return id; },
@@ -48,22 +50,40 @@ export function installFixture({ theme, titles, metrics = [], metricPages = 1, m
       if (command === "api_tags") return { categories: tagGroups ?? [{ name: "题材", tags: [{ id: 1, name: "都市", slug: "city" }] }] };
       if (command === "api_hot_tags") return { items: [{ name: "都市", slug: "dushi" }] };
       if (command === "api_popular_authors") {
+        authorDirectoryCalls += 1;
         const names = [
           "都市阿城", "古风小满", "悬疑老K", "甜宠七月", "逆袭阿岚", "校园小北", "职场安姐", "奇幻阿泽",
           "仙侠青禾", "现代老周", "脑洞小鹿", "都市阿梨", "反派阿川", "人间阿杏", "作者小满", "路人甲",
           "悬疑阿夏", "古风阿棠", "甜宠阿宁", "逆袭阿野", "校园阿星", "职场阿月", "奇幻阿岭", "仙侠阿松",
+          "都市阿青", "古风阿兰", "悬疑阿秋", "甜宠阿夏", "逆袭阿成", "校园阿冬", "职场阿峰", "奇幻阿川",
+          "仙侠阿海", "现代阿山", "脑洞阿云", "都市阿风", "反派阿雷", "人间阿雨", "作者小石", "路人乙",
+          "古风阿竹", "悬疑阿松", "甜宠阿荷", "逆袭阿柏", "校园阿柳", "职场阿枫", "奇幻阿星", "仙侠阿云",
+          "现代阿川", "脑洞阿月", "都市阿山", "反派阿海", "人间阿风", "作者小竹", "路人丙", "古风阿石",
+          "悬疑阿兰", "甜宠阿青", "逆袭阿秋", "校园阿夏", "职场阿成", "奇幻阿冬", "仙侠阿峰", "现代阿川二",
+          "脑洞阿山", "都市阿海", "反派阿云", "人间阿月", "作者小风", "路人丁", "古风阿松", "悬疑阿荷",
+          "甜宠阿柏", "逆袭阿柳", "校园阿枫", "职场阿星", "奇幻阿云", "仙侠阿川", "现代阿月", "脑洞阿山二",
+          "都市阿石", "反派阿兰", "人间阿青", "作者小秋", "路人戊",
         ];
-        const authors = Array.from({ length: 24 }, (_, index) => ({
+        const authors = Array.from({ length: names.length }, (_, index) => ({
           id: 100 + index,
           username: `author-${index + 1}`,
           nickname: names[index],
           avatar: "",
-          counts: { followers: 1200000 - index * 45000 },
         }));
-        return { items: authors, pagination: { page: 1, pages: 1, size: 100, total: authors.length } };
+        const page = Math.max(1, Number(args.page) || 1);
+        const size = 24;
+        const start = (page - 1) * size;
+        return {
+          items: authors.slice(start, start + size),
+          pagination: { page, size, total: authors.length },
+        };
       }
       if (command === "api_user") return { id: args.id, username: `author-${args.id}`, nickname: "示例作者", avatar: "", counts: {} };
-      if (command === "api_user_stats") return { user_id: args.id, like_count: 178000, following: 0, followers: 1157, video_count: cards.length, post_count: 0 };
+      if (command === "api_user_stats") return {
+        user_id: args.id, like_count: 178000, following: 0,
+        followers: args.id >= 100 && args.id < 160 ? 1500000 - (args.id - 100) * 25000 : 1157,
+        video_count: cards.length, post_count: 0,
+      };
       if (command === "api_user_videos") return args.size === 100 ? metricPaged(args.page || 1) : paged(cards);
       if (command === "api_rank") return paged(cards.map((card, index) => ({ ...card, rank: index + 1, video_id: card.id, metric_value: card.hot, metric_label: "热度" })));
       if (command === "api_search_hot") return paged(titles.map((title, index) => ({ video_id: index + 1, title, plays: `${550 - index * 10}.1w播放量` })));
