@@ -798,14 +798,6 @@ const en: Record<string, string> = {
   "自动压低突然变大的音效，让台词更稳；音乐和现场内容可能被轻微压缩": "Lowers sudden loud effects to keep dialogue steady; music and live audio may be slightly compressed",
   "画面增强": "Picture enhancement",
   "AI 补充人物纹理和细节，更清晰也更耗电": "AI restores face texture and detail; sharper, but uses more battery",
-  "原画": "Original",
-  "流畅": "Smooth",
-  "锐化": "Sharp",
-  "细节": "Detail",
-  "原画：保持原始画面，最省电。": "Original: untouched picture, lowest power use.",
-  "流畅：轻量放大，画面更平滑，开销低。": "Smooth: light upscaling, smoother edges, low overhead.",
-  "锐化：只让边缘更利落，不增加新细节。": "Sharp: crisper edges only, no new detail.",
-  "细节：AI 补充纹理，画质最好，可能掉帧、发热。": "Detail: AI adds texture, best picture, may drop frames or heat up.",
   "最近上新": "New Releases",
   "热门推荐": "Recommended",
   "收藏状态筛选": "Favorite Status Filter",
@@ -860,7 +852,6 @@ const en: Record<string, string> = {
   "作品状态筛选": "Work status filter",
   "筛选作品状态": "Filter works",
   "筛选作品状态：{0}": "Filter works: {0}",
-  "自动": "Auto",
 
 };
 
