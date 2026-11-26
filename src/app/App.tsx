@@ -172,6 +172,10 @@ function TabBar() {
           return <Button key={key} className="ios-mobile-nav-item"
             data-preview={dragPos !== null && isHighlighted ? "true" : undefined}
             onClick={() => {
+              if (key === "home" && tab === "home") {
+                window.dispatchEvent(new Event("hg:home-refresh"));
+                return;
+              }
               /* Re-tapping the active Search tab returns to the search landing state;
                  the input clear button is hard to reach on tall screens. */
               if (key === "search" && tab === "search") {

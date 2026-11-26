@@ -49,6 +49,7 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
   postCacheRef.current = postCache;
   const [limits, setLimits] = useState({ favVideo: 12, favPost: 12, history: 12 });
   const scrollRef = useRef<HTMLDivElement>(null);
+  const favRefreshRegionRef = useRef<HTMLDivElement>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
   const [failedIds, setFailedIds] = useState<number[]>([]);
   const [reload, setReload] = useState(0);
@@ -201,8 +202,19 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
     const closeOnOutsidePress = (event: PointerEvent) => {
       if (!filterMenuRef.current?.contains(event.target as Node)) setFilterMenuOpen(false);
     };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      setFilterMenuOpen(false);
+      filterButtonRef.current?.focus();
+    };
     document.addEventListener("pointerdown", closeOnOutsidePress, true);
-    return () => document.removeEventListener("pointerdown", closeOnOutsidePress, true);
+    document.addEventListener("keydown", closeOnEscape, true);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutsidePress, true);
+      document.removeEventListener("keydown", closeOnEscape, true);
+    };
   }, [filterMenuOpen]);
 
   useEffect(() => {
@@ -219,47 +231,48 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
 
   useEffect(() => {
     const scroller = scrollRef.current;
-    if (!scroller || !active || tab !== "fav" || selectionMode) {
+    const region = favRefreshRegionRef.current;
+    if (!scroller || !region || !active || tab !== "fav" || selectionMode) {
       setPullDistance(0);
       return;
     }
     let tracking = false;
+    let activePointerId: number | null = null;
     let startX = 0;
     let startY = 0;
     let currentPull = 0;
     let armedHaptic = false;
+    let suppressClick = false;
+    let suppressTimer = 0;
 
-    const onStart = (event: TouchEvent) => {
-      if (pullRefreshingRef.current || event.touches.length !== 1 || scroller.scrollTop > 1) {
-        tracking = false;
-        return;
-      }
-      const touch = event.touches[0];
-      tracking = true;
-      startX = touch.clientX;
-      startY = touch.clientY;
+    const inRefreshRegion = (target: EventTarget | null) =>
+      target instanceof Element
+      && region.contains(target)
+      && !target.closest("input, textarea, select, [role=menu]");
+
+    const resetGesture = () => {
+      tracking = false;
+      activePointerId = null;
       currentPull = 0;
       armedHaptic = false;
+      setPullDistance(0);
     };
 
-    const onMove = (event: TouchEvent) => {
-      if (!tracking || event.touches.length !== 1) return;
-      const touch = event.touches[0];
-      const dx = touch.clientX - startX;
-      const dy = touch.clientY - startY;
+    const updatePull = (dx: number, dy: number, threshold: number, event: Event) => {
       if (dy <= 0 || Math.abs(dx) > Math.abs(dy)) {
-        if (currentPull === 0) tracking = false;
+        if (currentPull === 0) {
+          tracking = false;
+          activePointerId = null;
+        }
         return;
       }
       if (scroller.scrollTop > 1) {
-        tracking = false;
-        currentPull = 0;
-        setPullDistance(0);
+        resetGesture();
         return;
       }
-      if (dy > 8) {
+      if (dy > threshold) {
         if (event.cancelable) event.preventDefault();
-        currentPull = Math.min(84, (dy - 8) * 0.48);
+        currentPull = Math.min(84, (dy - threshold) * 0.48);
         setPullDistance(currentPull);
         if (currentPull >= 54 && !armedHaptic) {
           armedHaptic = true;
@@ -270,26 +283,99 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
       }
     };
 
-    const onEnd = () => {
+    const finishGesture = (cancelled: boolean) => {
       if (!tracking) return;
-      tracking = false;
-      const shouldRefresh = currentPull >= 54 && !pullRefreshingRef.current;
-      currentPull = 0;
-      setPullDistance(0);
+      const engaged = currentPull > 0;
+      const shouldRefresh = !cancelled && currentPull >= 54 && !pullRefreshingRef.current;
+      resetGesture();
+      if (engaged) {
+        suppressClick = true;
+        window.clearTimeout(suppressTimer);
+        suppressTimer = window.setTimeout(() => { suppressClick = false; }, 160);
+      }
       if (shouldRefresh) {
         void refreshFavoritesRef.current();
       }
     };
 
-    scroller.addEventListener("touchstart", onStart, { passive: true });
-    scroller.addEventListener("touchmove", onMove, { passive: false });
-    scroller.addEventListener("touchend", onEnd, { passive: true });
-    scroller.addEventListener("touchcancel", onEnd, { passive: true });
+    const onTouchStart = (event: TouchEvent) => {
+      if (pullRefreshingRef.current || event.touches.length !== 1 || scroller.scrollTop > 1 || !inRefreshRegion(event.target)) {
+        tracking = false;
+        return;
+      }
+      const touch = event.touches[0];
+      tracking = true;
+      activePointerId = null;
+      startX = touch.clientX;
+      startY = touch.clientY;
+      currentPull = 0;
+      armedHaptic = false;
+    };
+
+    const onTouchMove = (event: TouchEvent) => {
+      if (!tracking || activePointerId !== null || event.touches.length !== 1) return;
+      const touch = event.touches[0];
+      updatePull(touch.clientX - startX, touch.clientY - startY, 8, event);
+    };
+
+    const onTouchEnd = () => {
+      if (activePointerId !== null) return;
+      finishGesture(false);
+    };
+
+    const onPointerDown = (event: PointerEvent) => {
+      if (event.pointerType === "touch" || !event.isPrimary || event.button !== 0) return;
+      if (pullRefreshingRef.current || scroller.scrollTop > 1 || !inRefreshRegion(event.target)) return;
+      tracking = true;
+      activePointerId = event.pointerId;
+      startX = event.clientX;
+      startY = event.clientY;
+      currentPull = 0;
+      armedHaptic = false;
+    };
+
+    const onPointerMove = (event: PointerEvent) => {
+      if (!tracking || activePointerId !== event.pointerId) return;
+      updatePull(event.clientX - startX, event.clientY - startY, 12, event);
+    };
+
+    const onPointerUp = (event: PointerEvent) => {
+      if (activePointerId !== event.pointerId) return;
+      finishGesture(false);
+    };
+
+    const onPointerCancel = (event: PointerEvent) => {
+      if (activePointerId !== event.pointerId) return;
+      finishGesture(true);
+    };
+
+    const onClickCapture = (event: MouseEvent) => {
+      if (!suppressClick) return;
+      suppressClick = false;
+      event.preventDefault();
+      event.stopPropagation();
+    };
+
+    region.addEventListener("touchstart", onTouchStart, { passive: true });
+    region.addEventListener("touchmove", onTouchMove, { passive: false });
+    region.addEventListener("touchend", onTouchEnd, { passive: true });
+    region.addEventListener("touchcancel", onTouchEnd, { passive: true });
+    region.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("pointermove", onPointerMove, { passive: false });
+    window.addEventListener("pointerup", onPointerUp);
+    window.addEventListener("pointercancel", onPointerCancel);
+    region.addEventListener("click", onClickCapture, true);
     return () => {
-      scroller.removeEventListener("touchstart", onStart);
-      scroller.removeEventListener("touchmove", onMove);
-      scroller.removeEventListener("touchend", onEnd);
-      scroller.removeEventListener("touchcancel", onEnd);
+      window.clearTimeout(suppressTimer);
+      region.removeEventListener("touchstart", onTouchStart);
+      region.removeEventListener("touchmove", onTouchMove);
+      region.removeEventListener("touchend", onTouchEnd);
+      region.removeEventListener("touchcancel", onTouchEnd);
+      region.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+      window.removeEventListener("pointercancel", onPointerCancel);
+      region.removeEventListener("click", onClickCapture, true);
     };
   }, [active, selectionMode, tab]);
   const limitKey = tab === "history" ? "history" : showingPosts ? "favPost" : "favVideo";
@@ -542,16 +628,7 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
       </div>
 
       <div ref={scrollRef} {...tabSwipe} style={{ touchAction: "pan-y" }}
-        className="ios-page-body flex-1 scroll-y pt-2 pb-24">
-        {tab === "fav" && (pullRefreshing || pullDistance > 0) && (
-          <div role="status" className="flex items-center justify-center gap-2 text-[12px] text-mut overflow-hidden"
-            style={{ height: pullRefreshing ? 38 : Math.round(pullDistance) }}>
-            {pullRefreshing
-              ? <Loader className="w-4 h-4 spinner" />
-              : <IRefresh size={14} className={pullDistance >= 54 ? "text-primary rotate-180 transition-transform" : "transition-transform"} />}
-            <span>{pullRefreshing ? tr("正在检查收藏更新…") : pullDistance >= 54 ? tr("松开检查更新") : tr("下拉检查收藏更新")}</span>
-          </div>
-        )}
+        className="ios-page-body flex-1 scroll-y pt-2 pb-24 flex flex-col">
         {/* 资料卡：已登录 / 未登录（点开登录抽屉） */}
         {user ? (
           <Surface className="ios-account-card flex flex-col gap-3 a-rise">
@@ -645,14 +722,6 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
               )}
             </div>
             <div className="ml-auto flex items-center gap-1.5">
-              <Button
-                aria-label={tr("刷新收藏")}
-                disabled={pullRefreshing || loading}
-                onClick={() => void refreshFavoritesForUpdates()}
-                className="ios-filter-pill is-icon"
-              >
-                <IRefresh size={17} strokeWidth={1.8} className={pullRefreshing ? "animate-spin" : ""} />
-              </Button>
               {favKind === "video" && favs.length > 0 && (
                 <div ref={filterMenuRef} className="relative" role="group" aria-label={tr("收藏筛选")}>
                 <Button ref={filterButtonRef} data-favorite-filter-trigger
@@ -739,7 +808,16 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
           <Button variant="danger" className="rounded-(--r-ctl) px-3" onClick={() => { setRemoveError(""); setRemoveOpen(true); }}>{tr("移除")}</Button>
         </div>}
 
-        <div className="mt-3" aria-busy={loading || syncingFavorites}>
+        <div ref={favRefreshRegionRef} data-favorite-refresh-region className="mt-3 flex-1" aria-busy={loading || syncingFavorites}>
+          {tab === "fav" && (pullRefreshing || pullDistance > 0) && (
+            <div role="status" data-favorite-pull-indicator className="mb-2 flex items-center justify-center gap-2 text-[12px] text-mut overflow-hidden"
+              style={{ height: pullRefreshing ? 38 : Math.round(pullDistance) }}>
+              {pullRefreshing
+                ? <Loader className="w-4 h-4 spinner" />
+                : <IRefresh size={14} className={pullDistance >= 54 ? "text-primary rotate-180 transition-transform" : "transition-transform"} />}
+              <span>{pullRefreshing ? tr("正在检查收藏更新…") : pullDistance >= 54 ? tr("松开检查更新") : tr("下拉检查收藏更新")}</span>
+            </div>
+          )}
           {favoriteSyncFailed ? (
             <Empty icon={<IStar size={24} />} title={tr("收藏状态未知")}
               sub={accountSync.authError ? tr("登录已过期，重新登录后继续同步") : tr("账号同步未完成，暂时无法确认收藏内容。")}

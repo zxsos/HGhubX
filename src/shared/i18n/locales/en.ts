@@ -910,7 +910,6 @@ const en: Record<string, string> = {
   "正在检查收藏更新…": "Checking favorites for updates…",
   "松开检查更新": "Release to check updates",
   "下拉检查收藏更新": "Pull down to check updates",
-  "刷新收藏": "Refresh favorites",
   "收藏已刷新": "Favorites refreshed",
   "发现 {0} 部收藏更新，新增 {1} 集": "{0} favorite(s) updated · {1} new episode(s)",
   "收藏已刷新，暂无新集更新": "Favorites refreshed; no new episodes yet",
@@ -927,6 +926,7 @@ const en: Record<string, string> = {
   "不限": "Any",
   "筛选": "Filter",
   "收藏筛选": "Favorite filters",
+  "已换一批推荐": "Recommendations refreshed",
 };
 
 export default en;
