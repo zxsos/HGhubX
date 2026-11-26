@@ -716,3 +716,17 @@ html.theme-transitioning .ios-account-card { backdrop-filter:none; -webkit-backd
 .ios-filter-menu .ios-filter-menu-section .ios-filter-menu-title {
   padding: 0;
 }
+
+.ios-filter-menu .ios-filter-menu-done {
+  justify-content: flex-start;
+  min-height: 30px !important;
+  min-block-size: 30px !important;
+  height: 30px;
+  margin-top: 4px;
+  padding: 0 9px;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--p-mut);
+  font-size: 11px;
+  font-weight: 600;
+}

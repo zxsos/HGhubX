@@ -451,7 +451,7 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
                   <IFilter size={19} strokeWidth={1.8} />
                 </Button>
                 {filterMenuOpen && (
-                  <div className="ios-filter-menu" role="menu" aria-label={tr("收藏筛选")} style={{ width: 216 }} onKeyDownCapture={event => {
+                  <div className="ios-filter-menu" role="menu" aria-label={tr("收藏筛选")} onKeyDownCapture={event => {
                     const entries = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')];
                     const index = entries.indexOf(document.activeElement as HTMLButtonElement);
                     if (event.key === "Escape") {
@@ -467,7 +467,7 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
                     }
                   }}>
                     <div className="ios-filter-menu-section">
-                      <span>{tr("追剧状态")}</span>
+                      <span className="ios-filter-menu-title">{tr("追剧状态")}</span>
                       <button type="button" data-favorite-watch-filter-option="all" role="menuitemradio" aria-checked={favFilter === "all"}
                         className="ios-filter-menu-any"
                         onClick={() => { setFavFilter("all"); setFailedIds([]); setSelectedIds([]); }}>
@@ -485,7 +485,7 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
                       </Button>
                     ))}
                     <div className="ios-filter-menu-section" style={{ borderTop: "1px solid var(--ios-edge)", marginTop: 4, paddingTop: 9 }}>
-                      <span>{tr("连载状态")}</span>
+                      <span className="ios-filter-menu-title">{tr("连载状态")}</span>
                       <button type="button" data-favorite-series-filter-option="all" role="menuitemradio" aria-checked={favSeriesFilter === "all"}
                         className="ios-filter-menu-any"
                         onClick={() => { setFavSeriesFilter("all"); setSelectedIds([]); }}>
@@ -503,7 +503,7 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
                       </Button>
                     ))}
                     <Button onClick={() => { setFilterMenuOpen(false); filterButtonRef.current?.focus(); }}
-                      className="mt-1 w-full rounded-[10px] bg-primary px-3 py-2 text-[13px] font-semibold text-on-primary">
+                      className="ios-filter-menu-done">
                       {tr("完成")}
                     </Button>
                   </div>
