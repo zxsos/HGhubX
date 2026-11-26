@@ -123,7 +123,10 @@ const DEFAULTS: Persist = {
 };
 
 function normalizeEnhanceMode(raw: unknown): EnhanceMode | null {
-  return raw === "off" || raw === "fsr" || raw === "cas" || raw === "detail" ? raw : null;
+  // The four experimental modes are collapsed into the single production
+  // switch; legacy FSR/CAS values migrate to the AI detail preset.
+  if (raw === "fsr" || raw === "cas" || raw === "detail") return "detail";
+  return raw === "off" ? "off" : null;
 }
 
 /** 旧版本 history 是 number[]，读出来时升级成带进度的结构 */

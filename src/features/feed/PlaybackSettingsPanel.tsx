@@ -1,7 +1,7 @@
 import { Button, SegmentedControl, Surface } from "../../shared/ui/ios/controls";
 import { Toggle } from "../../shared/ui/ui";
 import { IBoltF, IClock, IClose, IExpand } from "../../shared/ui/icons";
-import { PlaybackEnhancementSetting } from "../playback/PlaybackEnhancementSetting";
+import { PictureEnhanceSetting } from "../playback/PictureEnhanceSetting";
 import { tr } from "../../shared/i18n";
 
 const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
@@ -30,7 +30,7 @@ export function PlaybackSettingsPanel({ rate, onRate, preferHevc, onPreferHevc, 
           </div>
           <Toggle desktop on={preferHevc} onChange={onPreferHevc} label={tr("优先高清")} />
         </div>
-        <PlaybackEnhancementSetting className="playback-setting-row" />
+        <PictureEnhanceSetting className="playback-setting-row" />
         <div className="ios-settings-row playback-setting-row">
           <span className="ios-setting-icon"><IExpand size={16} /></span>
           <div className="flex-1 min-w-0">

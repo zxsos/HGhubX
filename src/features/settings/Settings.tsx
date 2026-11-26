@@ -15,7 +15,7 @@ import { formatNetDiag, shortVerdict } from "../../shared/diagnostics/netDiagRep
 import { copyText } from "../../shared/lib/clipboard";
 import { Loader } from "../../shared/ui/ios/effects";
 import { isBalanceVolumeSupported } from "../playback/balanceVolume";
-import { PlaybackEnhancementSetting } from "../playback/PlaybackEnhancementSetting";
+import { PictureEnhanceSetting } from "../playback/PictureEnhanceSetting";
 import { IBack, IBoltF, IBroom, IChevR, ICompress, IGlobe, IHeart, IHome, IInfo, ILink, ILockF, IMoon, IRefresh, ISun, IVol, IVolMute } from "../../shared/ui/icons";
 import { LOCALE_OPTIONS, N_, setLocale, tr, useLocale, type Locale } from "../../shared/i18n";
 
@@ -191,6 +191,7 @@ export default function Settings({ onBack, initialSection }: { onBack: () => voi
               </div>
               <Toggle desktop on={preferHevc} onChange={setPreferHevc} label={tr("优先高清")} />
             </div>
+            <PictureEnhanceSetting />
             <div className="ios-settings-row">
               <span className="ios-setting-icon"><ISun size={16} /></span>
               <div className="flex-1 min-w-0">
@@ -207,7 +208,6 @@ export default function Settings({ onBack, initialSection }: { onBack: () => voi
               </div>
               <Toggle desktop on={balanceVolume} onChange={setBalanceVolume} label={tr("平衡音量")} />
             </div>}
-            {isMobile && <PlaybackEnhancementSetting />}
             {isMobile && <div className="ios-settings-row flex-wrap">
               <span className="ios-setting-icon"><ICompress size={16} /></span>
               <div className="flex-1 min-w-0">

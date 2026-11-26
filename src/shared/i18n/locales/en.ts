@@ -797,6 +797,8 @@ const en: Record<string, string> = {
   "平衡音量": "Balance volume",
   "自动压低突然变大的音效，让台词更稳；音乐和现场内容可能被轻微压缩": "Lowers sudden loud effects to keep dialogue steady; music and live audio may be slightly compressed",
   "画面增强（实验）": "Picture Enhancement (Experimental)",
+  "画面增强": "Picture enhancement",
+  "AI 补充人物纹理和细节，更清晰也更耗电": "AI restores face texture and detail; sharper, but uses more battery",
   "原画": "Original",
   "流畅": "Smooth",
   "锐化": "Sharp",

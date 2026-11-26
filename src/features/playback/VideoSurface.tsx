@@ -98,6 +98,15 @@ const VideoSurface = forwardRef<VideoHandle, Props>(function VideoSurface(
   const srTestGrain = store?.srTestGrain ?? 0;
   const srTestFaceMask = store?.srTestFaceMask ?? 0;
   const querySuperResolution = superResolutionRequested();
+  // The production switch always maps to one fixed preset. Test URLs keep the
+  // query-driven values so the playback fixture can still sweep parameters.
+  const hasSrTestQuery = typeof window !== "undefined" && new URLSearchParams(window.location.search).has("sr");
+  const detailPreset = enhanceMode === "detail" && !hasSrTestQuery;
+  const activeDetailGain = detailPreset ? 1.5 : srTestDetailGain;
+  const activePortraitContrast = detailPreset ? 0.3 : srTestPortraitContrast;
+  const activeDeblock = detailPreset ? 0.2 : srTestDeblock;
+  const activeGrain = detailPreset ? 0.03 : srTestGrain;
+  const activeFaceMask = detailPreset ? 1 : srTestFaceMask;
   const superResolution = querySuperResolution || enhanceMode !== "off";
   const activeSuperResolutionVariant: SuperResolutionVariant = enhanceMode !== "off" ? enhanceMode : superResolutionVariant();
   const [SuperResolutionCanvas, setSuperResolutionCanvas] = useState<SuperResolutionComponent | null>(null);
@@ -333,8 +342,8 @@ const VideoSurface = forwardRef<VideoHandle, Props>(function VideoSurface(
       {SuperResolutionCanvas && active && (
         <SuperResolutionCanvas videoRef={videoRef} fit={fit} active={active}
           enabled={superResolution} variant={activeSuperResolutionVariant}
-          forceScale={srTestScale} detailGain={srTestDetailGain} portraitContrast={srTestPortraitContrast}
-          deblock={srTestDeblock} grain={srTestGrain} faceMask={srTestFaceMask} debug />
+          forceScale={srTestScale} detailGain={activeDetailGain} portraitContrast={activePortraitContrast}
+          deblock={activeDeblock} grain={activeGrain} faceMask={activeFaceMask} debug />
       )}
       <video
         ref={(node) => {

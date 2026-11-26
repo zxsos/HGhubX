@@ -409,6 +409,33 @@ void main() {
   outColor = vec4(clamp(ycbcrToRgb(ycc), 0.0, 1.0), 1.0);
 }`;
 
+const DETAIL_RESAMPLE_SHADER = `#version 300 es
+precision highp float;
+
+uniform sampler2D uDetail;
+uniform vec2 uDetailSize;
+uniform vec2 uOutputSize;
+out vec4 outColor;
+
+void main() {
+  vec2 uv = gl_FragCoord.xy / uOutputSize;
+  vec2 ratio = uDetailSize / uOutputSize;
+  vec2 offset = 0.5 * ratio / uDetailSize;
+  // A 2x2 box filter downscales the 2x FSRCNNX luma before compositing. The
+  // detail target is larger than the canvas at non-integer scales such as
+  // 1.43x; sampling it directly with NEAREST produces visible vertical lines.
+  vec4 center = texture(uDetail, uv);
+  vec4 a = texture(uDetail, uv + vec2(-offset.x, -offset.y));
+  vec4 b = texture(uDetail, uv + vec2( offset.x, -offset.y));
+  vec4 c = texture(uDetail, uv + vec2(-offset.x,  offset.y));
+  vec4 d = texture(uDetail, uv + vec2( offset.x,  offset.y));
+  vec4 box = (a + b + c + d) * 0.25;
+  // Keep hard edges (eyes, hair, subtitles) sharp without reintroducing the
+  // nearest-neighbour grid on flat skin.
+  float edge = smoothstep(0.012, 0.10, abs(center.r - box.r));
+  outColor = mix(box, center, edge * 0.75);
+}`;
+
 const FULLSCREEN_TRIANGLE = new Float32Array([-1, -1, 3, -1, -1, 3]);
 // FSR 1 is cheap, but a 720p source at 3x would be a 4K output. Cap the work
 // at a 2.5 MP render target so the overlay stays viable on mobile GPUs.
@@ -450,15 +477,20 @@ function link(gl: WebGL2RenderingContext, vertexSource: string, fragmentSource: 
   return program;
 }
 
-function createTexture(gl: WebGL2RenderingContext, width: number, height: number) {
+function createTexture(gl: WebGL2RenderingContext, width: number, height: number, format: "rgba8" | "rgba16f" = "rgba8") {
   const texture = gl.createTexture();
   if (!texture) throw new Error("Unable to create texture");
   gl.bindTexture(gl.TEXTURE_2D, texture);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  const filter = format === "rgba16f" ? gl.NEAREST : gl.LINEAR;
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+  if (format === "rgba16f") {
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, width, height, 0, gl.RGBA, gl.HALF_FLOAT, null);
+  } else {
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+  }
   return texture;
 }
 
@@ -564,12 +596,16 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
     let programRcas: WebGLProgram | null = null;
     let programComposite: WebGLProgram | null = null;
     let programDeblock: WebGLProgram | null = null;
+    let programDetailResample: WebGLProgram | null = null;
     let detailUpscaler: DetailUpscaler | null = null;
     let videoTexture: WebGLTexture | null = null;
     let filteredTexture: WebGLTexture | null = null;
     let intermediate: WebGLTexture | null = null;
+    let detailScaledTexture: WebGLTexture | null = null;
     let framebuffer: WebGLFramebuffer | null = null;
     let filterFramebuffer: WebGLFramebuffer | null = null;
+    let detailFramebuffer: WebGLFramebuffer | null = null;
+    let detailScaledFormat: "rgba8" | "rgba16f" = "rgba8";
     let filterWidth = 0;
     let filterHeight = 0;
     let vertexArray: WebGLVertexArrayObject | null = null;
@@ -604,6 +640,9 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
     let deblockInputLoc: WebGLUniformLocation | null = null;
     let deblockOutputLoc: WebGLUniformLocation | null = null;
     let deblockStrengthLoc: WebGLUniformLocation | null = null;
+    let resampleDetailLoc: WebGLUniformLocation | null = null;
+    let resampleDetailSizeLoc: WebGLUniformLocation | null = null;
+    let resampleOutputLoc: WebGLUniformLocation | null = null;
 
     const onContextLost = (event: Event) => {
       event.preventDefault();
@@ -621,12 +660,15 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
         if (videoTexture) gl.deleteTexture(videoTexture);
         if (filteredTexture) gl.deleteTexture(filteredTexture);
         if (intermediate) gl.deleteTexture(intermediate);
+        if (detailScaledTexture) gl.deleteTexture(detailScaledTexture);
         if (framebuffer) gl.deleteFramebuffer(framebuffer);
         if (filterFramebuffer) gl.deleteFramebuffer(filterFramebuffer);
+        if (detailFramebuffer) gl.deleteFramebuffer(detailFramebuffer);
         if (programEasu) gl.deleteProgram(programEasu);
         if (programRcas) gl.deleteProgram(programRcas);
         if (programComposite) gl.deleteProgram(programComposite);
         if (programDeblock) gl.deleteProgram(programDeblock);
+        if (programDetailResample) gl.deleteProgram(programDetailResample);
         if (detailUpscaler) detailUpscaler.dispose();
         if (vertexArray) gl.deleteVertexArray(vertexArray);
         if (vertexBuffer) gl.deleteBuffer(vertexBuffer);
@@ -651,6 +693,8 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
       canvas.height = height;
       if (intermediate) gl.deleteTexture(intermediate);
       intermediate = createTexture(gl, width, height);
+      if (detailScaledTexture) gl.deleteTexture(detailScaledTexture);
+      detailScaledTexture = createTexture(gl, width, height, detailScaledFormat);
       if (detailUpscaler && video.videoWidth && video.videoHeight) {
         detailUpscaler.resize(video.videoWidth, video.videoHeight, width, height);
       }
@@ -769,6 +813,28 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
           sourceTexture = filteredTexture;
         }
         const detailTexture = detailUpscaler.render(sourceTexture, vertexArray);
+        const detailSize = detailUpscaler.detailSize;
+        if (!detailSize) return;
+        let compositeDetail = detailTexture;
+        if (detailSize.width > width + 1 || detailSize.height > height + 1) {
+          if (!programDetailResample || !detailScaledTexture) return;
+          if (!detailFramebuffer) detailFramebuffer = gl.createFramebuffer();
+          if (!detailFramebuffer) throw new Error("Unable to create detail resample framebuffer");
+          gl.bindFramebuffer(gl.FRAMEBUFFER, detailFramebuffer);
+          gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, detailScaledTexture, 0);
+          if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) throw new Error("Incomplete detail resample framebuffer");
+          gl.viewport(0, 0, width, height);
+          gl.useProgram(programDetailResample);
+          gl.bindVertexArray(vertexArray);
+          gl.activeTexture(gl.TEXTURE0);
+          gl.bindTexture(gl.TEXTURE_2D, detailTexture);
+          gl.uniform1i(resampleDetailLoc, 0);
+          gl.uniform2f(resampleDetailSizeLoc, detailSize.width, detailSize.height);
+          gl.uniform2f(resampleOutputLoc, width, height);
+          gl.drawArrays(gl.TRIANGLES, 0, 3);
+          gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+          compositeDetail = detailScaledTexture;
+        }
 
         gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
         gl.viewport(0, 0, width, height);
@@ -789,7 +855,7 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
         gl.bindTexture(gl.TEXTURE_2D, intermediate);
         gl.uniform1i(compositeColorLoc, 0);
         gl.activeTexture(gl.TEXTURE1);
-        gl.bindTexture(gl.TEXTURE_2D, detailTexture);
+        gl.bindTexture(gl.TEXTURE_2D, compositeDetail);
         gl.uniform1i(compositeDetailLoc, 1);
         gl.uniform2f(compositeOutputLoc, width, height);
         gl.uniform1f(compositeDetailGainLoc, detailGain);
@@ -865,8 +931,11 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
       programEasu = link(gl, VERTEX_SHADER, EASU_SHADER);
       programRcas = link(gl, VERTEX_SHADER, RCAS_SHADER);
       if (variant === "detail") {
+        const canRenderHalf = Boolean(gl.getExtension("EXT_color_buffer_float") || gl.getExtension("EXT_color_buffer_half_float"));
+        detailScaledFormat = canRenderHalf ? "rgba16f" : "rgba8";
         programComposite = link(gl, VERTEX_SHADER, DETAIL_COMPOSITE_SHADER);
         programDeblock = link(gl, VERTEX_SHADER, DEBLOCK_SHADER);
+        programDetailResample = link(gl, VERTEX_SHADER, DETAIL_RESAMPLE_SHADER);
         void (async () => {
           try {
             /* Keep the 26-pass runner and its weights out of the main bundle. */
@@ -911,6 +980,11 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
           deblockInputLoc = gl.getUniformLocation(programDeblock, "uInputSize");
           deblockOutputLoc = gl.getUniformLocation(programDeblock, "uOutputSize");
           deblockStrengthLoc = gl.getUniformLocation(programDeblock, "uStrength");
+        }
+        if (programDetailResample) {
+          resampleDetailLoc = gl.getUniformLocation(programDetailResample, "uDetail");
+          resampleDetailSizeLoc = gl.getUniformLocation(programDetailResample, "uDetailSize");
+          resampleOutputLoc = gl.getUniformLocation(programDetailResample, "uOutputSize");
         }
       }
       videoTexture = createTexture(gl, video.videoWidth || 2, video.videoHeight || 2);

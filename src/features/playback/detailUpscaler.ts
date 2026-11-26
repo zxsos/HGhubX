@@ -114,6 +114,10 @@ export class DetailUpscaler {
     return this.passes.length;
   }
 
+  get detailSize() {
+    return this.outputTexture ? { width: this.outputTexture.width, height: this.outputTexture.height } : null;
+  }
+
   resize(sourceWidth: number, sourceHeight: number, outputWidth: number, outputHeight: number) {
     const key = `${sourceWidth}x${sourceHeight}:${outputWidth}x${outputHeight}`;
     if (key === this.sizeKey) return;
