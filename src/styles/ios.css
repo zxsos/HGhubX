@@ -689,3 +689,30 @@ html.theme-transitioning .ios-account-card { backdrop-filter:none; -webkit-backd
   .ios-mobile-nav .hg-drop>.ios-liquid-fill,.ios-segmented-indicator { background:Highlight; }
   .ios-mobile-nav .ios-mobile-nav-item[aria-current=page],.ios-mobile-nav[data-over-video=true] .ios-mobile-nav-item[aria-current=page],.ios-segmented-items>[aria-pressed=true] { color:HighlightText!important; }
 }
+
+.ios-filter-menu .ios-filter-menu-any {
+  width: auto;
+  min-height: 24px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--p-mut);
+  background: transparent;
+  font-variant-numeric: tabular-nums;
+}
+.ios-filter-menu .ios-filter-menu-any[aria-checked="true"] {
+  background: color-mix(in srgb, var(--p-primary) 12%, transparent);
+  color: var(--p-primary);
+}
+
+.ios-filter-menu .ios-filter-menu-section {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 5px 9px 4px;
+}
+.ios-filter-menu .ios-filter-menu-section .ios-filter-menu-title {
+  padding: 0;
+}

@@ -87,7 +87,7 @@ export function Logo({ size = 28, className = "" }: { size?: number; className?:
     </svg>
   );
 }
-export const IFilter = S(<><path d="M4 5.5h16" /><path d="M7 10.5h10" /><path d="M10 15.5h5" /><path d="M11 20.5h2" /></>);
+export const IFilter = S(<><path d="M4 5.5h16" /><path d="M7 12h10" /><path d="M10 18.5h5" /></>);
 export const IList = S(<><path d="M8.5 6.5h11" /><path d="M8.5 12h11" /><path d="M8.5 17.5h11" /><circle cx="4.6" cy="6.5" r="1.2" fill="currentColor" stroke="none" /><circle cx="4.6" cy="12" r="1.2" fill="currentColor" stroke="none" /><circle cx="4.6" cy="17.5" r="1.2" fill="currentColor" stroke="none" /></>);
 export const ISort = S(<><path d="M8 5.5h11" /><path d="M8 12h8" /><path d="M8 18.5h5" /><path d="m3.8 5.5 1.5 1.5 1.5-1.5" /><path d="m3.8 12 1.5 1.5 1.5-1.5" /><path d="m3.8 18.5 1.5 1.5 1.5-1.5" /></>);
 export const IFileText = S(<><path d="M6.5 3.5h7.2l3.8 3.8v13.2H6.5z" /><path d="M13.7 3.5v3.8h3.8" /><path d="M9.4 12.2h5.2" /><path d="M9.4 15.6h5.2" /></>);

@@ -81,7 +81,18 @@ export function unwatchedNewEpisodes(
   return 0;
 }
 
-export type FavoriteFilter = "all" | "unwatched" | "ongoing" | "finished";
+export type FavoriteWatchFilter = "all" | "watching" | "watched";
+export type FavoriteSeriesFilter = "all" | "ongoing" | "finished";
+export type FavoriteWatchState = "watching" | "watched";
+
+export function favoriteWatchState(
+  detail: Detail,
+  progress: WatchProgress | undefined,
+): FavoriteWatchState | null {
+  const latest = detailEpisodeCount(detail);
+  if (latest <= 0) return null;
+  return unwatchedEpisodeCount(detail, progress) > 0 ? "watching" : "watched";
+}
 
 function parseTimestampMs(raw?: string | number): number {
   if (typeof raw === "number") {
@@ -104,22 +115,26 @@ function detailUpdatedTimestamp(detail: Detail | undefined): number {
  * Keep the server/local favorite order for the unfiltered list, which is the
  * order items were added. Detail filters need every detail loaded: unknown
  * entries are omitted rather than guessed, and matching entries sort by the
- * latest update time. Unwatched is a viewing state, so it applies to both
- * ongoing and finished favorites and intentionally overlaps the other two.
+ * latest update time. Watch state and release state are independent filters;
+ * they intersect rather than replace each other.
  */
 export function filterFavoriteVideoIds(
   ids: number[],
   videoCache: Record<number, Detail>,
-  filter: FavoriteFilter,
-  hasUnwatched?: (id: number, detail: Detail) => boolean,
+  watchFilter: FavoriteWatchFilter,
+  seriesFilter: FavoriteSeriesFilter,
+  watchState?: (id: number, detail: Detail) => FavoriteWatchState | null,
 ): number[] {
-  if (filter === "all") return ids;
+  if (watchFilter === "all" && seriesFilter === "all") return ids;
   const origIndex = new Map<number, number>(ids.map((id, i) => [id, i]));
   const matches = ids.filter(id => {
     const detail = videoCache[id];
     if (!detail) return false;
-    if (filter === "unwatched") return !!hasUnwatched?.(id, detail);
-    return filter === "finished" ? detail.is_finished : !detail.is_finished;
+    const seriesMatches = seriesFilter === "all"
+      || (seriesFilter === "finished" ? detail.is_finished : !detail.is_finished);
+    if (!seriesMatches) return false;
+    if (watchFilter === "all") return true;
+    return watchState?.(id, detail) === watchFilter;
   });
   return matches.sort((a, b) => {
     const diffTs = detailUpdatedTimestamp(videoCache[b]) - detailUpdatedTimestamp(videoCache[a]);

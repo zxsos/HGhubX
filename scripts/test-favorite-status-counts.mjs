@@ -6,7 +6,7 @@ import { chromium } from "playwright-core";
 import { installFixture } from "./fixtures/app-ui.mjs";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
-const output = new URL("../test-results/favorite-filter/", import.meta.url);
+const output = new URL("../test-results/favorite-combined/", import.meta.url);
 await mkdir(output, { recursive: true });
 const rows = [
   [1, "更新一", false, "2026-11-23T10:00:00Z"], [2, "完结二", true, "2026-11-22T10:00:00Z"],
@@ -42,6 +42,7 @@ try {
   });
   await context.addInitScript((details) => {
     const invoke = window.__TAURI_INTERNALS__.invoke;
+    window.__fixtureDetails = details;
     window.__TAURI_INTERNALS__.invoke = async (command, args = {}) =>
       command === "api_video" && details.find(row => row.id === args.id) || invoke(command, args);
   }, rows);
@@ -49,94 +50,121 @@ try {
   await page.route("**/*", route => new URL(route.request().url()).origin === new URL(origin).origin ? route.continue() : route.abort());
   await page.goto(new URL("/tests/ui-feedback.html", origin).href, { waitUntil: "networkidle" });
   await page.locator(".ios-page-body").waitFor();
-  const filterButton = page.locator('[aria-label="收藏状态筛选"] button[aria-haspopup="menu"]');
-  const menu = page.getByRole("menu", { name: "追剧状态" });
-  const activeLabel = page.locator(".ios-filter-active-label");
-  const openMenu = async () => {
-    if (!(await menu.count())) await filterButton.click();
-    await menu.waitFor();
-  };
-  const choose = async (name) => {
-    await openMenu();
-    await page.getByRole("menuitemradio", { name }).click();
-    await menu.waitFor({ state: "detached" });
-  };
-  const backToAll = async () => {
-    await page.evaluate(() => window.dispatchEvent(new Event("hg:profile-reset")));
-    await page.waitForFunction(() => document.querySelector('[aria-label="收藏状态筛选"] button')?.getAttribute("aria-pressed") === "false");
-  };
-  await page.waitForFunction(() => document.querySelectorAll(".ios-poster-title").length === 6);
-  await page.waitForFunction(() => document.querySelector('[aria-label="收藏状态筛选"] button')?.getAttribute("aria-expanded") === "false");
-  const options = page.locator('.ios-filter-menu [role="menuitemradio"]');
-  const optionTexts = async () => (await options.allInnerTexts()).map(text => text.replace(/\s+/g, " ").trim());
-  await openMenu();
-  assert.deepEqual(await optionTexts(), ["在追剧 2", "连载中 3", "已完结 3"]);
-  assert.equal(await options.nth(0).getAttribute("aria-checked"), "false");
-  assert.equal(await page.locator(".ios-filter-menu svg").count(), 0, "menu has no trailing check icon");
-  const countRightEdges = await page.locator(".ios-filter-menu-count").evaluateAll(elements =>
-    elements.map(element => Math.round(element.getBoundingClientRect().right)));
-  assert.ok(Math.max(...countRightEdges) - Math.min(...countRightEdges) <= 1, "menu counts share one right edge");
-  assert.equal(await page.locator('[aria-label="收藏内容类型"] button').first().innerText(), "短剧 6");
+
+  const filterButton = page.locator("[data-favorite-filter-trigger]");
+  const filterMenu = page.getByRole("menu", { name: "收藏筛选" });
+  const filterSummary = page.locator("[data-favorite-filter-summary]");
+  const shortTotal = page.locator("[data-favorite-short-total]");
+  const postsButton = page.getByRole("button", { name: /帖子/ });
+  const posterTitles = page.locator(".ios-poster-title");
+  const posterBadges = page.locator(".ios-poster-badge");
   const footer = page.locator('[role="status"]').filter({ hasText: "已显示" }).last();
+  const normalize = async locator => (await locator.innerText()).replace(/\s+/g, " ").trim();
+  const waitCards = count => page.waitForFunction(n => document.querySelectorAll(".ios-poster-title").length === n, count);
+  const openFilter = async () => {
+    if (!(await filterMenu.count())) await filterButton.click();
+    await filterMenu.waitFor();
+  };
+  const closeFilter = async () => {
+    await page.getByRole("button", { name: "完成" }).click();
+    await filterMenu.waitFor({ state: "detached" });
+  };
+  const filterOption = (axis, value) => page.locator(`[data-favorite-${axis}-filter-option="${value}"]`);
+  const resetAll = async () => {
+    await page.evaluate(() => window.dispatchEvent(new Event("hg:profile-reset")));
+    await waitCards(6);
+  };
+
+  await waitCards(6);
+  assert.equal(await normalize(shortTotal), "6");
+  assert.equal(await filterButton.getAttribute("aria-label"), "收藏筛选");
+  assert.equal(await filterSummary.count(), 0);
   assert.equal(await footer.innerText(), "已显示 6 / 6 项本机记录");
-  assert.equal(await page.locator(".ios-poster-badge.is-update").count(), 0, "all view never shows the blue unwatched badge");
-  const [catBox, filterBox] = await Promise.all([
-    page.locator('[aria-label="收藏内容类型"] button').first().boundingBox(), filterButton.boundingBox()]);
-  assert.ok(catBox && filterBox && Math.abs(catBox.y - filterBox.y) <= 1 && Math.abs(catBox.height - filterBox.height) <= 1);
-  assert.ok(filterBox.x + filterBox.width <= 390 - 16, "filter icon stays inside the page");
-  const menuBox = await page.locator(".ios-filter-menu").boundingBox();
-  assert.ok(menuBox && menuBox.x >= 0 && menuBox.x + menuBox.width <= 390, "menu stays inside the page");
-  await page.screenshot({ path: fileURLToPath(new URL("favorite-filter-menu.png", output)), animations: "disabled" });
-  await page.getByRole("menuitemradio", { name: "在追剧 2" }).click();
-  await menu.waitFor({ state: "detached" });
-  await page.waitForFunction(() => document.querySelectorAll(".ios-poster-title").length === 2);
-  assert.equal(await footer.innerText(), "已显示 2 / 2 项本机记录");
-  assert.deepEqual(await page.locator(".ios-poster-title").allInnerTexts(), ["更新一", "完结二"]);
-  assert.deepEqual(await page.locator(".ios-poster-badge").allInnerTexts(), ["未看 9 集", "未看 8 集"]);
-  assert.equal(await filterButton.getAttribute("aria-pressed"), "true");
-  assert.equal(await activeLabel.innerText(), "在追剧 2");
-  assert.ok(await filterButton.evaluate(el => el.classList.contains("is-labeled")), "active state expands the filter pill to include the label");
-  assert.ok(await activeLabel.evaluate(el => el.parentElement === document.querySelector('[aria-label="收藏状态筛选"] button[aria-haspopup="menu"]')), "active label sits inside the filter pill");
-  const activeFilterBox = await filterButton.boundingBox();
-  assert.ok(activeFilterBox && catBox && Math.abs(activeFilterBox.height - catBox.height) <= 1, "active filter pill matches the category pill height");
-  assert.ok(activeFilterBox.x + activeFilterBox.width <= 390 - 16, "expanded filter pill stays inside the page");
-  await page.screenshot({ path: fileURLToPath(new URL("favorite-unwatched.png", output)), animations: "disabled" });
-  await openMenu();
-  await filterButton.click();
-  await menu.waitFor({ state: "detached" });
-  assert.equal(await activeLabel.innerText(), "在追剧 2", "closing the menu must not reset the selected status");
-  assert.equal(await filterButton.getAttribute("aria-pressed"), "true");
-  await openMenu();
-  await page.waitForFunction(() => document.activeElement?.closest('[role="menu"]') !== null);
+  const postBoxBefore = await postsButton.boundingBox();
+  await page.screenshot({ path: fileURLToPath(new URL("01-default.png", output)), animations: "disabled" });
+
+  await openFilter();
+  assert.equal(await normalize(filterOption("watch", "all")), "不限 6");
+  assert.equal(await normalize(filterOption("watch", "watching")), "在追剧 2");
+  assert.equal(await normalize(filterOption("watch", "watched")), "已看完 4");
+  assert.equal(await normalize(filterOption("series", "all")), "不限 6");
+  assert.equal(await normalize(filterOption("series", "ongoing")), "连载中 3");
+  assert.equal(await normalize(filterOption("series", "finished")), "已完结 3");
+  await page.screenshot({ path: fileURLToPath(new URL("02-menu-default.png", output)), animations: "disabled" });
+
+  await filterOption("series", "ongoing").click();
+  await waitCards(3);
+  assert.equal(await normalize(shortTotal), "6");
+  assert.equal(await normalize(filterSummary), "筛选 1");
+  assert.match(await filterButton.getAttribute("aria-label"), /连载中 3/);
+  await page.screenshot({ path: fileURLToPath(new URL("03-series-ongoing.png", output)), animations: "disabled" });
+
+  await filterOption("watch", "watching").click();
+  await waitCards(1);
+  assert.deepEqual(await posterTitles.allInnerTexts(), ["更新一"]);
+  assert.deepEqual(await posterBadges.allInnerTexts(), ["未看 9 集"]);
+  assert.equal(await normalize(filterSummary), "筛选 2");
+  assert.match(await filterButton.getAttribute("aria-label"), /在追剧 1 · 连载中 1/);
+  assert.equal(await normalize(filterOption("watch", "all")), "不限 3");
+  assert.equal(await normalize(filterOption("series", "all")), "不限 2");
+  await page.screenshot({ path: fileURLToPath(new URL("04-menu-intersection.png", output)), animations: "disabled" });
+
+  await closeFilter();
+  const postBoxAfter = await postsButton.boundingBox();
+  assert.ok(postBoxBefore && postBoxAfter && Math.abs(postBoxBefore.x - postBoxAfter.x) <= 1,
+    "Combined filters must not push the posts tab to the right");
+  assert.equal(await normalize(filterSummary), "筛选 2");
+  await page.screenshot({ path: fileURLToPath(new URL("05-active-closed.png", output)), animations: "disabled" });
+
+  // Each axis can be cleared independently from the section header.
+  await openFilter();
+  await filterOption("watch", "all").click();
+  await waitCards(3);
+  assert.equal(await normalize(filterSummary), "筛选 1");
+  await filterOption("series", "all").click();
+  await waitCards(6);
+  assert.equal(await filterSummary.count(), 0);
+  await closeFilter();
+
+  // The page reset clears both axes, while the menu reset is per-axis.
+  await openFilter();
+  await filterOption("watch", "watched").click();
+  await waitCards(4);
+  await filterOption("series", "finished").click();
+  await waitCards(2);
+  assert.deepEqual(await posterTitles.allInnerTexts(), ["完结四", "完结六"]);
+  assert.deepEqual(await posterBadges.allInnerTexts(), ["全 12 集", "全 12 集"]);
+  assert.equal(await normalize(filterSummary), "筛选 2");
+  await closeFilter();
+  await page.screenshot({ path: fileURLToPath(new URL("06-watched-finished.png", output)), animations: "disabled" });
+
+  // Re-tapping 我的 resets content type and both filters.
+  await resetAll();
+  await page.getByRole("button", { name: /帖子/ }).click();
+  await page.getByRole("button", { name: /短剧/ }).click();
+  await waitCards(6);
+  assert.equal(await filterButton.count(), 1);
+
+  // A new episode moves a completed title back into watching.
+  await resetAll();
+  await openFilter();
+  assert.equal(await normalize(filterOption("watch", "watching")), "在追剧 2");
+  assert.equal(await normalize(filterOption("watch", "watched")), "已看完 4");
+  await page.evaluate(async () => {
+    const detail = window.__fixtureDetails.find(item => item.id === 3);
+    detail.episode_count = 13;
+    detail.total_episodes = 13;
+    window.dispatchEvent(new CustomEvent("hg:line-changed"));
+  });
+  await page.waitForTimeout(300);
+  if (await filterMenu.count()) await closeFilter();
+  await openFilter();
+  assert.equal(await normalize(filterOption("watch", "watching")), "在追剧 3");
+  assert.equal(await normalize(filterOption("watch", "watched")), "已看完 3");
   await page.keyboard.press("Escape");
-  await menu.waitFor({ state: "detached" });
-  await choose("连载中 3");
-  await page.waitForFunction(() => document.querySelectorAll(".ios-poster-title").length === 3);
-  assert.equal(await footer.innerText(), "已显示 3 / 3 项本机记录");
-  assert.deepEqual(await page.locator(".ios-poster-title").allInnerTexts(), ["更新一", "更新三", "更新五"]);
-  assert.deepEqual(await page.locator(".ios-poster-badge").allInnerTexts(), ["更新至 12 集", "更新至 12 集", "更新至 12 集"]);
-  assert.equal(await activeLabel.innerText(), "连载中 3");
-  await page.screenshot({ path: fileURLToPath(new URL("favorite-ongoing.png", output)), animations: "disabled" });
-  await openMenu();
-  assert.equal(await page.getByRole("menuitemradio", { name: "连载中 3" }).getAttribute("aria-checked"), "true");
-  await page.screenshot({ path: fileURLToPath(new URL("favorite-filter-menu-selected.png", output)), animations: "disabled" });
-  await page.keyboard.press("Escape");
-  await menu.waitFor({ state: "detached" });
-  assert.equal(await footer.innerText(), "已显示 3 / 3 项本机记录");
-  await choose("已完结 3");
-  await page.waitForFunction(() => document.querySelectorAll(".ios-poster-title").length === 3);
-  assert.equal(await footer.innerText(), "已显示 3 / 3 项本机记录");
-  assert.deepEqual(await page.locator(".ios-poster-title").allInnerTexts(), ["完结二", "完结四", "完结六"]);
-  assert.deepEqual(await page.locator(".ios-poster-badge").allInnerTexts(), ["全 10 集", "全 12 集", "全 12 集"]);
-  assert.equal(await activeLabel.innerText(), "已完结 3");
-  await page.screenshot({ path: fileURLToPath(new URL("favorite-finished.png", output)), animations: "disabled" });
-  await backToAll();
-  await page.waitForFunction(() => document.querySelectorAll(".ios-poster-title").length === 6);
-  assert.equal(await footer.innerText(), "已显示 6 / 6 项本机记录");
-  assert.equal(await filterButton.getAttribute("aria-pressed"), "false");
-  assert.equal(await activeLabel.count(), 0);
-  await page.screenshot({ path: fileURLToPath(new URL("favorite-default.png", output)), animations: "disabled" });
-  console.log("PASS: category counts and footer totals stay consistent");
+  await filterMenu.waitFor({ state: "detached" });
+
+  console.log("PASS: combined watch and release filters stay independent, intersect, and follow new episodes");
 } catch (error) {
   console.error(error); process.exitCode = 1;
 } finally {

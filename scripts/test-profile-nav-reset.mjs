@@ -42,22 +42,23 @@ try {
   const profileNav = page.locator(".hg-tabbar .ios-mobile-nav-item").filter({ hasText: "我的" });
   await profileNav.click();
   await page.getByRole("button", { name: "我的收藏", exact: true }).waitFor();
-  const filterButton = page.locator('[aria-label="收藏状态筛选"] button[aria-haspopup="menu"]');
+  const filterButton = page.locator("[data-favorite-filter-trigger]");
   await filterButton.waitFor();
-  const menu = page.getByRole("menu", { name: "追剧状态" });
+  const menu = page.getByRole("menu", { name: "收藏筛选" });
   const activeLabel = page.locator(".ios-filter-active-label");
 
   await filterButton.click();
   await menu.waitFor();
-  await page.getByRole("menuitemradio", { name: /在追剧/ }).click();
+  await page.locator('[data-favorite-watch-filter-option="watching"]').click();
+  await page.getByRole("button", { name: "完成" }).click();
   await menu.waitFor({ state: "detached" });
-  await page.waitForFunction(() => document.querySelector(".ios-filter-active-label")?.textContent?.startsWith("在追剧"));
+  await page.waitForFunction(() => document.querySelector(".ios-filter-active-label")?.textContent?.startsWith("筛选 1"));
   await page.screenshot({ path: fileURLToPath(new URL("profile-filter-active.png", output)), animations: "disabled" });
 
   // The old bug: re-opening the filter menu from the active pill reset to all.
   await filterButton.click();
   await menu.waitFor();
-  assert.match(await activeLabel.innerText(), /^在追剧 \d+$/);
+  assert.match(await activeLabel.innerText(), /^筛选 1$/);
   await page.screenshot({ path: fileURLToPath(new URL("profile-filter-reopen.png", output)), animations: "disabled" });
   await page.keyboard.press("Escape");
   await menu.waitFor({ state: "detached" });
@@ -65,7 +66,7 @@ try {
 
   // Tapping the active Profile tab is the deliberate reset gesture.
   await profileNav.click();
-  await page.waitForFunction(() => document.querySelector('[aria-label="收藏状态筛选"] button')?.getAttribute("aria-pressed") === "false");
+  await page.waitForFunction(() => document.querySelector("[data-favorite-filter-trigger]")?.getAttribute("aria-pressed") === "false");
   assert.equal(await activeLabel.count(), 0);
   assert.equal(await page.getByRole("button", { name: "我的收藏", exact: true }).getAttribute("aria-pressed"), "true");
   assert.equal(await page.locator(".ios-poster-title").count(), 6);
@@ -79,7 +80,7 @@ try {
   report.checks.push("re-tapping 我的 also returns 观看历史 to 我的收藏");
 
   await page.evaluate(() => window.dispatchEvent(new Event("hg:profile-reset")));
-  await page.waitForFunction(() => document.querySelector('[aria-label="收藏状态筛选"] button')?.getAttribute("aria-pressed") === "false");
+  await page.waitForFunction(() => document.querySelector("[data-favorite-filter-trigger]")?.getAttribute("aria-pressed") === "false");
   report.checks.push("profile reset event is idempotent on the default page");
 
   assert.deepEqual(report.errors, []);

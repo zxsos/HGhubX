@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { Button } from "../../shared/ui/ios/controls";
 import { IChevronDown } from "../../shared/ui/icons";
-import { tr } from "../../shared/i18n";
+import { N_, tr } from "../../shared/i18n";
 
 export type WorkStatus = "all" | "ongoing" | "finished";
 export type WorkStatusCounts = { ongoing: number; finished: number } | null;
 
 const OPTIONS: { value: WorkStatus; label: string }[] = [
   { value: "all", label: "全部" },
-  { value: "ongoing", label: "连载中" },
+  { value: "ongoing", label: N_("连载中") },
   { value: "finished", label: "已完结" },
 ];
 
