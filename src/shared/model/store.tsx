@@ -67,7 +67,16 @@ export type SuperResolutionTestScale = "auto" | "1x" | "2x";
 export type SuperResolutionTestDetailGain = 1 | 1.5 | 2;
 
 /** Test-only mid-frequency contrast for skin and facial detail. */
-export type SuperResolutionTestPortraitContrast = 0 | 0.2 | 0.4;
+export type SuperResolutionTestPortraitContrast = 0 | 0.2 | 0.3 | 0.4;
+
+/** Test-only edge-preserving deblock strength for compressed sources. */
+export type SuperResolutionTestDeblock = 0 | 0.2 | 0.4;
+
+/** Test-only film-grain amplitude for synthetic faces. */
+export type SuperResolutionTestGrain = 0 | 0.03 | 0.06;
+
+/** Test-only soft skin-tone mask strength for portrait contrast. */
+export type SuperResolutionTestFaceMask = 0 | 0.5 | 1;
 
 export type Toast = {
   id: number;
@@ -249,6 +258,12 @@ type Store = {
   srTestDetailGain: SuperResolutionTestDetailGain; setSrTestDetailGain: (gain: SuperResolutionTestDetailGain) => void;
   /** Test-only mid-frequency contrast for skin and facial detail. */
   srTestPortraitContrast: SuperResolutionTestPortraitContrast; setSrTestPortraitContrast: (contrast: SuperResolutionTestPortraitContrast) => void;
+  /** Test-only edge-preserving deblock strength for compressed sources. */
+  srTestDeblock: SuperResolutionTestDeblock; setSrTestDeblock: (strength: SuperResolutionTestDeblock) => void;
+  /** Test-only film-grain amplitude for synthetic faces. */
+  srTestGrain: SuperResolutionTestGrain; setSrTestGrain: (grain: SuperResolutionTestGrain) => void;
+  /** Test-only soft skin-tone mask strength for portrait contrast. */
+  srTestFaceMask: SuperResolutionTestFaceMask; setSrTestFaceMask: (mask: SuperResolutionTestFaceMask) => void;
   volume: number; setVolume: (v: number) => void;
   searchHist: string[]; addSearch: (q: string) => void; removeSearch: (q: string) => void; clearSearchHist: () => void;
   strictSecurity: boolean; strictSecurityReady: boolean; securityPending: boolean; cliRelaxed: boolean; setStrictSecurity: (on: boolean) => Promise<void>;
@@ -267,7 +282,25 @@ function readTestDetailGain(): SuperResolutionTestDetailGain {
 function readTestPortraitContrast(): SuperResolutionTestPortraitContrast {
   if (typeof window === "undefined") return 0;
   const raw = new URLSearchParams(window.location.search).get("srcontrast");
+  return raw === "0.4" ? 0.4 : raw === "0.3" ? 0.3 : raw === "0.2" ? 0.2 : 0;
+}
+
+function readTestDeblock(): SuperResolutionTestDeblock {
+  if (typeof window === "undefined") return 0;
+  const raw = new URLSearchParams(window.location.search).get("srdeblock");
   return raw === "0.4" ? 0.4 : raw === "0.2" ? 0.2 : 0;
+}
+
+function readTestGrain(): SuperResolutionTestGrain {
+  if (typeof window === "undefined") return 0;
+  const raw = new URLSearchParams(window.location.search).get("srgrain");
+  return raw === "0.06" ? 0.06 : raw === "0.03" ? 0.03 : 0;
+}
+
+function readTestFaceMask(): SuperResolutionTestFaceMask {
+  if (typeof window === "undefined") return 0;
+  const raw = new URLSearchParams(window.location.search).get("srmask");
+  return raw === "1" ? 1 : raw === "0.5" ? 0.5 : 0;
 }
 
 const Ctx = createContext<Store>(null as unknown as Store);
@@ -373,6 +406,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [srTestScale, setSrTestScale] = useState<SuperResolutionTestScale>("auto");
   const [srTestDetailGain, setSrTestDetailGain] = useState<SuperResolutionTestDetailGain>(readTestDetailGain);
   const [srTestPortraitContrast, setSrTestPortraitContrast] = useState<SuperResolutionTestPortraitContrast>(readTestPortraitContrast);
+  const [srTestDeblock, setSrTestDeblock] = useState<SuperResolutionTestDeblock>(readTestDeblock);
+  const [srTestGrain, setSrTestGrain] = useState<SuperResolutionTestGrain>(readTestGrain);
+  const [srTestFaceMask, setSrTestFaceMask] = useState<SuperResolutionTestFaceMask>(readTestFaceMask);
   const tabRef = useRef(tab);
   tabRef.current = tab;
   const [stack, setStack] = useState<Page[]>([]);
@@ -661,12 +697,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     srTestScale, setSrTestScale,
     srTestDetailGain, setSrTestDetailGain,
     srTestPortraitContrast, setSrTestPortraitContrast,
+    srTestDeblock, setSrTestDeblock,
+    srTestGrain, setSrTestGrain,
+    srTestFaceMask, setSrTestFaceMask,
     searchHist: p.searchHist, addSearch, removeSearch, clearSearchHist,
     strictSecurity, strictSecurityReady, securityPending, cliRelaxed, setStrictSecurity,
     get toasts() { return toastList; }, toast, lineEpoch,
   }), [theme, themePreference, setTheme, tab, setTab, stack, push, openRootPage, pop, user, loginOpen, logout,
     p, account,
-    setMuted, setMuteOnStartup, setSwipeEp, setPreferHevc, setBalanceVolume, setFsIdleSecs, setStartupTab, setAmbientGlow, setEnhanceMode, srTestScale, srTestDetailGain, srTestPortraitContrast, setVolume, addSearch, removeSearch, clearSearchHist, strictSecurity, strictSecurityReady, securityPending, cliRelaxed, setStrictSecurity,
+    setMuted, setMuteOnStartup, setSwipeEp, setPreferHevc, setBalanceVolume, setFsIdleSecs, setStartupTab, setAmbientGlow, setEnhanceMode, srTestScale, srTestDetailGain, srTestPortraitContrast, srTestDeblock, srTestGrain, srTestFaceMask, setVolume, addSearch, removeSearch, clearSearchHist, strictSecurity, strictSecurityReady, securityPending, cliRelaxed, setStrictSecurity,
     toast, lineEpoch, theater, setTheater, fs, setFs, clean, setClean, locked, setLocked]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

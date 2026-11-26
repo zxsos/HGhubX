@@ -24,7 +24,7 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import type { DetailUpscaler } from "./detailUpscaler";
 import { superResolutionRequested, superResolutionVariant, type SuperResolutionVariant } from "./superResolutionRequest";
-import type { SuperResolutionTestDetailGain, SuperResolutionTestPortraitContrast, SuperResolutionTestScale } from "../../shared/model/store";
+import type { SuperResolutionTestDeblock, SuperResolutionTestDetailGain, SuperResolutionTestFaceMask, SuperResolutionTestGrain, SuperResolutionTestPortraitContrast, SuperResolutionTestScale } from "../../shared/model/store";
 import { tr } from "../../shared/i18n";
 import "../../styles/super-resolution.css";
 
@@ -42,6 +42,12 @@ type Props = {
   detailGain?: SuperResolutionTestDetailGain;
   /** Test-only mid-frequency contrast for skin and facial detail. */
   portraitContrast?: SuperResolutionTestPortraitContrast;
+  /** Test-only edge-preserving deblock strength for compressed sources. */
+  deblock?: SuperResolutionTestDeblock;
+  /** Test-only film-grain amplitude for synthetic faces. */
+  grain?: SuperResolutionTestGrain;
+  /** Test-only soft skin-tone mask strength for portrait contrast. */
+  faceMask?: SuperResolutionTestFaceMask;
   /** Test-only status badge; omitted by production callers. */
   debug?: boolean;
 };
@@ -276,6 +282,36 @@ void main() {
   );
 }`;
 
+/** A light 3x3 bilateral prefilter for 720p compression blocks. */
+const DEBLOCK_SHADER = `#version 300 es
+precision highp float;
+
+uniform sampler2D uSource;
+uniform vec2 uInputSize;
+uniform vec2 uOutputSize;
+uniform float uStrength;
+out vec4 outColor;
+
+void main() {
+  vec2 uv = gl_FragCoord.xy / uOutputSize;
+  vec2 texel = 1.0 / uInputSize;
+  vec3 center = texture(uSource, uv).rgb;
+  vec3 sum = center;
+  float weightSum = 1.0;
+  for (int y = -1; y <= 1; y += 1) {
+    for (int x = -1; x <= 1; x += 1) {
+      if (x == 0 && y == 0) continue;
+      vec3 sampleColor = texture(uSource, uv + vec2(float(x), float(y)) * texel).rgb;
+      float distanceSq = dot(sampleColor - center, sampleColor - center);
+      float weight = exp(-distanceSq / 0.0025);
+      sum += sampleColor * weight;
+      weightSum += weight;
+    }
+  }
+  vec3 filtered = sum / weightSum;
+  outColor = vec4(mix(center, filtered, uStrength), 1.0);
+}`;
+
 /**
  * Adds only the high-frequency part of the FSRCNNX luma to the EASU color.
  * Replacing or offsetting all three RGB channels in gamma space brightens the
@@ -289,11 +325,24 @@ uniform sampler2D uDetail;
 uniform vec2 uOutputSize;
 uniform float uDetailGain;
 uniform float uLocalContrast;
+uniform float uGrain;
+uniform float uFaceMask;
+uniform float uFrame;
 out vec4 outColor;
+
+float hash21(vec2 p) {
+  p = fract(p * vec2(123.34, 456.21));
+  p += dot(p, p + 45.32);
+  return fract(p.x * p.y);
+}
 
 vec3 rgbToYcbcr(vec3 c) {
   float y = dot(c, vec3(0.2126, 0.7152, 0.0722));
   return vec3(y, (c.b - y) / 1.8556, (c.r - y) / 1.5748);
+}
+
+float colorLuma(vec2 uv) {
+  return rgbToYcbcr(texture(uColor, uv).rgb).x;
 }
 
 vec3 ycbcrToRgb(vec3 c) {
@@ -331,10 +380,32 @@ void main() {
     texture(uDetail, uv - vec2(0.0, texel.y * 2.0)).r
   ) * 0.25;
   float middle = detail - broad;
+  float wide = (
+    texture(uDetail, uv + vec2(texel.x * 6.0, 0.0)).r +
+    texture(uDetail, uv - vec2(texel.x * 6.0, 0.0)).r +
+    texture(uDetail, uv + vec2(0.0, texel.y * 6.0)).r +
+    texture(uDetail, uv - vec2(0.0, texel.y * 6.0)).r
+  ) * 0.25;
+  float middleWide = broad - wide;
+  vec2 colorTexel = 1.0 / uOutputSize;
+  float formLuma = (
+    colorLuma(uv + vec2(colorTexel.x * 12.0, 0.0)) +
+    colorLuma(uv - vec2(colorTexel.x * 12.0, 0.0)) +
+    colorLuma(uv + vec2(0.0, colorTexel.y * 12.0)) +
+    colorLuma(uv - vec2(0.0, colorTexel.y * 12.0))
+  ) * 0.25;
+  float form = rgbToYcbcr(color).x - formLuma;
+  float portraitBand = middle + middleWide * 0.5 + form * 0.6;
 
   vec3 ycc = rgbToYcbcr(color);
   float midtone = smoothstep(0.08, 0.25, ycc.x) * (1.0 - smoothstep(0.8, 0.97, ycc.x));
-  ycc.x = clamp(ycc.x + high * uDetailGain + middle * uLocalContrast * midtone, 0.0, 1.0);
+  float cb = ycc.y - 0.5;
+  float cr = ycc.z - 0.5;
+  float skin = smoothstep(-0.10, -0.03, cb) * (1.0 - smoothstep(0.02, 0.08, cb))
+    * smoothstep(0.01, 0.03, cr) * (1.0 - smoothstep(0.10, 0.16, cr));
+  float faceWeight = mix(1.0, skin, uFaceMask);
+  float grain = (hash21(gl_FragCoord.xy + vec2(uFrame * 17.0, uFrame * 29.0)) - 0.5) * uGrain * midtone;
+  ycc.x = clamp(ycc.x + high * uDetailGain + portraitBand * uLocalContrast * midtone * faceWeight + grain, 0.0, 1.0);
   outColor = vec4(clamp(ycbcrToRgb(ycc), 0.0, 1.0), 1.0);
 }`;
 
@@ -441,7 +512,7 @@ function outputSize(video: HTMLVideoElement, fit: Fit, variant: SuperResolutionV
   return { width: Math.round(vw * info.scale), height: Math.round(vh * info.scale), scale: info.scale };
 }
 
-export default function SuperResolutionCanvas({ videoRef, fit = "contain", active = true, enabled: enabledProp, variant: variantProp, forceScale: forceScaleProp, detailGain: detailGainProp, portraitContrast: portraitContrastProp, debug = false }: Props) {
+export default function SuperResolutionCanvas({ videoRef, fit = "contain", active = true, enabled: enabledProp, variant: variantProp, forceScale: forceScaleProp, detailGain: detailGainProp, portraitContrast: portraitContrastProp, deblock: deblockProp, grain: grainProp, faceMask: faceMaskProp, debug = false }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const statusRef = useRef<HTMLSpanElement>(null);
   const [failed, setFailed] = useState(false);
@@ -454,6 +525,9 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
   const forceScale = forceScaleProp ?? "auto";
   const detailGain = detailGainProp ?? 1;
   const portraitContrast = portraitContrastProp ?? 0;
+  const deblock = deblockProp ?? 0;
+  const grain = grainProp ?? 0;
+  const faceMask = faceMaskProp ?? 0;
   const variantLabel = variant === "detail" ? "细节" : variant === "cas" ? "CAS" : "FSR";
 
   useEffect(() => {
@@ -489,10 +563,15 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
     let programEasu: WebGLProgram | null = null;
     let programRcas: WebGLProgram | null = null;
     let programComposite: WebGLProgram | null = null;
+    let programDeblock: WebGLProgram | null = null;
     let detailUpscaler: DetailUpscaler | null = null;
     let videoTexture: WebGLTexture | null = null;
+    let filteredTexture: WebGLTexture | null = null;
     let intermediate: WebGLTexture | null = null;
     let framebuffer: WebGLFramebuffer | null = null;
+    let filterFramebuffer: WebGLFramebuffer | null = null;
+    let filterWidth = 0;
+    let filterHeight = 0;
     let vertexArray: WebGLVertexArrayObject | null = null;
     let vertexBuffer: WebGLBuffer | null = null;
     let disposed = false;
@@ -518,6 +597,13 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
     let compositeOutputLoc: WebGLUniformLocation | null = null;
     let compositeDetailGainLoc: WebGLUniformLocation | null = null;
     let compositeLocalContrastLoc: WebGLUniformLocation | null = null;
+    let compositeGrainLoc: WebGLUniformLocation | null = null;
+    let compositeFaceMaskLoc: WebGLUniformLocation | null = null;
+    let compositeFrameLoc: WebGLUniformLocation | null = null;
+    let deblockSourceLoc: WebGLUniformLocation | null = null;
+    let deblockInputLoc: WebGLUniformLocation | null = null;
+    let deblockOutputLoc: WebGLUniformLocation | null = null;
+    let deblockStrengthLoc: WebGLUniformLocation | null = null;
 
     const onContextLost = (event: Event) => {
       event.preventDefault();
@@ -533,11 +619,14 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
       if (fallbackTimer) window.clearInterval(fallbackTimer);
       if (gl) {
         if (videoTexture) gl.deleteTexture(videoTexture);
+        if (filteredTexture) gl.deleteTexture(filteredTexture);
         if (intermediate) gl.deleteTexture(intermediate);
         if (framebuffer) gl.deleteFramebuffer(framebuffer);
+        if (filterFramebuffer) gl.deleteFramebuffer(filterFramebuffer);
         if (programEasu) gl.deleteProgram(programEasu);
         if (programRcas) gl.deleteProgram(programRcas);
         if (programComposite) gl.deleteProgram(programComposite);
+        if (programDeblock) gl.deleteProgram(programDeblock);
         if (detailUpscaler) detailUpscaler.dispose();
         if (vertexArray) gl.deleteVertexArray(vertexArray);
         if (vertexBuffer) gl.deleteBuffer(vertexBuffer);
@@ -579,6 +668,28 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     };
 
+    const ensureFilterTarget = () => {
+      if (!gl || !videoTexture) return false;
+      const vw = video.videoWidth;
+      const vh = video.videoHeight;
+      if (!vw || !vh) return false;
+      if (!filteredTexture || filterWidth !== vw || filterHeight !== vh) {
+        if (filteredTexture) gl.deleteTexture(filteredTexture);
+        filteredTexture = createTexture(gl, vw, vh);
+        filterWidth = vw;
+        filterHeight = vh;
+      }
+      if (!filterFramebuffer) filterFramebuffer = gl.createFramebuffer();
+      if (!filterFramebuffer) throw new Error("Unable to create deblock framebuffer");
+      gl.bindFramebuffer(gl.FRAMEBUFFER, filterFramebuffer);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, filteredTexture, 0);
+      if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) {
+        throw new Error("Incomplete deblock framebuffer");
+      }
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      return true;
+    };
+
     const draw = (force = false) => {
       if (disposed || !gl || !video) return;
       if (video.readyState < 2 || !video.videoWidth) {
@@ -617,7 +728,10 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
       canvas.dataset.scale = size.scale.toFixed(2);
       const gainLabel = variant === "detail" && detailGain !== 1 ? ` ×${detailGain.toFixed(1)}` : "";
       const contrastLabel = variant === "detail" && portraitContrast !== 0 ? ` · 对比 ${portraitContrast.toFixed(1)}` : "";
-      writeStatus(`SR ${size.scale.toFixed(2)}x · ${variantLabel}${gainLabel}${contrastLabel} · ${size.width}×${size.height}`);
+      const deblockLabel = variant === "detail" && deblock !== 0 ? ` · 去块 ${deblock.toFixed(1)}` : "";
+      const grainLabel = variant === "detail" && grain !== 0 ? ` · 颗粒 ${grain.toFixed(2)}` : "";
+      const maskLabel = variant === "detail" && faceMask !== 0 ? ` · 软掩膜 ${faceMask.toFixed(1)}` : "";
+      writeStatus(`SR ${size.scale.toFixed(2)}x · ${variantLabel}${gainLabel}${contrastLabel}${deblockLabel}${grainLabel}${maskLabel} · ${size.width}×${size.height}`);
       if (size.width !== width || size.height !== height) resize(size.width, size.height);
       if (!force && frames > 0 && video.paused) return;
 
@@ -637,14 +751,31 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
       const started = performance.now();
       if (variant === "detail") {
         if (!detailUpscaler || !programComposite || !videoTexture) return;
-        const detailTexture = detailUpscaler.render(videoTexture, vertexArray);
+        const baseTexture: WebGLTexture = videoTexture;
+        let sourceTexture = baseTexture;
+        if (deblock > 0 && programDeblock && ensureFilterTarget() && filteredTexture) {
+          gl.bindFramebuffer(gl.FRAMEBUFFER, filterFramebuffer);
+          gl.viewport(0, 0, video.videoWidth, video.videoHeight);
+          gl.useProgram(programDeblock);
+          gl.bindVertexArray(vertexArray);
+          gl.activeTexture(gl.TEXTURE0);
+          gl.bindTexture(gl.TEXTURE_2D, videoTexture);
+          gl.uniform1i(deblockSourceLoc, 0);
+          gl.uniform2f(deblockInputLoc, video.videoWidth, video.videoHeight);
+          gl.uniform2f(deblockOutputLoc, video.videoWidth, video.videoHeight);
+          gl.uniform1f(deblockStrengthLoc, deblock);
+          gl.drawArrays(gl.TRIANGLES, 0, 3);
+          gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+          sourceTexture = filteredTexture;
+        }
+        const detailTexture = detailUpscaler.render(sourceTexture, vertexArray);
 
         gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
         gl.viewport(0, 0, width, height);
         gl.useProgram(programEasu);
         gl.bindVertexArray(vertexArray);
         gl.activeTexture(gl.TEXTURE0);
-        gl.bindTexture(gl.TEXTURE_2D, videoTexture);
+        gl.bindTexture(gl.TEXTURE_2D, sourceTexture);
         gl.uniform1i(easuSourceLoc, 0);
         gl.uniform2f(easuInputLoc, video.videoWidth, video.videoHeight);
         gl.uniform2f(easuOutputLoc, width, height);
@@ -663,6 +794,9 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
         gl.uniform2f(compositeOutputLoc, width, height);
         gl.uniform1f(compositeDetailGainLoc, detailGain);
         gl.uniform1f(compositeLocalContrastLoc, portraitContrast);
+        gl.uniform1f(compositeGrainLoc, grain);
+        gl.uniform1f(compositeFaceMaskLoc, faceMask);
+        gl.uniform1f(compositeFrameLoc, frames);
         gl.drawArrays(gl.TRIANGLES, 0, 3);
         canvas.dataset.detailPasses = String(detailUpscaler.passCount);
       } else {
@@ -732,6 +866,7 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
       programRcas = link(gl, VERTEX_SHADER, RCAS_SHADER);
       if (variant === "detail") {
         programComposite = link(gl, VERTEX_SHADER, DETAIL_COMPOSITE_SHADER);
+        programDeblock = link(gl, VERTEX_SHADER, DEBLOCK_SHADER);
         void (async () => {
           try {
             /* Keep the 26-pass runner and its weights out of the main bundle. */
@@ -768,6 +903,15 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
         compositeOutputLoc = gl.getUniformLocation(programComposite, "uOutputSize");
         compositeDetailGainLoc = gl.getUniformLocation(programComposite, "uDetailGain");
         compositeLocalContrastLoc = gl.getUniformLocation(programComposite, "uLocalContrast");
+        compositeGrainLoc = gl.getUniformLocation(programComposite, "uGrain");
+        compositeFaceMaskLoc = gl.getUniformLocation(programComposite, "uFaceMask");
+        compositeFrameLoc = gl.getUniformLocation(programComposite, "uFrame");
+        if (programDeblock) {
+          deblockSourceLoc = gl.getUniformLocation(programDeblock, "uSource");
+          deblockInputLoc = gl.getUniformLocation(programDeblock, "uInputSize");
+          deblockOutputLoc = gl.getUniformLocation(programDeblock, "uOutputSize");
+          deblockStrengthLoc = gl.getUniformLocation(programDeblock, "uStrength");
+        }
       }
       videoTexture = createTexture(gl, video.videoWidth || 2, video.videoHeight || 2);
       vertexArray = gl.createVertexArray();
@@ -796,7 +940,7 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
     video.addEventListener("resize", drawOnce);
 
     return stop;
-  }, [active, debug, detailGain, enabled, failed, fit, forceScale, portraitContrast, videoRef, variant]);
+  }, [active, debug, deblock, detailGain, enabled, failed, faceMask, fit, forceScale, grain, portraitContrast, videoRef, variant]);
 
   if (!enabled) return null;
 
@@ -805,7 +949,9 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
   return (
     <div className="hg-super-resolution" aria-hidden={debug ? undefined : true} data-super-resolution={enabled ? "on" : "off"} data-super-resolution-mode={variant}
       data-super-resolution-force={forceScale} data-super-resolution-detail-gain={detailGain.toFixed(1)}
-      data-super-resolution-detail-local={portraitContrast.toFixed(1)} style={debug ? { display: "block" } : undefined}>
+      data-super-resolution-detail-local={portraitContrast.toFixed(1)}
+      data-super-resolution-deblock={deblock.toFixed(1)} data-super-resolution-grain={grain.toFixed(2)}
+      data-super-resolution-face-mask={faceMask.toFixed(1)} style={debug ? { display: "block" } : undefined}>
       {!failed && <canvas
         ref={canvasRef}
         className={`hg-super-resolution-canvas sr-fit-${fit}${compareOriginal ? " is-compare-hidden" : ""}`}

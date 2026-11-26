@@ -16,7 +16,7 @@ const scriptScenarios = {
   tv: { script: "test-tv-remote.mjs", timeout: 480000, metrics: { transport: "mock Tauri IPC; actual TV bootstrap, worker, library and player" } },
   "post-flicker": { script: "test-post-flicker.mjs", timeout: 240000, metrics: { transport: "mock Tauri IPC; real PostDetail/AppProvider/Player; local HLS fixture" } },
 };
-const ALL_SCENARIOS = ["seek", "legacy", "lifecycle", "gesture", "proxy", "portrait-fit", "episode-toast", "ambient", "balance-volume", "super-resolution", "super-resolution-2x", "super-resolution-cas", "super-resolution-detail", "super-resolution-detail-balanced", "super-resolution-detail-strong", "ios-native", "recovery", "review", "tv", "post-flicker"];
+const ALL_SCENARIOS = ["seek", "legacy", "lifecycle", "gesture", "proxy", "portrait-fit", "episode-toast", "ambient", "balance-volume", "super-resolution", "super-resolution-2x", "super-resolution-cas", "super-resolution-detail", "super-resolution-detail-balanced", "super-resolution-detail-strong", "super-resolution-detail-ai", "ios-native", "recovery", "review", "tv", "post-flicker"];
 const { values: args } = parseArgs({ options: {
   "media-dir": { type: "string" }, output: { type: "string" }, "browser-executable": { type: "string" },
   scenarios: { type: "string", default: "seek,legacy,lifecycle,gesture,proxy,portrait-fit" }, help: { type: "boolean" },
@@ -568,12 +568,12 @@ async function superResolutionChecks(page, dir) {
   return { source, on, fps, gpu, fallback: true, cpu_ms: on.cpuMs };
 }
 
-async function superResolutionQualityChecks(page, dir, variant = "fsr", detailGain = 1, portraitContrast = 0) {
+async function superResolutionQualityChecks(page, dir, variant = "fsr", detailGain = 1, portraitContrast = 0, deblock = 0, grain = 0, faceMask = 0) {
   // A 2x display is FSR1's normal operating range. Keep the wrapper at 640x360
   // so the canvas is 1:1 with CSS pixels; otherwise the browser scales the
   // canvas again and hides the actual FSR result.
   await page.addInitScript(() => localStorage.setItem("hghubx_mobile_hold_guide_v1", "1"));
-  await loadPlayer(page, false, `&sr=${variant}${detailGain !== 1 ? `&srgain=${detailGain}` : ""}${portraitContrast !== 0 ? `&srcontrast=${portraitContrast}` : ""}`);
+  await loadPlayer(page, false, `&sr=${variant}${detailGain !== 1 ? `&srgain=${detailGain}` : ""}${portraitContrast !== 0 ? `&srcontrast=${portraitContrast}` : ""}${deblock !== 0 ? `&srdeblock=${deblock}` : ""}${grain !== 0 ? `&srgrain=${grain}` : ""}${faceMask !== 0 ? `&srmask=${faceMask}` : ""}`);
   await page.evaluate(() => {
     const root = document.querySelector("[data-player-fixture]");
     if (root) {
@@ -592,6 +592,9 @@ async function superResolutionQualityChecks(page, dir, variant = "fsr", detailGa
     mode: canvas.closest(".hg-super-resolution")?.dataset.superResolutionMode,
     detailGain: canvas.closest(".hg-super-resolution")?.dataset.superResolutionDetailGain,
     detailLocal: canvas.closest(".hg-super-resolution")?.dataset.superResolutionDetailLocal,
+    deblock: canvas.closest(".hg-super-resolution")?.dataset.superResolutionDeblock,
+    grain: canvas.closest(".hg-super-resolution")?.dataset.superResolutionGrain,
+    faceMask: canvas.closest(".hg-super-resolution")?.dataset.superResolutionFaceMask,
     active: canvas.closest(".hg-super-resolution")?.style.display,
   }));
   const source = await page.locator("video").evaluate(video => ({ width: video.videoWidth, height: video.videoHeight }));
@@ -602,6 +605,9 @@ async function superResolutionQualityChecks(page, dir, variant = "fsr", detailGa
   assert.equal(on.mode, variant, `2x canvas mode must be ${variant}`);
   assert.equal(on.detailGain, detailGain.toFixed(1), `Detail gain must be ${detailGain.toFixed(1)}`);
   assert.equal(on.detailLocal, portraitContrast.toFixed(1), `Portrait contrast must be ${portraitContrast.toFixed(1)}`);
+  assert.equal(on.deblock, deblock.toFixed(1), `Deblock must be ${deblock.toFixed(1)}`);
+  assert.equal(on.grain, grain.toFixed(2), `Grain must be ${grain.toFixed(2)}`);
+  assert.equal(on.faceMask, faceMask.toFixed(1), `Face mask must be ${faceMask.toFixed(1)}`);
 
   // A test-only hold gesture must reveal the untouched native video at the same frame.
   const compare = page.locator(".hg-super-resolution-compare");
@@ -1321,7 +1327,7 @@ try {
       continue;
     }
     const mobileContext = name === "gesture" || name === "portrait-fit" || name === "episode-toast" || name === "ambient" || name === "balance-volume" || name === "super-resolution";
-    const qualityContext = name === "super-resolution-2x" || name === "super-resolution-cas" || name === "super-resolution-detail" || name === "super-resolution-detail-balanced" || name === "super-resolution-detail-strong";
+    const qualityContext = name === "super-resolution-2x" || name === "super-resolution-cas" || name === "super-resolution-detail" || name === "super-resolution-detail-balanced" || name === "super-resolution-detail-strong" || name === "super-resolution-detail-ai";
     const context = await browser.newContext({ ...(mobileContext ? {userAgent:"Mozilla/5.0 (iPhone; CPU iPhone OS 17_1_1 like Mac OS X) AppleWebKit/605.1.15 Version/17.1 Mobile/15E148 Safari/604.1",hasTouch:true} : {}), ...(name === "super-resolution" ? { deviceScaleFactor: 2 } : {}), viewport: qualityContext ? { width: 1000, height: 900 } : name === "portrait-fit" || name === "episode-toast" || name === "ambient" || name === "super-resolution" ? { width: 390, height: 844 } : { width: 1000, height: 900 } });
     await context.exposeBinding("collectPlaybackLogs", (_source, entries) => {
       for (const e of entries) jsonl(join(dir, "playback.jsonl"), { ts: e.data.at, event: `web.${e.event}`, data: e.data, transport: "browser-fixture" });
@@ -1345,7 +1351,7 @@ try {
     const result = { name, status: "running", started: new Date().toISOString() }; report.cases.push(result);
     let deadline;
     try {
-      const action = name === "recovery" ? explicitRecoveryCheck(page) : name === "proxy" ? proxyRecoveryCheck(page) : name === "gesture" ? gestureChecks(page) : name === "portrait-fit" ? portraitFitChecks(page, dir) : name === "episode-toast" ? episodeToastChecks(page, dir) : name === "ambient" ? ambientGlowChecks(page) : name === "balance-volume" ? balanceVolumeChecks(page) : name === "super-resolution" ? superResolutionChecks(page, dir) : name === "super-resolution-2x" ? superResolutionQualityChecks(page, dir, "fsr") : name === "super-resolution-cas" ? superResolutionQualityChecks(page, dir, "cas") : name === "super-resolution-detail" ? superResolutionQualityChecks(page, dir, "detail") : name === "super-resolution-detail-balanced" ? superResolutionQualityChecks(page, dir, "detail", 1.5, 0.2) : name === "super-resolution-detail-strong" ? superResolutionQualityChecks(page, dir, "detail", 2, 0.4) : name === "seek" || name === "legacy" ? seekChecks(page, name === "legacy") : lifecycleCheck(page);
+      const action = name === "recovery" ? explicitRecoveryCheck(page) : name === "proxy" ? proxyRecoveryCheck(page) : name === "gesture" ? gestureChecks(page) : name === "portrait-fit" ? portraitFitChecks(page, dir) : name === "episode-toast" ? episodeToastChecks(page, dir) : name === "ambient" ? ambientGlowChecks(page) : name === "balance-volume" ? balanceVolumeChecks(page) : name === "super-resolution" ? superResolutionChecks(page, dir) : name === "super-resolution-2x" ? superResolutionQualityChecks(page, dir, "fsr") : name === "super-resolution-cas" ? superResolutionQualityChecks(page, dir, "cas") : name === "super-resolution-detail" ? superResolutionQualityChecks(page, dir, "detail") : name === "super-resolution-detail-balanced" ? superResolutionQualityChecks(page, dir, "detail", 1.5, 0.2) : name === "super-resolution-detail-strong" ? superResolutionQualityChecks(page, dir, "detail", 2, 0.4) : name === "super-resolution-detail-ai" ? superResolutionQualityChecks(page, dir, "detail", 1.5, 0.3, 0.2, 0.03, 1) : name === "seek" || name === "legacy" ? seekChecks(page, name === "legacy") : lifecycleCheck(page);
       result.metrics = await Promise.race([action, new Promise((_, reject) => { deadline = setTimeout(() => reject(new Error("Scenario exceeded 45 seconds")), 45000); })]);
       assert.deepEqual(pageErrors, [], "Browser script errors");
       assert.deepEqual(externalRequests, [], "Unexpected external network requests");

@@ -1,6 +1,6 @@
 [package]
 name = "hghubx"
-version = "2.2.10"
+version = "2.2.15"
 description = "HGhubX client"
 authors = ["HGhubX"]
 license = "PolyForm-Noncommercial-1.0.0"
