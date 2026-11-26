@@ -25,7 +25,6 @@ import { useEffect, useRef, useState, type RefObject } from "react";
 import type { DetailUpscaler } from "./detailUpscaler";
 import { superResolutionRequested, superResolutionVariant, type SuperResolutionVariant } from "./superResolutionRequest";
 import type { SuperResolutionTestDeblock, SuperResolutionTestDetailGain, SuperResolutionTestFaceMask, SuperResolutionTestGrain, SuperResolutionTestPortraitContrast, SuperResolutionTestScale } from "../../shared/model/store";
-import { tr } from "../../shared/i18n";
 import "../../styles/super-resolution.css";
 
 type Fit = "contain" | "cover";
@@ -48,8 +47,6 @@ type Props = {
   grain?: SuperResolutionTestGrain;
   /** Test-only soft skin-tone mask strength for portrait contrast. */
   faceMask?: SuperResolutionTestFaceMask;
-  /** Test-only status badge; omitted by production callers. */
-  debug?: boolean;
 };
 
 type FrameVideo = HTMLVideoElement & {
@@ -330,10 +327,18 @@ uniform float uFaceMask;
 uniform float uFrame;
 out vec4 outColor;
 
-float hash21(vec2 p) {
-  p = fract(p * vec2(123.34, 456.21));
-  p += dot(p, p + 45.32);
-  return fract(p.x * p.y);
+uint hashUint(uint x) {
+  x ^= x >> 16u;
+  x *= 0x7feb352du;
+  x ^= x >> 15u;
+  x *= 0x846ca68bu;
+  x ^= x >> 16u;
+  return x;
+}
+
+float hash21(uvec2 p) {
+  uint h = hashUint(p.x + hashUint(p.y));
+  return float(h) * (1.0 / 4294967295.0);
 }
 
 vec3 rgbToYcbcr(vec3 c) {
@@ -404,7 +409,8 @@ void main() {
   float skin = smoothstep(-0.10, -0.03, cb) * (1.0 - smoothstep(0.02, 0.08, cb))
     * smoothstep(0.01, 0.03, cr) * (1.0 - smoothstep(0.10, 0.16, cr));
   float faceWeight = mix(1.0, skin, uFaceMask);
-  float grain = (hash21(gl_FragCoord.xy + vec2(uFrame * 17.0, uFrame * 29.0)) - 0.5) * uGrain * midtone;
+  uvec2 noisePos = uvec2(gl_FragCoord.xy) + uvec2(uint(uFrame) * 17u, uint(uFrame) * 29u);
+  float grain = (hash21(noisePos) - 0.5) * uGrain * midtone;
   ycc.x = clamp(ycc.x + high * uDetailGain + portraitBand * uLocalContrast * midtone * faceWeight + grain, 0.0, 1.0);
   outColor = vec4(clamp(ycbcrToRgb(ycc), 0.0, 1.0), 1.0);
 }`;
@@ -544,14 +550,9 @@ function outputSize(video: HTMLVideoElement, fit: Fit, variant: SuperResolutionV
   return { width: Math.round(vw * info.scale), height: Math.round(vh * info.scale), scale: info.scale };
 }
 
-export default function SuperResolutionCanvas({ videoRef, fit = "contain", active = true, enabled: enabledProp, variant: variantProp, forceScale: forceScaleProp, detailGain: detailGainProp, portraitContrast: portraitContrastProp, deblock: deblockProp, grain: grainProp, faceMask: faceMaskProp, debug = false }: Props) {
+export default function SuperResolutionCanvas({ videoRef, fit = "contain", active = true, enabled: enabledProp, variant: variantProp, forceScale: forceScaleProp, detailGain: detailGainProp, portraitContrast: portraitContrastProp, deblock: deblockProp, grain: grainProp, faceMask: faceMaskProp }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const statusRef = useRef<HTMLSpanElement>(null);
   const [failed, setFailed] = useState(false);
-  const [hasOutput, setHasOutput] = useState(false);
-  const hasOutputRef = useRef(false);
-  const forceDrawRef = useRef<(() => void) | null>(null);
-  const [compareOriginal, setCompareOriginal] = useState(false);
   const enabled = enabledProp ?? superResolutionRequested();
   const variant = variantProp ?? superResolutionVariant();
   const forceScale = forceScaleProp ?? "auto";
@@ -560,36 +561,12 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
   const deblock = deblockProp ?? 0;
   const grain = grainProp ?? 0;
   const faceMask = faceMaskProp ?? 0;
-  const variantLabel = variant === "detail" ? "细节" : variant === "cas" ? "CAS" : "FSR";
-
-  useEffect(() => {
-    if (!compareOriginal) return;
-    const release = () => setCompareOriginal(false);
-    window.addEventListener("pointerup", release);
-    window.addEventListener("pointercancel", release);
-    window.addEventListener("blur", release);
-    return () => {
-      window.removeEventListener("pointerup", release);
-      window.removeEventListener("pointercancel", release);
-      window.removeEventListener("blur", release);
-    };
-  }, [compareOriginal]);
 
   useEffect(() => {
     if (!enabled || !active || failed) return;
     const video = videoRef.current as FrameVideo | null;
     const canvas = canvasRef.current;
     if (!video || !canvas) return;
-    const writeStatus = (text: string) => {
-      if (statusRef.current) statusRef.current.textContent = text;
-    };
-    const markOutput = (value: boolean) => {
-      if (hasOutputRef.current === value) return;
-      hasOutputRef.current = value;
-      setHasOutput(value);
-    };
-    if (debug && canvas.parentElement) canvas.parentElement.style.display = "block";
-    writeStatus("SR 准备中");
 
     let gl: WebGL2RenderingContext | null = null;
     let programEasu: WebGLProgram | null = null;
@@ -646,14 +623,12 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
 
     const onContextLost = (event: Event) => {
       event.preventDefault();
-      writeStatus("SR 初始化失败 · WebGL2 context lost");
       setFailed(true);
       stop();
     };
 
     const stop = () => {
       disposed = true;
-      forceDrawRef.current = null;
       if (frameHandle && video.cancelVideoFrameCallback) video.cancelVideoFrameCallback(frameHandle);
       if (fallbackTimer) window.clearInterval(fallbackTimer);
       if (gl) {
@@ -680,7 +655,6 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
       window.removeEventListener("resize", drawOnce);
       canvas.removeEventListener("webglcontextlost", onContextLost);
       canvas.style.display = "none";
-      if (canvas.parentElement) canvas.parentElement.style.display = debug ? "block" : "none";
     };
 
     const drawOnce = () => safeDraw(true);
@@ -736,10 +710,7 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
 
     const draw = (force = false) => {
       if (disposed || !gl || !video) return;
-      if (video.readyState < 2 || !video.videoWidth) {
-        writeStatus("SR 等待视频帧");
-        return;
-      }
+      if (video.readyState < 2 || !video.videoWidth) return;
       const now = performance.now();
       if (force || !measuredSize || now - measuredAt > 500) {
         measuredSize = outputSize(video, fit, variant, forceScale);
@@ -747,35 +718,13 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
       }
       const size = measuredSize;
       if (!size) {
-        const vw = video.videoWidth;
-        const vh = video.videoHeight;
-        const info = measureScale(video, fit, variant);
-        if (info?.detailTooLarge) {
-          writeStatus(`SR 细节不可用 · 源 ${vw}×${vh} 超过 1.5MP`);
-        } else if (forceScale === "2x" && (vw * 2 > MAX_FORCED_TEXTURE_SIDE || vh * 2 > MAX_FORCED_TEXTURE_SIDE)) {
-          writeStatus(`SR 2x 超出 ${MAX_FORCED_TEXTURE_SIDE} 纹理上限`);
-        } else if (info) {
-          writeStatus(`SR 未启用 · 源 ${vw}×${vh} · 显示 ${info.scale.toFixed(2)}x`);
-        } else {
-          writeStatus("SR 等待视频尺寸");
-        }
         canvas.dataset.active = "off";
         canvas.style.display = "none";
-        if (canvas.parentElement) canvas.parentElement.style.display = debug ? "block" : "none";
-        markOutput(false);
         return;
       }
       canvas.style.display = "block";
-      if (canvas.parentElement) canvas.parentElement.style.display = "block";
       canvas.dataset.active = "on";
-      markOutput(true);
       canvas.dataset.scale = size.scale.toFixed(2);
-      const gainLabel = variant === "detail" && detailGain !== 1 ? ` ×${detailGain.toFixed(1)}` : "";
-      const contrastLabel = variant === "detail" && portraitContrast !== 0 ? ` · 对比 ${portraitContrast.toFixed(1)}` : "";
-      const deblockLabel = variant === "detail" && deblock !== 0 ? ` · 去块 ${deblock.toFixed(1)}` : "";
-      const grainLabel = variant === "detail" && grain !== 0 ? ` · 颗粒 ${grain.toFixed(2)}` : "";
-      const maskLabel = variant === "detail" && faceMask !== 0 ? ` · 软掩膜 ${faceMask.toFixed(1)}` : "";
-      writeStatus(`SR ${size.scale.toFixed(2)}x · ${variantLabel}${gainLabel}${contrastLabel}${deblockLabel}${grainLabel}${maskLabel} · ${size.width}×${size.height}`);
       if (size.width !== width || size.height !== height) resize(size.width, size.height);
       if (!force && frames > 0 && video.paused) return;
 
@@ -785,7 +734,6 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
       try {
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, video);
       } catch {
-        writeStatus("SR 绘制失败 · 视频帧不可读");
         setFailed(true);
         stop();
         return;
@@ -906,12 +854,10 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
         draw(force);
       } catch (error) {
         console.error("[super-resolution] draw failed", error);
-        writeStatus("SR 绘制失败");
         setFailed(true);
         stop();
       }
     };
-    forceDrawRef.current = () => safeDraw(true);
 
     const schedule = () => {
       if (disposed) return;
@@ -1002,7 +948,6 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
       schedule();
     } catch (error) {
       console.error("[super-resolution] init failed", error);
-      writeStatus("SR 初始化失败 · WebGL2");
       setFailed(true);
       stop();
       return;
@@ -1014,60 +959,21 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
     video.addEventListener("resize", drawOnce);
 
     return stop;
-  }, [active, debug, deblock, detailGain, enabled, failed, faceMask, fit, forceScale, grain, portraitContrast, videoRef, variant]);
+  }, [active, deblock, detailGain, enabled, failed, faceMask, fit, forceScale, grain, portraitContrast, videoRef, variant]);
 
   if (!enabled) return null;
 
-  const compareLabel = compareOriginal ? tr("松手看超分") : tr("按住看原画");
-
   return (
-    <div className="hg-super-resolution" aria-hidden={debug ? undefined : true} data-super-resolution={enabled ? "on" : "off"} data-super-resolution-mode={variant}
+    <div className="hg-super-resolution" aria-hidden="true" data-super-resolution={enabled ? "on" : "off"} data-super-resolution-mode={variant}
       data-super-resolution-force={forceScale} data-super-resolution-detail-gain={detailGain.toFixed(1)}
       data-super-resolution-detail-local={portraitContrast.toFixed(1)}
       data-super-resolution-deblock={deblock.toFixed(1)} data-super-resolution-grain={grain.toFixed(2)}
-      data-super-resolution-face-mask={faceMask.toFixed(1)} style={debug ? { display: "block" } : undefined}>
+      data-super-resolution-face-mask={faceMask.toFixed(1)}>
       {!failed && <canvas
         ref={canvasRef}
-        className={`hg-super-resolution-canvas sr-fit-${fit}${compareOriginal ? " is-compare-hidden" : ""}`}
+        className={`hg-super-resolution-canvas sr-fit-${fit}`}
         data-super-resolution-canvas={enabled ? "on" : "off"}
       />}
-      {debug && <span ref={statusRef} className="hg-super-resolution-status">{failed ? "SR 初始化失败" : "SR 准备中"}</span>}
-      {debug && !failed && hasOutput && (
-        <button
-          type="button"
-          className="hg-super-resolution-compare"
-          data-compare-held={compareOriginal ? "true" : "false"}
-          aria-label={compareLabel}
-          onPointerDown={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            const video = videoRef.current;
-            // Freeze the frame so both sides of the comparison are identical.
-            if (video && !video.paused) video.pause();
-            forceDrawRef.current?.();
-            setCompareOriginal(true);
-            try {
-              event.currentTarget.setPointerCapture(event.pointerId);
-            } catch {
-              // Pointer capture is unavailable in some embedded webviews.
-            }
-          }}
-          onPointerUp={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            setCompareOriginal(false);
-          }}
-          onPointerCancel={() => setCompareOriginal(false)}
-          onLostPointerCapture={() => setCompareOriginal(false)}
-          onClick={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-          }}
-          onContextMenu={(event) => event.preventDefault()}
-        >
-          {compareLabel}
-        </button>
-      )}
     </div>
   );
 }

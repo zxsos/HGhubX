@@ -343,7 +343,7 @@ const VideoSurface = forwardRef<VideoHandle, Props>(function VideoSurface(
         <SuperResolutionCanvas videoRef={videoRef} fit={fit} active={active}
           enabled={superResolution} variant={activeSuperResolutionVariant}
           forceScale={srTestScale} detailGain={activeDetailGain} portraitContrast={activePortraitContrast}
-          deblock={activeDeblock} grain={activeGrain} faceMask={activeFaceMask} debug />
+          deblock={activeDeblock} grain={activeGrain} faceMask={activeFaceMask} />
       )}
       <video
         ref={(node) => {
