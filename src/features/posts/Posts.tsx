@@ -16,7 +16,7 @@ import { TagBlockMenu } from "../../shared/ui/TagBlockMenu";
 import { useContentPreferences } from "../../shared/model/contentPreferences";
 import { usePaginatedList } from "../../shared/lib/usePaginatedList";
 import { CommentsPanel } from "../feed/Panels";
-import { postHot } from "./postData";
+import { formatPostTime, postHot } from "./postData";
 import { tr } from "../../shared/i18n";
 
 /* ================= 帖子列表 ================= */
@@ -291,7 +291,10 @@ export function PostDetail({ id, onBack, active = true }: { id: number; onBack: 
             <div className="px-4 pt-3.5 mx-auto max-w-[800px] select-text">
               <h1 className="text-[17px] font-bold text-on leading-snug">{currentPost.title}</h1>
               <div className="flex items-center gap-2 mt-2 text-[12px] text-mut">
-                <span>{currentPost.publish_time || currentPost.created_at}</span>
+                {(() => {
+                  const postTime = formatPostTime(currentPost);
+                  return postTime ? <span>{postTime}</span> : null;
+                })()}
                 <span className="flex items-center gap-1"><IFireF size={10} />{fmt(postHot(currentPost))}</span>
               </div>
               <div className="flex flex-wrap gap-1.5 mt-2.5">

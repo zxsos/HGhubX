@@ -66,6 +66,7 @@ export default function Player({
   useEffect(() => clearWaitingTimer, []);
   const [time, setTime] = useState(0);
   const [duration, setDuration] = useState(0);
+  useEffect(() => { setTime(0); setDuration(0); }, [src]);
   const [rate, setRate] = useState(1);
   const [errMsg, setErrMsg] = useState<string>("");
   const [controlsLocked, setControlsLocked] = useState(false);
