@@ -1,6 +1,6 @@
 import { useContext, useEffect, useLayoutEffect, useImperativeHandle, useRef, forwardRef, useState, type MutableRefObject } from "react";
 import Hls from "hls.js";
-import { platform } from "../../shared/api/api";
+import { isMobile, platform } from "../../shared/api/api";
 import { PageCoveredContext } from "../../shared/model/pageVisibility";
 import { connectNativeMedia, playbackSource } from "./mediaTransport";
 import { mediaErrorMessage } from "./mediaErrors";
@@ -81,7 +81,13 @@ const VideoSurface = forwardRef<VideoHandle, Props>(function VideoSurface(
   const [ready, setReady] = useState(false);
   const pageCovered = useContext(PageCoveredContext);
   const [inPip, setInPip] = useState(false);
-  const suspended = pageCovered && !inPip;
+  const [idleSuspended, setIdleSuspended] = useState(false);
+  useEffect(() => {
+    if (active || inPip) { setIdleSuspended(false); return; }
+    const timer = window.setTimeout(() => setIdleSuspended(true), 20000);
+    return () => window.clearTimeout(timer);
+  }, [active, inPip]);
+  const suspended = (pageCovered || idleSuspended) && !inPip;
   const suspendedRef = useRef(suspended);
   suspendedRef.current = suspended;
   const { trace, requestSeek } = usePlayerDiagnostics(videoRef, hlsRef, { ...diagnosticContext, active, resource: mediaResource(src) });
@@ -200,11 +206,13 @@ const VideoSurface = forwardRef<VideoHandle, Props>(function VideoSurface(
         enableWorker: platform !== "ios",
         // Prefer standard MSE on macOS; hls.js handles MMS-only fallback and seek recovery.
         preferManagedMediaSource: false,
-        autoStartLoad: false,
+        autoStartLoad: activity.isActive(),
+        startFragPrefetch: true,
+        capLevelToPlayerSize: true,
         startPosition: resume?.time ?? -1,
-        maxBufferLength: 30,
-        maxMaxBufferLength: 60,
-        backBufferLength: 30,
+        maxBufferLength: isMobile ? 18 : 28,
+        maxMaxBufferLength: isMobile ? 32 : 55,
+        backBufferLength: isMobile ? 12 : 24,
         maxBufferHole: 0.5,
         nudgeOffset: 0.25,
         nudgeMaxRetry: 6,

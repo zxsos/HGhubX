@@ -1,15 +1,20 @@
-use super::proxy_env::{proxy_override, system_explicit_proxy};
+use super::proxy_env::{clear_proxy_env_cache, proxy_override, system_explicit_proxy};
 use super::redact::{err_text, redact_proxy};
 use super::{
     base, ClientCache, CLIENTS, CLIENT_GENERATION, CLIENT_TTL, MEDIA_CONFIG_FINGERPRINT,
     MEDIA_CONFIG_GENERATION, MEDIA_DNS_ROUTES,
 };
 use crate::network_policy;
+use once_cell::sync::Lazy;
 use serde_json::json;
 use std::net::SocketAddr;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
+
+const SYSTEM_PROXY_TTL: Duration = Duration::from_secs(10);
+static SYSTEM_PROXY_MATCHER: Lazy<Mutex<Option<(Instant, Arc<hyper_util::client::proxy::matcher::Matcher>)>>> =
+    Lazy::new(|| Mutex::new(None));
 
 pub const UA: &str =
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
@@ -27,7 +32,9 @@ pub(crate) fn build_client(host: &str, addrs: &[SocketAddr], route: &ProxyRoute)
         .redirect(reqwest::redirect::Policy::none())
         .referer(false)
         .gzip(true)
-        .pool_idle_timeout(Duration::from_secs(60));
+        .tcp_nodelay(true)
+        .pool_max_idle_per_host(8)
+        .pool_idle_timeout(Duration::from_secs(90));
     if !addrs.is_empty() {
         builder = builder.resolve_to_addrs(host, addrs);
     }
@@ -192,11 +199,25 @@ pub(super) async fn client_for(raw: &str) -> Result<(url::Url, Arc<reqwest::Clie
 }
 
 /// Keep per-target NO_PROXY/per-scheme/system matching consistent with reqwest.
+fn system_proxy_matcher() -> Arc<hyper_util::client::proxy::matcher::Matcher> {
+    let now = Instant::now();
+    if let Ok(guard) = SYSTEM_PROXY_MATCHER.lock() {
+        if let Some((expires, matcher)) = guard.as_ref() {
+            if now < *expires {
+                return matcher.clone();
+            }
+        }
+    }
+    let fresh = Arc::new(hyper_util::client::proxy::matcher::Matcher::from_system());
+    if let Ok(mut guard) = SYSTEM_PROXY_MATCHER.lock() {
+        *guard = Some((now + SYSTEM_PROXY_TTL, fresh.clone()));
+    }
+    fresh
+}
+
 fn system_proxy_routes_target(target: &url::Url) -> bool {
-    crate::apple_proxy::routes_target(
-        &hyper_util::client::proxy::matcher::Matcher::from_system(),
-        target.as_str(),
-    )
+    let matcher = system_proxy_matcher();
+    crate::apple_proxy::routes_target(&matcher, target.as_str())
 }
 
 pub(crate) fn proxy_active(target: &url::Url) -> bool {
@@ -250,6 +271,10 @@ pub(crate) async fn client_for_dns(raw: &str, public_dns: bool) -> Result<(url::
 }
 
 pub fn refresh_client() {
+    clear_proxy_env_cache();
+    if let Ok(mut matcher) = SYSTEM_PROXY_MATCHER.lock() {
+        *matcher = None;
+    }
     // A periodic main-site probe can rebuild clients without changing proxy or
     // line. Preserve KEY/SEG caches unless the actual configuration changed.
     refresh_media_scope();
