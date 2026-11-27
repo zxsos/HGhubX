@@ -42,6 +42,20 @@ function CompactCollectionLink({ icon, title, onClick }: { icon: ReactNode; titl
   </Button>;
 }
 
+/** Section heading with a dedicated "all" hit target; the row itself must stay inert for vertical scrolling. */
+function ChannelHeading({ icon, label, onOpenAll }: { icon: ReactNode; label: string; onOpenAll: () => void }) {
+  return <div className="flex items-center gap-3 mb-3">
+    <span className="w-9 h-9 rounded-[12px] bg-pc text-on-pc flex items-center justify-center shrink-0">{icon}</span>
+    <span className="flex-1 min-w-0">
+      <span role="heading" aria-level={2} className="block text-[16px] font-bold text-on leading-tight">{label}</span>
+    </span>
+    <Button onClick={onOpenAll} aria-label={`${tr("全部")} · ${label}`}
+      className="inline-flex items-center gap-0.5 text-[13px] font-medium leading-none text-mut hover:text-primary transition-colors shrink-0 pressable">
+      <span>{tr("全部")}</span><IChevR size={14} />
+    </Button>
+  </div>;
+}
+
 type ResolvedChannel = {
   id: string;
   label: string;
@@ -210,18 +224,8 @@ export default function Category({ wide, active }: { wide: boolean; active: bool
             const list = postRows[c.id] || [];
             return (
               <section key={c.id} aria-label={c.label} className="mb-6 a-rise" style={{ animationDelay: `${Math.min(ci * 50, 300)}ms` }}>
-                <Button onClick={() => push({ kind: "posts" })}
-                  className="w-full flex items-center gap-3 mb-3 text-left pressable group">
-                  <span className="w-9 h-9 rounded-[12px] bg-pc text-on-pc flex items-center justify-center shrink-0">
-                    <ChannelIcon size={18} strokeWidth={1.9} />
-                  </span>
-                  <span className="flex-1 min-w-0">
-                    <span role="heading" aria-level={2} className="block text-[16px] font-bold text-on leading-tight">{c.label}</span>
-                  </span>
-                  <span className="inline-flex items-center gap-0.5 text-[13px] font-medium leading-none text-mut group-hover:text-primary transition-colors shrink-0">
-                    <span>{tr("全部")}</span><IChevR size={14} />
-                  </span>
-                </Button>
+                <ChannelHeading icon={<ChannelIcon size={18} strokeWidth={1.9} />} label={c.label}
+                  onOpenAll={() => push({ kind: "posts" })} />
                 <FilteredContent items={list} scopeKey={`posts:${c.id}`}>{visible => <div className="scroll-x flex gap-3 snap-x" role="group" aria-label={tr("{0}内容预览", c.label)}>
                   {visible.map((post) => (
                     <div key={post.id} className="ios-row-card"><MediaCard title={post.title} cover={post.cover}
@@ -235,18 +239,8 @@ export default function Category({ wide, active }: { wide: boolean; active: bool
           const list = rows[c.id] || [];
           return (
             <section key={c.id} aria-label={c.label} className="mb-6 a-rise" style={{ animationDelay: `${Math.min(ci * 50, 300)}ms` }}>
-              <Button onClick={() => push({ kind: "channel", cate: c.id, name: c.label })}
-                className="w-full flex items-center gap-3 mb-3 text-left pressable group">
-                <span className="w-9 h-9 rounded-[12px] bg-pc text-on-pc flex items-center justify-center shrink-0">
-                  <ChannelIcon size={18} strokeWidth={1.9} />
-                </span>
-                <span className="flex-1 min-w-0">
-                  <span role="heading" aria-level={2} className="block text-[16px] font-bold text-on leading-tight">{c.label}</span>
-                </span>
-                <span className="inline-flex items-center gap-0.5 text-[13px] font-medium leading-none text-mut group-hover:text-primary transition-colors shrink-0">
-                  <span>{tr("全部")}</span><IChevR size={14} />
-                </span>
-              </Button>
+              <ChannelHeading icon={<ChannelIcon size={18} strokeWidth={1.9} />} label={c.label}
+                onOpenAll={() => push({ kind: "channel", cate: c.id, name: c.label })} />
               <FilteredContent items={list} scopeKey={c.id}>{visible => <div className="scroll-x flex gap-3 snap-x" role="group" aria-label={tr("{0}影片预览", c.label)}>
                 {visible.map((v) => (
                   <RowCard key={v.id} v={v} onOpen={() => push({ kind: "feed", videoIds: visible.map((x) => x.id), index: visible.findIndex((x) => x.id === v.id), title: c.label })} />
@@ -259,18 +253,8 @@ export default function Category({ wide, active }: { wide: boolean; active: bool
 
         {showDefaultPosts && (
           <section aria-label={tr("图文帖子")} className="mb-5 a-rise">
-            <Button onClick={() => push({ kind: "posts" })}
-              className="w-full flex items-center gap-3 mb-3 text-left pressable group">
-              <span className="w-9 h-9 rounded-[12px] bg-pc text-on-pc flex items-center justify-center shrink-0">
-                <IFlame size={18} strokeWidth={1.9} />
-              </span>
-              <span className="flex-1 min-w-0">
-                <span role="heading" aria-level={2} className="block text-[16px] font-bold text-on leading-tight">{tr("图文帖子")}</span>
-              </span>
-              <span className="inline-flex items-center gap-0.5 text-[13px] font-medium leading-none text-mut group-hover:text-primary transition-colors shrink-0">
-                <span>{tr("全部")}</span><IChevR size={14} />
-              </span>
-            </Button>
+            <ChannelHeading icon={<IFlame size={18} strokeWidth={1.9} />} label={tr("图文帖子")}
+              onOpenAll={() => push({ kind: "posts" })} />
             <FilteredContent items={postRows.__posts__ || []} scopeKey="posts">{visible => <div className="scroll-x flex gap-3 snap-x" role="group" aria-label={tr("帖子内容预览")}>
               {visible.map((post) => (
                 <div key={post.id} className="ios-row-card"><MediaCard title={post.title} cover={post.cover}

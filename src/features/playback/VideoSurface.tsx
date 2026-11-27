@@ -1,6 +1,6 @@
 import { useContext, useEffect, useLayoutEffect, useImperativeHandle, useRef, forwardRef, useState, type MutableRefObject } from "react";
 import Hls from "hls.js";
-import { platform } from "../../shared/api/api";
+import { isMobile, platform } from "../../shared/api/api";
 import { PageCoveredContext } from "../../shared/model/pageVisibility";
 import { connectNativeMedia, playbackSource } from "./mediaTransport";
 import { mediaErrorMessage } from "./mediaErrors";
@@ -8,11 +8,16 @@ import { mediaHost, mediaResource, observeHls, registerHlsVersion, usePlayerDiag
 import { usePlaybackActivity } from "./usePlaybackActivity";
 import { useProxyPlaybackRecovery } from "./useProxyPlaybackRecovery";
 import { createHlsRecovery, type HlsRecovery } from "./hlsRecovery";
-import AmbientGlow from "./AmbientGlow";
+import AmbientGlow, { isAmbientGlowSupported } from "./AmbientGlow";
+import { superResolutionRequested, superResolutionVariant, type SuperResolutionVariant } from "./superResolutionRequest";
+import { PICTURE_ENHANCE_PROFILES } from "./pictureEnhanceProfiles";
+import { useStore } from "../../shared/model/store";
 import { setBalanceVolume } from "./balanceVolume";
 import { tr } from "../../shared/i18n";
 
 if (Hls.version) registerHlsVersion(Hls.version);
+
+type SuperResolutionComponent = typeof import("./SuperResolutionCanvas")["default"];
 
 export type VideoHandle = {
   el: () => HTMLVideoElement | null;
@@ -81,9 +86,52 @@ const VideoSurface = forwardRef<VideoHandle, Props>(function VideoSurface(
   const [ready, setReady] = useState(false);
   const pageCovered = useContext(PageCoveredContext);
   const [inPip, setInPip] = useState(false);
-  const suspended = pageCovered && !inPip;
+  const [idleSuspended, setIdleSuspended] = useState(false);
+  useEffect(() => {
+    if (active || inPip) { setIdleSuspended(false); return; }
+    const timer = window.setTimeout(() => setIdleSuspended(true), 20000);
+    return () => window.clearTimeout(timer);
+  }, [active, inPip]);
+  const suspended = (pageCovered || idleSuspended) && !inPip;
   const suspendedRef = useRef(suspended);
   suspendedRef.current = suspended;
+
+  const store = useStore();
+  const enhanceMode = store?.enhanceMode ?? "off";
+  const enhanceStrength = store?.enhanceStrength ?? "standard";
+  const srTestScale = store?.srTestScale ?? "auto";
+  const srTestDetailGain = store?.srTestDetailGain ?? 1;
+  const srTestPortraitContrast = store?.srTestPortraitContrast ?? 0;
+  const srTestDeblock = store?.srTestDeblock ?? 0;
+  const srTestGrain = store?.srTestGrain ?? 0;
+  const srTestFaceMask = store?.srTestFaceMask ?? 0;
+  const querySuperResolution = superResolutionRequested();
+  // The production switch maps to the selected fixed profile. Test URLs keep
+  // the query-driven values so the playback fixture can still sweep parameters.
+  const hasSrTestQuery = typeof window !== "undefined" && new URLSearchParams(window.location.search).has("sr");
+  const detailPreset = enhanceMode === "detail" && !hasSrTestQuery;
+  const profile = PICTURE_ENHANCE_PROFILES[enhanceStrength];
+  const activeDetailGain = detailPreset ? profile.detailGain : srTestDetailGain;
+  const activePortraitContrast = detailPreset ? profile.portraitContrast : srTestPortraitContrast;
+  const activeDeblock = detailPreset ? profile.deblock : srTestDeblock;
+  const activeGrain = detailPreset ? profile.grain : srTestGrain;
+  const activeFaceMask = detailPreset ? profile.faceMask : srTestFaceMask;
+  const superResolution = querySuperResolution || enhanceMode !== "off";
+  const activeSuperResolutionVariant: SuperResolutionVariant = enhanceMode !== "off" ? enhanceMode : superResolutionVariant();
+  const [SuperResolutionCanvas, setSuperResolutionCanvas] = useState<SuperResolutionComponent | null>(null);
+  useEffect(() => {
+    if (!superResolution) {
+      setSuperResolutionCanvas(null);
+      return;
+    }
+    if (!active || SuperResolutionCanvas) return;
+    let cancelled = false;
+    /* A hidden ?sr= opt-in loads the overlay and its shader chunk on demand. */
+    void import("./SuperResolutionCanvas")
+      .then(module => { if (!cancelled) setSuperResolutionCanvas(() => module.default); })
+      .catch(() => { /* Native <video> remains the fallback. */ });
+    return () => { cancelled = true; };
+  }, [active, superResolution, SuperResolutionCanvas]);
   const { trace, requestSeek } = usePlayerDiagnostics(videoRef, hlsRef, { ...diagnosticContext, active, resource: mediaResource(src) });
   const activity = usePlaybackActivity(videoRef, hlsRef, { active, autoPlay, src, trace });
   const proxyRecovery = useProxyPlaybackRecovery(videoRef, src, activity, trace);
@@ -201,10 +249,12 @@ const VideoSurface = forwardRef<VideoHandle, Props>(function VideoSurface(
         // Prefer standard MSE on macOS; hls.js handles MMS-only fallback and seek recovery.
         preferManagedMediaSource: false,
         autoStartLoad: false,
+        startFragPrefetch: true,
+        capLevelToPlayerSize: true,
         startPosition: resume?.time ?? -1,
-        maxBufferLength: 30,
-        maxMaxBufferLength: 60,
-        backBufferLength: 30,
+        maxBufferLength: isMobile ? 18 : 28,
+        maxMaxBufferLength: isMobile ? 32 : 55,
+        backBufferLength: isMobile ? 12 : 24,
         maxBufferHole: 0.5,
         nudgeOffset: 0.25,
         nudgeMaxRetry: 6,
@@ -297,9 +347,17 @@ const VideoSurface = forwardRef<VideoHandle, Props>(function VideoSurface(
     onError?.(mediaErrorMessage(videoRef.current?.error ?? null));
   };
 
+  const showAmbientGlow = ambientGlow && isAmbientGlowSupported();
+
   return (
     <div className="relative isolate h-full w-full">
-      {ambientGlow && active && <AmbientGlow videoRef={videoRef} active={active} />}
+      {showAmbientGlow && active && <AmbientGlow videoRef={videoRef} active={active} />}
+      {SuperResolutionCanvas && active && (
+        <SuperResolutionCanvas videoRef={videoRef} fit={fit} active={active}
+          enabled={superResolution} variant={activeSuperResolutionVariant}
+          forceScale={srTestScale} detailGain={activeDetailGain} portraitContrast={activePortraitContrast}
+          deblock={activeDeblock} grain={activeGrain} faceMask={activeFaceMask} />
+      )}
       <video
         ref={(node) => {
           videoRef.current = node;
@@ -311,7 +369,7 @@ const VideoSurface = forwardRef<VideoHandle, Props>(function VideoSurface(
         muted={muted}
         loop={loop}
         onClick={onClick}
-        className={`relative z-[1] w-full h-full ${ambientGlow ? "bg-transparent" : "bg-black"} ${fit === "cover" ? "object-cover" : "object-contain"} ${className}`}
+        className={`relative z-[1] w-full h-full ${showAmbientGlow ? "bg-transparent" : "bg-black"} ${fit === "cover" ? "object-cover" : "object-contain"} ${className}`}
         style={fadeIn ? { opacity: ready ? 1 : 0, transition: "opacity .35s" } : undefined}
         onLoadedData={(e) => {
           const v = e.target as HTMLVideoElement;

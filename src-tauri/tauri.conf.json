@@ -46,5 +46,14 @@
       "minSdkVersion": 24,
       "versionCode": 3000000
     }
+  },
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": [
+          "hghubx"
+        ]
+      }
+    }
   }
 }

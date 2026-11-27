@@ -1,0 +1,156 @@
+name: 发布到 Telegram 群
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "要发布的版本号（留空则取最新正式版）"
+        required: false
+        default: ""
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 确定版本号
+        id: tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INPUT_TAG: ${{ inputs.tag }}
+          EVENT_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          if [ -n "$INPUT_TAG" ]; then
+            echo "tag=$INPUT_TAG" >> "$GITHUB_OUTPUT"
+          elif [ -n "$EVENT_TAG" ]; then
+            echo "tag=$EVENT_TAG" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=$(gh release list --repo "${{ github.repository }}" --limit 1 --exclude-drafts --exclude-pre-releases --json tagName --jq '.[0].tagName')" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: 下载发版资产
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          mkdir -p assets
+          gh release download "$TAG" --dir assets --repo "${{ github.repository }}" || echo "no assets to download"
+          ls -la assets
+
+      - name: 发到 Telegram 群
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TAG: ${{ steps.tag.outputs.tag }}
+          REPO: ${{ github.repository }}
+        run: |
+          python3 - <<'PY'
+          import glob
+          import json
+          import os
+          import re
+          import subprocess
+          import urllib.parse
+          import urllib.request
+
+          token = os.environ["TELEGRAM_BOT_TOKEN"]
+          chat_id = os.environ["TELEGRAM_CHAT_ID"]
+          tag = os.environ["TAG"]
+          repo = os.environ["REPO"]
+
+          rel = json.loads(subprocess.run(
+              ["gh", "release", "view", tag, "--repo", repo,
+               "--json", "name,body,url"],
+              capture_output=True, text=True, check=True).stdout)
+          name = rel.get("name") or tag
+          body = rel.get("body") or ""
+          url = rel.get("url") or ""
+
+          def md_to_html(body):
+              body = body.replace("\r\n", "\n")
+              m = re.search(r"^## 验证\s*$", body, re.M)
+              if m:
+                  body = body[:m.start()].rstrip() + "\n"
+              body = re.sub(r"^# .*\n", "", body, count=1)
+              out_lines = []
+              for line in body.split("\n"):
+                  s = line.strip()
+                  if not s:
+                      out_lines.append("")
+                      continue
+                  if s.startswith("## "):
+                      s = "<b>" + s[3:].strip() + "</b>"
+                  elif s.startswith("- "):
+                      s = "• " + s[2:]
+                  s = (s.replace("&", "&amp;").replace("<", "&lt;")
+                       .replace(">", "&gt;")
+                       .replace("&lt;b&gt;", "<b>")
+                       .replace("&lt;/b&gt;", "</b>")
+                       .replace("&lt;code&gt;", "<code>")
+                       .replace("&lt;/code&gt;", "</code>"))
+                  s = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", s)
+                  s = re.sub(r"`([^`]+?)`", r"<code>\1</code>", s)
+                  s = re.sub(r"\[([^\]]+?)\]\((https?://[^)\s]+)\)",
+                             r'<a href="\2">\1</a>', s)
+                  out_lines.append(s)
+              text = "\n".join(out_lines)
+              text = re.sub(r"\n{3,}", "\n\n", text).strip()
+              return text
+
+          if name.startswith("HGhubX"):
+              header = name + " 已发布"
+          else:
+              header = "HGhubX " + name + " 已发布"
+          text = "<b>" + header + "</b>\n\n" + md_to_html(body)
+          if url:
+              text += '\n\n<a href="' + url + '">完整更新内容</a>'
+          if len(text) > 4000:
+              cut = text.rfind("\n\n", 0, 4000)
+              text = (text[:cut] if cut > 500 else text[:4000]) + "\n\n……"
+
+          def api(method, data):
+              req = urllib.request.Request(
+                  "https://api.telegram.org/bot" + token + "/" + method,
+                  data=urllib.parse.urlencode(data).encode(), method="POST")
+              with urllib.request.urlopen(req, timeout=60) as r:
+                  return json.loads(r.read())
+
+          sent = api("sendMessage", {"chat_id": chat_id, "text": text,
+                                     "parse_mode": "HTML",
+                                     "disable_web_page_preview": True})
+          print("message sent:", sent.get("ok"),
+                sent.get("result", {}).get("message_id"))
+
+          all_files = sorted(glob.glob("assets/*"))
+          files = [p for p in all_files
+                   if os.path.getsize(p) <= 50 * 1024 * 1024]
+          for p in sorted(set(all_files) - set(files)):
+              print(os.path.basename(p),
+                    "-> skipped: over 50 MB Bot API limit")
+          for start in range(0, len(files), 10):
+              chunk = files[start:start + 10]
+              media = []
+              for i, path in enumerate(chunk):
+                  entry = {"type": "document",
+                           "media": "attach://f%d" % i}
+                  if start == 0 and i == 0:
+                      entry["caption"] = ("HGhubX %s 安装包（%d 个）"
+                                          % (tag, len(files)))
+                  media.append(entry)
+              args = ["curl", "-s", "-X", "POST",
+                      "https://api.telegram.org/bot" + token + "/sendMediaGroup",
+                      "-F", "chat_id=" + chat_id,
+                      "-F", "media=" + json.dumps(media, ensure_ascii=False)]
+              for i, path in enumerate(chunk):
+                  args += ["-F", "f%d=@%s" % (i, path)]
+              res = subprocess.run(args, capture_output=True, text=True,
+                                   timeout=600)
+              try:
+                  data = json.loads(res.stdout)
+                  print("album chunk sent:", data.get("ok"),
+                        "items:", len(data.get("result", [])))
+              except Exception:
+                  print("album chunk FAILED:", res.stdout[:200])
+          PY

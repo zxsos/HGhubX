@@ -50,6 +50,7 @@
 .tv-player-progress[data-seeking="true"] .tv-player-progress-time { color: #fff; font-weight: 700; }
 .tv-player-progress-time { text-align: right; font-size: 0.8889rem; font-variant-numeric: tabular-nums; }
 .tv-player-seek-hint { color: #fff; font-size: 1.0556rem; }
+.tv-player-notice { position: absolute; top: max(var(--tv-inset-top, 3vh), 1.1111rem); left: 50%; transform: translateX(-50%); max-width: min(36rem, 84vw); padding: 0.5556rem 1.1111rem; border-radius: 999px; background: rgba(16, 18, 22, .88); border: 0.0556rem solid var(--tv-border); color: var(--tv-text); font-size: 0.9444rem; text-align: center; pointer-events: none; z-index: 3; }
 .tv-player-loading { position: absolute; top: 44%; left: 50%; transform: translate(-50%, -50%); padding: 0.6667rem 1.2222rem; background: rgba(16, 18, 22, .88); border-radius: 0.5556rem; font-size: 1.1111rem; }
 .tv-player-message { position: absolute; top: 16%; left: max(var(--tv-inset-x, 3vw), 1.5556rem); right: max(var(--tv-inset-x, 3vw), 1.5556rem); max-width: 37.7778rem; margin: auto; padding: 1.3333rem; background: var(--tv-elevated); border: 0.0556rem solid var(--tv-border); border-radius: 0.7778rem; }
 .tv-player-message h1, .tv-player-message h2 { margin-top: 0; font-size: 1.4444rem; }
