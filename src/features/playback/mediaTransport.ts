@@ -20,8 +20,6 @@ export function playbackSource(src: string, hlsSupported: boolean): PlaybackSour
   return { engine: hlsSupported && !direct ? "hls.js" : "native", url, route };
 }
 
-let cachedIosMediaOrigin: string | null = null;
-
 /** Native AVFoundation cannot fetch WKURLSchemeHandler's hg:// resources. */
 export function connectNativeMedia(video: HTMLVideoElement, source: PlaybackSource, callbacks: {
   isCurrent: () => boolean;
@@ -42,25 +40,18 @@ export function connectNativeMedia(video: HTMLVideoElement, source: PlaybackSour
     callbacks.onReady();
   };
   if (platform === "ios") {
-    if (cachedIosMediaOrigin) {
-      attach(`${cachedIosMediaOrigin}${source.route}`);
-    } else {
-      // Ask only when native playback needs it. Each attempt can retry a failed server start.
-      void invoke<string>("media_http_origin").then(origin => {
-        if (!current()) return;
-        const parsed = new URL(origin);
-        if (!parsed.port || !parsed.href.startsWith(`http://127.0.0.1:${parsed.port}/`)
-          || parsed.pathname === "/" || parsed.search || parsed.hash) {
-          throw new Error("Invalid local media origin");
-        }
-        const normalized = origin.replace(/\/$/, "");
-        cachedIosMediaOrigin = normalized;
-        attach(`${normalized}${source.route}`);
-      }).catch(() => {
-        cachedIosMediaOrigin = null;
-        if (current()) callbacks.onError(tr("本地媒体服务启动失败，请切换视频或重试"));
-      });
-    }
+    // Ask only when native playback needs it. Each attempt can retry a failed server start.
+    void invoke<string>("media_http_origin").then(origin => {
+      if (!current()) return;
+      const parsed = new URL(origin);
+      if (!parsed.port || !parsed.href.startsWith(`http://127.0.0.1:${parsed.port}/`)
+        || parsed.pathname === "/" || parsed.search || parsed.hash) {
+        throw new Error("Invalid local media origin");
+      }
+      attach(`${origin.replace(/\/$/, "")}${source.route}`);
+    }).catch(() => {
+      if (current()) callbacks.onError(tr("本地媒体服务启动失败，请切换视频或重试"));
+    });
   } else attach(source.url);
   return () => {
     disposed = true;

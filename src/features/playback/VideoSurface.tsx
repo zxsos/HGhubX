@@ -206,7 +206,7 @@ const VideoSurface = forwardRef<VideoHandle, Props>(function VideoSurface(
         enableWorker: platform !== "ios",
         // Prefer standard MSE on macOS; hls.js handles MMS-only fallback and seek recovery.
         preferManagedMediaSource: false,
-        autoStartLoad: activity.isActive(),
+        autoStartLoad: false,
         startFragPrefetch: true,
         capLevelToPlayerSize: true,
         startPosition: resume?.time ?? -1,
