@@ -74,9 +74,53 @@ fn allowed_frontend_origin(origin: &str) -> bool {
         })
 }
 
+#[cfg(desktop)]
+fn focus_main_window(app: &tauri::AppHandle) {
+    if let Some(win) = app.get_webview_window("main") {
+        let _ = win.unminimize();
+        let _ = win.show();
+        let _ = win.set_focus();
+    }
+}
+
+#[cfg(desktop)]
+fn deliver_desktop_deep_link(app: &tauri::AppHandle, raw: &str) {
+    let trimmed = raw.trim();
+    if !trimmed.to_ascii_lowercase().starts_with("hghubx://") {
+        return;
+    }
+    source::commands::set_pending_deep_link(trimmed.to_string());
+    focus_main_window(app);
+    if let Some(win) = app.get_webview_window("main") {
+        if let Ok(quoted) = serde_json::to_string(trimmed) {
+            let script = format!(
+                "(function(){{if(window.__HG_DEEP_LINK_HANDLED__==={q})return;window.__HG_DEEP_LINK__={q};window.dispatchEvent(new CustomEvent('hg:deep-link',{{detail:{q}}}));}})();",
+                q = quoted
+            );
+            let _ = win.eval(&script);
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let mut builder = tauri::Builder::default();
+    #[cfg(desktop)]
+    {
+        builder = builder
+            .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+                focus_main_window(app);
+                if let Some(link) = argv
+                    .iter()
+                    .skip(1)
+                    .find(|a| a.trim().to_ascii_lowercase().starts_with("hghubx://"))
+                {
+                    deliver_desktop_deep_link(app, link);
+                }
+            }))
+            .plugin(tauri_plugin_deep_link::init());
+    }
+    builder
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(
             tauri_plugin_opener::Builder::new()
@@ -107,8 +151,37 @@ pub fn run() {
         })
         .setup(|app| {
             #[cfg(desktop)]
-            if let Some(link) = std::env::args().skip(1).find(|a| a.starts_with("hghubx://")) {
-                source::commands::set_pending_deep_link(link);
+            {
+                use tauri_plugin_deep_link::DeepLinkExt;
+
+                if let Some(link) = std::env::args()
+                    .skip(1)
+                    .find(|a| a.trim().to_ascii_lowercase().starts_with("hghubx://"))
+                {
+                    source::commands::set_pending_deep_link(link.trim().to_string());
+                } else if let Ok(Some(urls)) = app.deep_link().get_current() {
+                    if let Some(url) = urls
+                        .into_iter()
+                        .find(|u| u.scheme().eq_ignore_ascii_case("hghubx"))
+                    {
+                        source::commands::set_pending_deep_link(url.to_string());
+                    }
+                }
+
+                #[cfg(any(target_os = "windows", target_os = "linux"))]
+                {
+                    let _ = app.deep_link().register_all();
+                }
+
+                let handle = app.handle().clone();
+                app.deep_link().on_open_url(move |event| {
+                    for url in event.urls() {
+                        if url.scheme().eq_ignore_ascii_case("hghubx") {
+                            deliver_desktop_deep_link(&handle, url.as_str());
+                            break;
+                        }
+                    }
+                });
             }
             if let Ok(dir) = app.path().app_data_dir() {
                 let _ = std::fs::create_dir_all(&dir);

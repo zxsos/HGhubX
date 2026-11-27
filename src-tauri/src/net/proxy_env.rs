@@ -58,10 +58,41 @@ fn format_proxy_url(scheme: &str, host: &str, port: &str) -> String {
     format!("{scheme}://{host}:{port}")
 }
 
+#[cfg(target_os = "linux")]
+static GNOME_PROXY_CACHE: once_cell::sync::Lazy<std::sync::Mutex<Option<(std::time::Instant, Option<String>)>>> =
+    once_cell::sync::Lazy::new(|| std::sync::Mutex::new(None));
+
+#[cfg(target_os = "linux")]
+const GNOME_PROXY_TTL: std::time::Duration = std::time::Duration::from_secs(10);
+
+pub(super) fn clear_proxy_env_cache() {
+    #[cfg(target_os = "linux")]
+    if let Ok(mut guard) = GNOME_PROXY_CACHE.lock() {
+        *guard = None;
+    }
+}
+
 /// Linux 桌面（GNOME）的固定手动代理：`mode=manual` 时取 http，为空再试 socks。
-/// PAC（mode=auto）不支持，返回 None。
+/// PAC（mode=auto）不支持，返回 None。结果短时缓存，避免每次媒体分片请求反复拉起 gsettings 进程。
 #[cfg(target_os = "linux")]
 pub(crate) fn gnome_proxy() -> Option<String> {
+    let now = std::time::Instant::now();
+    if let Ok(guard) = GNOME_PROXY_CACHE.lock() {
+        if let Some((expires, cached)) = guard.as_ref() {
+            if now < *expires {
+                return cached.clone();
+            }
+        }
+    }
+    let detected = probe_gnome_proxy();
+    if let Ok(mut guard) = GNOME_PROXY_CACHE.lock() {
+        *guard = Some((now + GNOME_PROXY_TTL, detected.clone()));
+    }
+    detected
+}
+
+#[cfg(target_os = "linux")]
+fn probe_gnome_proxy() -> Option<String> {
     if gsettings_get("org.gnome.system.proxy", "mode").as_deref() != Some("manual") {
         return None;
     }

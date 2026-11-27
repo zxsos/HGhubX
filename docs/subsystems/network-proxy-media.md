@@ -51,7 +51,7 @@
 
 1. 业务接口由各模块经 `Api::source_call()` / `account_source_call()` 委托给 QuickJS 视频源插件；
    插件通过 `host.fetch()`（即 `host_http_request()`）发起 HTTPS 请求，复用 `net::client_for_dns()`
-   （共享 `CLIENTS` 30 秒连接池与固定 DNS 缓存，按同一代理/严格模式/重定向守卫运行），并强制校验目标与重定向
+   （共享 `CLIENTS` 180 秒 HTTP/2 连接池与固定 DNS 缓存，按同一代理/严格模式/重定向守卫运行），并强制校验目标与重定向
    origin 属于 `manifest.network` 白名单、过滤 `Cookie`/`Host` 等受限头、限制响应体积 2 MB。直连无代理且遇
    `media_dns::eligible()` 错误（含 `InvalidContentType` 明文响应、超时、DNS 失败；非幂等写请求仅在连接/TLS 握手
    尚未发出 HTTP 请求前重试）时自动切换至 AliDNS DoH 回退并在 `MEDIA_DNS_ROUTES` 记忆成功路由。
@@ -61,8 +61,8 @@
    错误可重试，401、404、403、地址策略拒绝和重定向错误一次即终止。重试前 `heal_client()` 会在
    3 秒节流内重建客户端，解决代理软件开关后的 tunnel error。
 3. `client_for_dns()` 先做 `parse_target()`，再按严格模式、主机、端口、公网 DNS 标志和
-   `ProxyRoute` 生成缓存键。直连时解析全部地址并 `check_addresses()`，把结果通过
-   `resolve_to_addrs()` 固定进客户端；有代理时把域名交给代理解析。缓存 30 秒，命中不延长
+   `ProxyRoute` 生成缓存键（系统代理匹配器与 GNOME `gsettings` 探针各缓存 10 秒并在 `refresh_client()` 时立即清空）。直连时解析全部地址并 `check_addresses()`，把结果通过
+   `resolve_to_addrs()` 固定进客户端；有代理时把域名交给代理解析。缓存 180 秒，命中不延长
    TTL，最多 64 项，配置/代理/安全模式变化会推进 generation 并清空。
 4. `get_with_dns()` 关闭自动重定向，最多跟 5 跳。每一跳都重新 `parse_target()`、重新选客户端和
    固定 DNS，`redirect_target_with_mode()` 拒绝跨协议降级、认证信息和非法目标。

@@ -43,8 +43,8 @@
 
 ## 主运行时路径
 
-1. Feed 通过 `api.play(id, ep)` 取得 `streams.main`、旧字段 `video_url`，或仅存在 HEVC 时的
-   `streams.hevc`/`video_url_hevc` 回退；`preferHevc` 且存在 `streams.hevc` 时优先 HEVC。播放器拿到的是上游 m3u8，
+1. Feed 与 TV `PlayerPage`（[`src/tv/PlayerPage.tsx`](../../src/tv/PlayerPage.tsx)）通过 `api.play(id, ep)` 取得 `streams.main`、旧字段 `video_url`，或仅存在 HEVC 时的
+   `streams.hevc`/`video_url_hevc` 回退；`preferHevc`（TV 端为 `quality === "hevc"`）且存在 `streams.hevc` 时优先 HEVC，当 HEVC 播放报错且存在不同的 `streams.main` 时自动回退到默认线路并将偏好持久化为非 HEVC，避免不支持 HEVC 解码的设备卡在报错页（#286）。播放器拿到的是上游 m3u8，
    通过 `playbackSource` 转成 `${LOCAL}/hls?u=...`；已经是 `/hls`、`/seg` 的本地地址
    不会被重复包裹。
 2. `VideoSurface` 在 `Hls.isSupported()` 且不是直通 `/seg` 时创建 hls.js；
@@ -60,7 +60,7 @@
    [`src/shared/model/pageVisibility.ts`](../../src/shared/model/pageVisibility.ts) 的 `PageCoveredContext` 感知，
    且未处于画中画时），`VideoSurface` 通过 `useProxyPlaybackRecovery.stash()` 暂存当前进度、倍速与播放/暂停意图后
    销毁 `hls.js` 并清空 `<video>` 源以释放硬件解码器，返回顶层时按暂存状态自动续播或保持暂停；非活跃态同时卸载
-   `AmbientGlow` 与移动端 `blur-3xl` 氛围模糊层（微光开启或 Android 端不再渲染被遮盖的 `blur-3xl`）。在 Android WebView（`.plat-android`）上，播放页覆盖控件关闭压在硬件 `<video>` 上的 `backdrop-filter` 改用半透明深色底，未缩放时不套 `translate3d`，仅活跃 `<section>` 渲染 `FeedItemChrome` 且仅缩放态挂载还原胶囊，`AmbientGlow` 改用 `8×5` 画布按 250ms 采样并依靠 GPU 双线性放大替代全屏 `filter: blur(44px)`，避免 Skia/Viz 合成瓦片闪烁与错层（#240）。
+   `AmbientGlow` 与移动端 `blur-3xl` 氛围模糊层（微光开启或 Android 端不再渲染被遮盖的 `blur-3xl`）。在 Linux 桌面 WebKitGTK 宿主（`isLinuxWebKit`，即 `isLinux && !/Chrome|Chromium|Edg\//i.test(ua)`）上，`isAmbientGlowSupported()` 返回 `false`：跳过 `AmbientGlow` 渲染与 2D Canvas `drawImage(video)` 采样、`<video>` 保持 `bg-black` 并在设置页隐藏「微光效果」入口，避免 WebKitGTK + GStreamer（DMABUF / External OES 硬件解码）在首帧纹理回读时卡死渲染进程（#291）。在 Android WebView（`.plat-android`）上，播放页覆盖控件关闭压在硬件 `<video>` 上的 `backdrop-filter` 改用半透明深色底，未缩放时不套 `translate3d`，仅活跃 `<section>` 渲染 `FeedItemChrome` 且仅缩放态挂载还原胶囊，`AmbientGlow` 改用 `8×5` 画布按 250ms 采样并依靠 GPU 双线性放大替代全屏 `filter: blur(44px)`，避免 Skia/Viz 合成瓦片闪烁与错层（#240）。
 5. seek 有两种入口：桌面 `useSeekInput`/`PlayerControls`，移动端
    `useSeekInput`/进度条手势。指针移动只预览，松手提交一次；
    `VideoSurface.seek` 把目标夹到 `duration - 0.15`（避免 iOS 片尾卡死），
