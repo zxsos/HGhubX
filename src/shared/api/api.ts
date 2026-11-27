@@ -22,6 +22,8 @@ export const isMacos = !isIos && /Macintosh|Mac OS X/i.test(ua);
 /** Linux 桌面：webkit2gtk 的 UA 是「X11; Linux x86_64」。必须排在 Windows 之前判断，
  *  否则会被当成 Windows；而 Android 的 UA 里同样带「Linux」，所以必须先排除安卓。 */
 export const isLinux = !isAndroid && !isIos && !isMacos && /Linux|X11/i.test(ua);
+/** Linux 桌面 WebKitGTK 宿主（区别于 Linux 下的 Chromium 自动化测试环境）。 */
+export const isLinuxWebKit = isLinux && !/Chrome|Chromium|Edg\//i.test(ua);
 export const platform: "android" | "ios" | "windows" | "macos" | "linux" =
   isAndroid ? "android" : isIos ? "ios" : isMacos ? "macos" : isLinux ? "linux" : "windows";
 /** WebView 内核版本：能不能走 MSE、能解哪些封装，是「无法播放」的首要判据。

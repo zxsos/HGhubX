@@ -94,7 +94,13 @@ export function DesktopRail({ collapsed }: { collapsed: boolean }) {
           {items.map(({ key, label, Icon, Filled }) => (
             <Button key={key} aria-label={label} aria-current={onTab(key) ? "page" : undefined}
               className={`win-nav-item ${onTab(key) ? "is-selected" : ""}`}
-              onClick={() => setTab(key)}>
+              onClick={() => {
+                if (onTab(key) && key === "home") {
+                  window.dispatchEvent(new Event("hg:home-refresh"));
+                  return;
+                }
+                setTab(key);
+              }}>
               <span className="win-nav-symbol">{onTab(key) ? <Filled size={21} /> : <Icon size={21} strokeWidth={1.7} />}</span>
               <span className="win-nav-copy">{label}</span>
             </Button>

@@ -108,8 +108,8 @@ async fn download_image(url: &str, cache_key: &str, req_scope: crate::net::Reque
     let plain = if image_kind(&bytes).is_some() {
         bytes
     } else if let Some((key, iv)) = crate::source::active_image_decrypt() {
-        let dec = aes_cbc_decrypt(&bytes, &key, &iv).ok_or_else(|| "封面解密失败".to_string())?;
-        strip_padding(dec)
+        tokio::task::spawn_blocking(move || aes_cbc_decrypt(&bytes, &key, &iv).map(strip_padding))
+            .await.ok().flatten().ok_or_else(|| "封面解密失败".to_string())?
     } else {
         return Err("封面格式无效（当前视频源未声明加密封面参数）".into());
     };
