@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api, fmtTime } from "../shared/api/api";
 import VideoSurface, { type VideoHandle } from "../features/playback/VideoSurface";
+import { preheatHlsStart, rememberAttemptedKey, shouldPreheatNext } from "../features/playback/nextEpisodePreheat";
 import { useContentPreferences } from "../shared/model/contentPreferences";
 import type { Detail } from "../shared/api/types";
 import type { TvContent, TvProgress } from "./model";
@@ -64,6 +65,9 @@ export default function PlayerPage({ content, sourceKey, part: initialPart, resu
   const clock = useRef<Clock>({ key, content, part: initialPart, seconds: finiteSeconds(resumeSeconds), duration: 0, ready: false });
   const lastSaved = useRef(0);
   const prefetched = useRef(new Map<string, { streams: TvStreams; at: number }>());
+  const preheated = useRef(new Set<string>());
+  const preheatFlight = useRef<{ key: string; controller: AbortController } | null>(null);
+  const cancelPreheat = () => { preheatFlight.current?.controller.abort(); preheatFlight.current = null; };
   const sourceReady = !!sourceKey.split("@")[0];
   const request = `${sourceKey}:${key}:${part}:${preferences.revision}:${attempt}`;
   const loaded = sourceReady && prepared?.request === request ? prepared : null;
@@ -101,7 +105,7 @@ export default function PlayerPage({ content, sourceKey, part: initialPart, resu
     };
     const pagehide = () => persistRef.current();
     const sourceChanged = () => {
-      persistRef.current(); transportEpoch.current++; setPrepared(null); setDenied(null);
+      cancelPreheat(); persistRef.current(); transportEpoch.current++; setPrepared(null); setDenied(null);
       setPlaying(false); setWaiting(true); setModal(null); setSeek(null); setControls(true);
     };
     document.addEventListener("visibilitychange", visibility);
@@ -110,7 +114,7 @@ export default function PlayerPage({ content, sourceKey, part: initialPart, resu
     window.addEventListener("hg:proxy-changed", sourceChanged);
     const timer = window.setInterval(() => { if (!document.hidden) persistRef.current(); }, 5000);
     return () => {
-      persistRef.current(); mounted.current = false;
+      cancelPreheat(); persistRef.current(); mounted.current = false;
       document.removeEventListener("visibilitychange", visibility);
       window.removeEventListener("pagehide", pagehide);
       window.removeEventListener("hg:line-changed", sourceChanged);
@@ -186,6 +190,10 @@ export default function PlayerPage({ content, sourceKey, part: initialPart, resu
     }, 1200);
     return () => { alive = false; window.clearTimeout(timer); };
   }, [playing, foreground, session, blocked]);
+
+  useEffect(() => {
+    return () => cancelPreheat();
+  }, [session, foreground]);
 
   useEffect(() => {
     if (!controls || !playing || waiting || !foreground || seek !== null || modal || error || blocked) return;
@@ -322,6 +330,21 @@ export default function PlayerPage({ content, sourceKey, part: initialPart, resu
         if (restoredSession.current !== session) { restore(session, video.current?.el()?.duration || 0); return; }
         clock.current.seconds = finiteSeconds(value); clock.current.ready = true; setTime(value);
         if (Date.now() - lastSaved.current >= 5000) persist();
+        if (playing && !waiting && !error && !blocked && foreground && content.kind === "video" && loaded && shouldPreheatNext(value, clock.current.duration)) {
+          const nextPart = loaded.parts[loaded.parts.findIndex(candidate => candidate.id === part) + 1];
+          const cached = nextPart ? prefetched.current.get(`${sourceKey}:${key}:${preferences.revision}:${nextPart.id}`) : undefined;
+          const nextUrl = cached ? (quality === "hevc" ? cached.streams.hevc || cached.streams.main : cached.streams.main) : "";
+          const preheatKey = nextPart && nextUrl ? `${session}:${nextPart.id}:${nextUrl}` : "";
+          if (preheatKey && !preheated.current.has(preheatKey) && preheatFlight.current?.key !== preheatKey) {
+            cancelPreheat();
+            const controller = new AbortController();
+            preheatFlight.current = { key: preheatKey, controller };
+            void preheatHlsStart(nextUrl, controller.signal).finally(() => {
+              if (preheatFlight.current?.controller === controller) preheatFlight.current = null;
+              if (!controller.signal.aborted) rememberAttemptedKey(preheated.current, preheatKey);
+            });
+          }
+        }
       }}
       onPlaying={() => { if (currentSession(session)) { setPlaying(true); setWaiting(false); setError(""); } }}
       onPause={() => { if (currentSession(session)) { setPlaying(false); setControls(true); persist(); } }}

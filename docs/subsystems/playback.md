@@ -31,7 +31,9 @@
   [`mediaTransport.ts`](../../src/features/playback/mediaTransport.ts)、
   [`mediaErrors.ts`](../../src/features/playback/mediaErrors.ts)、
   [`AmbientGlow.tsx`](../../src/features/playback/AmbientGlow.tsx)、
-  [`balanceVolume.ts`](../../src/features/playback/balanceVolume.ts)。
+  [`balanceVolume.ts`](../../src/features/playback/balanceVolume.ts)、
+  [`nextEpisodePreheat.ts`](../../src/features/playback/nextEpisodePreheat.ts)、
+  [`useNextEpisodePrefetch.ts`](../../src/features/feed/useNextEpisodePrefetch.ts)。
 - 后端传输：[`src-tauri/src/ios_media_http.rs`](../../src-tauri/src/ios_media_http.rs)、
   [`src-tauri/src/linux_http.rs`](../../src-tauri/src/linux_http.rs)、
   [`src-tauri/src/media/mod.rs`](../../src-tauri/src/media/mod.rs)、
@@ -69,6 +71,13 @@
 7. `hg:proxy-changed` 会触发 `useProxyPlaybackRecovery.retry`：保存
    `src/time/playing/rate`，增加 revision，在同一 `video` 元素上重建 HLS/原生媒体连接；
    收到 metadata/data 后恢复位置、倍速与播放意图，期间用户显式暂停则保持暂停。
+8. 片尾预热下一集首片（[`nextEpisodePreheat.ts`](../../src/features/playback/nextEpisodePreheat.ts)）：
+   标准版 `Feed` 与 TV 版 `PlayerPage` 在当前集正常播放且剩余时间进入 `min(18s, duration * 0.5)` 窗口后，
+   取已预取的下一集播放地址并经本地路由 `/hls` 拉取清单（主清单最多跟 1 跳首变体），随后按序拉取首个非 `NONE`
+   `#EXT-X-KEY`、`#EXT-X-MAP` 与首个媒体分片，把字节提前写入 Rust 侧 `PL_CACHE` / `KEY_CACHE` / `SEG_CACHE`
+   （同 key 在途请求由 `segment.rs` 的 `coalesce` 共享，不额外创建第二个 `<video>` 解码器）。
+   仅请求 `${LOCAL}/hls?` 与 `${LOCAL}/seg?` 本地地址，跳过直通 `/seg` 的 MP4；按作用域+代次+URL 去重，
+   切集、失活、切线或改代理时通过 `AbortController` 取消在途预热，预热失败静默吞掉不影响当前播放。
 
 ## 状态转换
 
