@@ -73,7 +73,7 @@ function DialogFrame({ open, onClose, children, kind, width, label, z, avoidNati
   const descendants = useMemo(() => [...ancestors, token], [ancestors, token]);
   const close = useRef(onClose);
   close.current = onClose;
-  const host = getFullscreenElement() ?? document.getElementById("root") ?? document.body;
+  const host = getFullscreenElement() ?? document.querySelector<HTMLElement>(".player-root.fs-landscape") ?? document.getElementById("root") ?? document.body;
   useEffect(() => {
     if (open) { setMounted(true); return; }
     const timeout = setTimeout(() => setMounted(false), motion ? 180 : 0);
