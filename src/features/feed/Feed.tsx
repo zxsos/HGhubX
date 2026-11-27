@@ -458,17 +458,19 @@ export default function Feed({
 
   /* 当前集起播后先预取下一集播放地址，进入片尾窗口再预热下一集 m3u8 / key / 首片。 */
   const nextEpKey = `${accountScope}:${curId}:${curEp + 1}`;
-  const nextPlayUrl = preferHevc && hevcUrls[nextEpKey] ? hevcUrls[nextEpKey] : playUrls[nextEpKey] || "";
+  const nextFeedKey = nextVideoId ? `${accountScope}:${nextVideoId}:1` : "";
+  const preheatReady = active && kind === "video" && allowed && playingKey === playKey && !paused && !err;
   useNextEpisodeUrlPrefetch({
     active, curId, curEp, episodesLength: episodes.length, kind, allowed, playingKey, playKey,
     accountScope, permissionKey, hasNextUrl: !!playUrls[nextEpKey], playGuard, requestPlay, setPlayUrls, setHevcUrls,
   });
   useNextEpisodePreheat({
-    enabled: active && kind === "video" && allowed && playingKey === playKey && !paused && !err && curEp < episodes.length,
-    clock: playbackClock,
-    duration,
-    nextUrl: nextPlayUrl,
+    enabled: preheatReady && curEp < episodes.length, clock: playbackClock, duration,
+    nextUrl: preferHevc && hevcUrls[nextEpKey] ? hevcUrls[nextEpKey] : playUrls[nextEpKey] || "",
     scopeKey: `${accountScope}:${store.lineEpoch}:${proxyRetry}:${permissionKey}:${curId}:${curEp + 1}:${preferHevc ? "h" : "m"}`,
+    nextFeedEnabled: preheatReady && Boolean(nextVideoId),
+    nextFeedUrl: nextFeedKey ? (preferHevc && hevcUrls[nextFeedKey] ? hevcUrls[nextFeedKey] : playUrls[nextFeedKey] || "") : "",
+    nextFeedScopeKey: `${accountScope}:${store.lineEpoch}:${proxyRetry}:${permissionKey}:feed:${nextVideoId ?? 0}:${preferHevc ? "h" : "m"}`,
   });
 
   /* 当前视频首帧请求完成后，再验证并预取下一部，屏蔽规则始终先于播放地址。 */

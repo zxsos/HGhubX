@@ -100,13 +100,17 @@ export async function preheatHlsStart(rawUrl: string, signal: AbortSignal): Prom
       assetUrls = extractHlsPreheatTargets(variantText, LOCAL).assetUrls;
     }
 
-    for (const assetUrl of assetUrls) {
-      if (signal.aborted) return false;
-      const resp = await fetch(assetUrl, { signal });
-      if (!resp.ok || signal.aborted) return false;
-      await resp.arrayBuffer();
-    }
-    return assetUrls.length > 0;
+    if (assetUrls.length === 0) return false;
+    const settled = await Promise.all(
+      assetUrls.map(async (assetUrl) => {
+        if (signal.aborted) return false;
+        const resp = await fetch(assetUrl, { signal });
+        if (!resp.ok || signal.aborted) return false;
+        await resp.arrayBuffer();
+        return !signal.aborted;
+      }),
+    );
+    return settled.every(Boolean);
   } catch {
     return false;
   }
@@ -122,14 +126,22 @@ export function rememberAttemptedKey(set: Set<string>, key: string): boolean {
   return true;
 }
 
+const NEXT_FEED_PREHEAT_AFTER_SECONDS = 3;
+
 export function useNextEpisodePreheat(opts: {
   enabled: boolean;
   clock: PlaybackClock;
   duration: number;
   nextUrl: string;
   scopeKey: string;
+  nextFeedEnabled?: boolean;
+  nextFeedUrl?: string;
+  nextFeedScopeKey?: string;
 }) {
-  const { enabled, clock, duration, nextUrl, scopeKey } = opts;
+  const {
+    enabled, clock, duration, nextUrl, scopeKey,
+    nextFeedEnabled = false, nextFeedUrl = "", nextFeedScopeKey = "",
+  } = opts;
   const attemptedRef = useRef(new Set<string>());
   const flightRef = useRef<{ key: string; controller: AbortController } | null>(null);
 
@@ -140,29 +152,42 @@ export function useNextEpisodePreheat(opts: {
         flightRef.current = null;
       }
     };
-    if (!enabled || !nextUrl || duration <= 0) {
+    const hasEpTarget = enabled && Boolean(nextUrl) && duration > 0;
+    const hasFeedTarget = nextFeedEnabled && Boolean(nextFeedUrl);
+    if (!hasEpTarget && !hasFeedTarget) {
       cancelFlight();
       return;
     }
 
-    const key = `${scopeKey}|${nextUrl}`;
-    const check = () => {
-      if (document.hidden || !shouldPreheatNext(clock.getSnapshot(), duration)) return;
+    const epKey = hasEpTarget ? `${scopeKey}|${nextUrl}` : "";
+    const feedKey = hasFeedTarget ? `${nextFeedScopeKey}|${nextFeedUrl}` : "";
+    const trigger = (key: string, url: string) => {
       if (flightRef.current?.key === key || attemptedRef.current.has(key)) return;
       cancelFlight();
       const controller = new AbortController();
       flightRef.current = { key, controller };
-      void preheatHlsStart(nextUrl, controller.signal).finally(() => {
+      void preheatHlsStart(url, controller.signal).finally(() => {
         if (flightRef.current?.controller === controller) flightRef.current = null;
         if (!controller.signal.aborted) rememberAttemptedKey(attemptedRef.current, key);
       });
+    };
+    const check = () => {
+      if (document.hidden) return;
+      const t = clock.getSnapshot();
+      if (hasEpTarget && shouldPreheatNext(t, duration)) {
+        trigger(epKey, nextUrl);
+        return;
+      }
+      if (hasFeedTarget && t >= NEXT_FEED_PREHEAT_AFTER_SECONDS && !flightRef.current) {
+        trigger(feedKey, nextFeedUrl);
+      }
     };
 
     check();
     const unsub = clock.subscribe(check);
     return () => {
       unsub();
-      if (flightRef.current?.key === key) cancelFlight();
+      if (flightRef.current && (flightRef.current.key === epKey || flightRef.current.key === feedKey)) cancelFlight();
     };
-  }, [enabled, clock, duration, nextUrl, scopeKey]);
+  }, [enabled, clock, duration, nextUrl, scopeKey, nextFeedEnabled, nextFeedUrl, nextFeedScopeKey]);
 }
