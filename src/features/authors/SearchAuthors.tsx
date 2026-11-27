@@ -5,16 +5,14 @@ import { Loader } from "../../shared/ui/ios/effects";
 import { IRefresh, IUserF } from "../../shared/ui/icons";
 import { tr } from "../../shared/i18n";
 import { AuthorChip } from "./AuthorChip";
-import { useAuthorFollow } from "./useAuthorFollow";
 import { loadAuthors, subscribeAuthors, type AuthorItem } from "./authorDirectory";
 
 const TOP_COUNT = 14;
 const BATCH_SIZE = 7;
 
-/** Popular authors on the search landing page, with hold-to-follow author chips. */
+/** Popular authors on the search landing page; tap opens a profile, follow actions live on the authors page. */
 export function SearchAuthors({ active }: { active: boolean }) {
   const { push, lineEpoch, follows, activeSource, sourceStateStatus, capabilities } = useStore();
-  const { busyId, toggleFollow } = useAuthorFollow();
   const [authors, setAuthors] = useState<AuthorItem[] | null>(null);
   const [supported, setSupported] = useState(true);
   const [batch, setBatch] = useState(0);
@@ -78,8 +76,8 @@ export function SearchAuthors({ active }: { active: boolean }) {
       {authors?.length ? tr("刷新失败，保留已加载作者。") : tr("作者暂未加载成功。")}{error}
     </p>}
     {visible.length > 0 ? <div className="mt-3 flex flex-wrap gap-2">
-      {visible.map(author => <AuthorChip key={author.id} author={author} followed={isFollowing(author.id)} showFollowers={false} busy={busyId === author.id}
-        onOpen={() => openAuthor(author)} onToggleFollow={toggleFollow} />)}
+      {visible.map(author => <AuthorChip key={author.id} author={author} followed={isFollowing(author.id)} showFollowers={false} holdToFollow={false}
+        onOpen={() => openAuthor(author)} />)}
     </div> : !error && <p role="status" className="mt-3 text-[13px] text-mut">
       {loading || authors === null ? tr("正在加载作者…") : tr("暂无可用作者")}
     </p>}

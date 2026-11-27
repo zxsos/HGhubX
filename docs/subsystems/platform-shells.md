@@ -96,6 +96,11 @@ loopback、Windows 的自定义标题栏与注册表代理判断、Android 的 W
 3. 系统代理判断读 `HKCU\...\Internet Settings` 的 `ProxyEnable`/`ProxyServer`；真正的代理
    读取交给 reqwest 的 `system-proxy`。`system_proxy_fingerprint()` 把注册表值纳入媒体配置代次，
    代理软件开关后不会复用旧客户端。PAC 不支持。
+4. 桌面端（Windows / macOS / Linux）通过 `tauri.conf.json` 的 `plugins.deep-link.desktop.schemes`
+   声明 `hghubx` 协议，并在 [`src-tauri/src/lib.rs`](../../src-tauri/src/lib.rs) 仅对桌面目标接入
+   `tauri-plugin-single-instance`（`features = ["deep-link"]`）与 `tauri-plugin-deep-link`：
+   Windows 与 Linux 启动时调用 `register_all()` 自动注册协议（兼容便携包与解压版），已运行实例
+   收到二次启动或 macOS `OpenURL` 时聚焦主窗口并经 `hg:deep-link` / `source_take_deep_link` 弹出导入确认框。
 
 ### Android
 

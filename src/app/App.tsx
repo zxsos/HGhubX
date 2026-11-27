@@ -298,6 +298,10 @@ function TabBar({ swipe }: { swipe: TabSwipeBridge }) {
             data-preview={dragState.active && isHighlighted ? "true" : undefined}
             onClick={() => {
               swipe.clearSuppress();
+              if (key === "home" && tab === "home") {
+                window.dispatchEvent(new Event("hg:home-refresh"));
+                return;
+              }
               /* Re-tapping the active Search tab returns to the search landing state;
                  the input clear button is hard to reach on tall screens. */
               if (key === "search" && tab === "search") {

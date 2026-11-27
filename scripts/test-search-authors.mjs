@@ -129,7 +129,20 @@ try {
   assert.equal(await page.evaluate(() => window.__AUTHOR_DIRECTORY_CALLS__()), 0, "the cached directory survives a reload without a request");
   assert.ok((await reloadedRegion.locator("button[data-author-id]").first().innerText()).includes("都市阿城"), "the cached order stays by follower count");
 
-  console.log("PASS: search-authors (20 checks)");
+  const hotChip = reloadedRegion.locator("button[data-author-id]").first();
+  const hotLabel = await hotChip.getAttribute("aria-label");
+  assert.ok(hotLabel?.startsWith("打开作者："), "hot author chips no longer advertise hold-to-follow");
+  const hotBox = await hotChip.boundingBox();
+  assert(hotBox, "hot author chip needs a bounding box");
+  await page.mouse.move(hotBox.x + hotBox.width / 2, hotBox.y + hotBox.height / 2);
+  await page.mouse.down();
+  await page.waitForTimeout(700);
+  await page.mouse.up();
+  await page.waitForTimeout(200);
+  const storedFollows = await page.evaluate(() => JSON.parse(localStorage.getItem("hghubx_app_v1") ?? "{}").follows ?? []);
+  assert.deepEqual(storedFollows, [], "holding a hot author chip no longer follows the author");
+
+  console.log("PASS: search-authors (21 checks)");
 } finally {
   if (browser) await browser.close();
   if (vite) await vite.close();

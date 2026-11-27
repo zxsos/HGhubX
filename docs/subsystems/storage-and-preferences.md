@@ -13,7 +13,7 @@
 ## 事实来源
 
 - 键与迁移：[`src/shared/storage/storage.ts`](../../src/shared/storage/storage.ts) 的 `STORAGE_KEYS`（`app`、`swipeEp`、
-  `theme`、`autoLine`、`locale`）、`LEGACY_KEYS`、`StorageKey`、`readStorage()`。
+  `theme`、`autoLine`、`locale`、`haptic`、`homePages`）、`LEGACY_KEYS`、`StorageKey`、`readStorage()`。
 - 界面多语言：[`src/shared/i18n/index.ts`](../../src/shared/i18n/index.ts) 的 `Locale`、`DEFAULT_LOCALE`（`zh-CN`）、
   `LOCALE_OPTIONS`、`tr()`、`N_()`、`initLocale()`、`setLocale()`、`useLocale()`；按需加载词典
   [`src/shared/i18n/locales/zh-TW.ts`](../../src/shared/i18n/locales/zh-TW.ts)、
@@ -55,6 +55,7 @@
 | `hghubx_theme` | `hghub_theme` | `light`/`dark`/`system` |
 | `hghubx_locale` | — | 界面语言偏好（`zh-CN`/`zh-TW`/`en`，默认 `zh-CN`） |
 | `hghubx_haptic_v1` | — | 移动端按键与手势震动反馈强度（`off`/`light`/`medium`/`strong`，默认 `medium`） |
+| `hghubx_home_pages_v1` | — | 首页默认流与置顶标签按源记录的已知总页数（供跨页随机采样使用；原值损坏时保留不覆盖） |
 | `hghubx_auto_line` | `hg.autoLine` | 自动选线开关 |
 | `hghubx_usage_agreement` | — | 使用协议版本与签署时间 |
 | `hghubx_mobile_hold_guide_v1` | — | 移动端首次长按倍速教程已读标记 |

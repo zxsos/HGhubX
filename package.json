@@ -32,7 +32,8 @@
     "android:dev": "tauri android dev",
     "android:build": "tauri android build",
     "android:tv:init": "node scripts/build-android-tv.mjs --android-init",
-    "android:tv:build": "node scripts/build-android-tv.mjs --android-build"
+    "android:tv:build": "node scripts/build-android-tv.mjs --android-build",
+    "test:posts-tabs": "node scripts/test-posts-tabs.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.12.4",

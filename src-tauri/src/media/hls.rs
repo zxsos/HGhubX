@@ -3,10 +3,13 @@
 use crate::net::fetch_bytes_with_url;
 use once_cell::sync::Lazy;
 use percent_encoding::{percent_decode_str, utf8_percent_encode, NON_ALPHANUMERIC};
-use std::sync::{atomic::{AtomicU64, Ordering}, Arc, Mutex};
+use std::collections::HashMap;
+use std::sync::{atomic::{AtomicU64, Ordering}, Arc, Mutex, Weak};
 
 static PL_CACHE: Lazy<Mutex<crate::cache::LruCache<Arc<String>>>> =
     Lazy::new(|| Mutex::new(crate::cache::LruCache::new(PL_CACHE_MAX, PL_CACHE_MAX_BYTES)));
+static PL_LOADING: Lazy<Mutex<HashMap<String, Weak<tokio::sync::OnceCell<Result<Arc<String>, String>>>>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
 static PL_CACHE_GENERATION: AtomicU64 = AtomicU64::new(0);
 const PL_CACHE_MAX: usize = 60;
 const PL_CACHE_MAX_BYTES: usize = 4 * 1024 * 1024;
@@ -78,19 +81,19 @@ pub async fn load_playlist(url: &str, prefix: &str) -> Result<Arc<String>, Strin
     let generation = PL_CACHE_GENERATION.load(Ordering::Acquire);
     let cache_key = format!("{}:{}:{generation}:{prefix}|{url}", u8::from(req_scope.strict), req_scope.generation);
     if let Some(hit) = PL_CACHE.lock().unwrap().get(&cache_key) { return Ok(hit); }
-    let (final_url, _, bytes) = fetch_bytes_with_url(url).await?;
-    let text = std::str::from_utf8(&bytes).map_err(|_| "播放列表不是 UTF-8 文本")?;
-    if !text.trim_start_matches('\u{feff}').starts_with("#EXTM3U") {
-        return Err("响应不是 HLS 播放列表".into());
-    }
-    let arc = Arc::new(rewrite_playlist(&final_url, text, prefix));
-    let mut cache = PL_CACHE.lock().unwrap();
-    // clear_caches advances the epoch first; never let an older in-flight
-    // playlist repopulate the cache after that clear.
-    if PL_CACHE_GENERATION.load(Ordering::Acquire) == generation && crate::net::request_scope() == req_scope {
-        cache.insert(cache_key, arc.clone(), arc.len());
-    }
-    Ok(arc)
+    let key = cache_key.clone();
+    super::segment::coalesce(&PL_LOADING, cache_key, move || async move {
+        if let Some(hit) = PL_CACHE.lock().unwrap().get(&key) { return Ok(hit); }
+        let (final_url, _, bytes) = fetch_bytes_with_url(url).await?;
+        let text = std::str::from_utf8(&bytes).map_err(|_| "播放列表不是 UTF-8 文本")?;
+        if !text.trim_start_matches('\u{feff}').starts_with("#EXTM3U") { return Err("响应不是 HLS 播放列表".into()); }
+        let arc = Arc::new(rewrite_playlist(&final_url, text, prefix));
+        let mut cache = PL_CACHE.lock().unwrap();
+        if PL_CACHE_GENERATION.load(Ordering::Acquire) == generation && crate::net::request_scope() == req_scope {
+            cache.insert(key, arc.clone(), arc.len());
+        }
+        Ok(arc)
+    }).await
 }
 
 pub(super) fn rewrite_playlist(url: &str, text: &str, prefix: &str) -> String {
