@@ -28,6 +28,8 @@ Feed 负责列表播放页的条目位置、详情/帖子读取、标签门、�
   `Category`、`ChannelPage` 与频道能力/声明驱动逻辑。
 - [`src/features/authors/authorDirectory.ts`](../../src/features/authors/authorDirectory.ts)：
   作者目录加载（`api.popularAuthors`）与关注列表缓存。
+  [`SearchAuthors`](../../src/features/authors/SearchAuthors.tsx) 的热门作者只负责打开主页；
+  关注/取消关注的长按入口只保留在 [`AuthorsPage`](../../src/features/authors/AuthorsPage.tsx) 的作者列表与已关注列表。
 - [`src/shared/model/store.tsx`](../../src/shared/model/store.tsx) 的 `lineEpoch` 和 `accountScope` 传递；
   [`src/shared/model/store.tsx`](../../src/shared/model/store.tsx) 暴露的 `accountGeneration` 与
   [`src/shared/model/accountData.ts`](../../src/shared/model/accountData.ts) 的 `generation`；
