@@ -113,6 +113,7 @@ Feed 负责列表播放页的条目位置、详情/帖子读取、标签门、�
   随即停止未发送项并抑制旧批次的错误、完成状态与 toast。账号代次检查独立于组件重挂载，避免 cleanup
   执行前队列继续用新账号发起下一项。
 - 分类与频道列表由当前激活视频源能力及可选声明驱动（[`src/features/category/Category.tsx`](../../src/features/category/Category.tsx)、[`src/tv/BrowsePage.tsx`](../../src/tv/BrowsePage.tsx)）：若 `activeSource.catalog.channels` 声明了频道，按 `ch.kind === "post" ? capabilities.posts : capabilities.catalog.categories` 过滤后渲染（`kind: "post"` 走 `api_post_category`，否则走 `api_category`）；未声明或过滤后为空且 `capabilities.home` 为 `true` 时，回退为默认「推荐发现」频道（`__feed__`，走 `api_feed`）；当 `capabilities.posts` 为 `true` 且未声明帖子频道时追加默认「图文帖子」预览。服务端排序胶囊仅在 `channel.sorts` 非空时展示，具体数据抓取或解析全部由激活源插件的 `category`（或帖子分类 `postCategory` / 首页 `home`）实现，Rust 壳不内置站点 slug 或 CSS 选择器（`api_original_videos` 仅作向后兼容 IPC 保留，当前页面不再调用）。
+- 分类总览的每个频道区块标题行只有右侧「全部」按钮可点击；图标、标题和空白区域不响应指针事件，避免纵向滚动时误触进入频道页。
 - 频道页（非 `__feed__`）与标签结果页支持指标排序（`VideoSortMenu` / `sortVideosByMetric`）：频道页在分类/排序胶囊行右侧、标签页在「视频 N」标题行右侧显示排序入口；默认态只显示排序图标，选择后控件变为「指标 + 方向箭头」胶囊（↓ 从多到少、↑ 从少到多），菜单保留「默认排序」项用于恢复；再次点击当前指标会反转方向，菜单保持展开。切换到指标排序时通过 `api_category` 的 `jsonOnly` 选项交给激活源跳过耗时解析（若源实现区分），以每页 100 条抓取完整结果（最多 30 页），按列表返回的 `like_count` / `collect_count` / `hot` / `score` 先按所选方向稳定排序再以 20 条渐进渲染；在频道 tab 间切换时保留当前指标并按新 tab 重新排序。指标排序只作用于视频列表，不影响标签页图文帖子。
 - 排行榜读取（`api_rank`）直接委托激活源插件的 `rank` 方法，受 `capabilities.catalog.rankings` 门控，保持 `{ type, items: RankItem[] }` 契约不变。
 - 搜索页热搜榜读取（`api_search_hot`）直接委托激活源插件的 `searchHot` 方法；前端 [`src/features/search/Search.tsx`](../../src/features/search/Search.tsx) 使用单行左右紧凑布局（序号 + 单行省略标题 + 右对齐热度文本 + 右箭头），移动端无卡片底色、宽屏（`>= 560px`）保持双列紧凑卡片。

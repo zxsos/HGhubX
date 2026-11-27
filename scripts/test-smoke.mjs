@@ -15,6 +15,7 @@ const tests = [
   ["ui-feedback", "scripts/test-ui-feedback.mjs"],
   ["profile-swipe", "scripts/test-profile-swipe.mjs"],
   ["channel-swipe", "scripts/test-channel-swipe.mjs"],
+  ["category-hitbox", "scripts/test-category-hitbox.mjs"],
   ["metric-sort", "scripts/test-metric-sort.mjs"],
   ["home-controls", "tests/test-home-controls.mjs"],
   ["rank-swipe", "scripts/test-rank-swipe.mjs"],
