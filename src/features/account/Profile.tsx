@@ -50,11 +50,13 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
   const [limits, setLimits] = useState({ favVideo: 12, favPost: 12, history: 12 });
   const scrollRef = useRef<HTMLDivElement>(null);
   const favRefreshRegionRef = useRef<HTMLDivElement>(null);
+  const pullIndicatorRef = useRef<HTMLDivElement>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
   const [failedIds, setFailedIds] = useState<number[]>([]);
   const [reload, setReload] = useState(0);
   const [loading, setLoading] = useState(false);
-  const [pullDistance, setPullDistance] = useState(0);
+  const [pullStage, setPullStage] = useState<"idle" | "pulling" | "ready">("idle");
+  const pullDistanceRef = useRef(0);
   const [pullRefreshing, setPullRefreshing] = useState(false);
   const pullRefreshingRef = useRef(false);
   const [logoutOpen, setLogoutOpen] = useState(false);
@@ -233,7 +235,8 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
     const scroller = scrollRef.current;
     const region = favRefreshRegionRef.current;
     if (!scroller || !region || !active || tab !== "fav" || selectionMode) {
-      setPullDistance(0);
+      pullDistanceRef.current = 0;
+      setPullStage("idle");
       return;
     }
     let tracking = false;
@@ -244,18 +247,42 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
     let armedHaptic = false;
     let suppressClick = false;
     let suppressTimer = 0;
+    let stage: "idle" | "pulling" | "ready" = "idle";
+    let pointerWindowBound = false;
 
     const inRefreshRegion = (target: EventTarget | null) =>
       target instanceof Element
       && region.contains(target)
       && !target.closest("input, textarea, select, [role=menu]");
 
+    const syncIndicatorHeight = (height: number) => {
+      pullDistanceRef.current = height;
+      const indicator = pullIndicatorRef.current;
+      if (indicator) indicator.style.height = `${Math.round(height)}px`;
+    };
+
+    const setStage = (next: "idle" | "pulling" | "ready") => {
+      if (stage === next) return;
+      stage = next;
+      setPullStage(next);
+    };
+
+    const unbindWindowPointer = () => {
+      if (!pointerWindowBound) return;
+      pointerWindowBound = false;
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+      window.removeEventListener("pointercancel", onPointerCancel);
+    };
+
     const resetGesture = () => {
       tracking = false;
       activePointerId = null;
       currentPull = 0;
       armedHaptic = false;
-      setPullDistance(0);
+      unbindWindowPointer();
+      syncIndicatorHeight(0);
+      setStage("idle");
     };
 
     const updatePull = (dx: number, dy: number, threshold: number, event: Event) => {
@@ -263,6 +290,7 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
         if (currentPull === 0) {
           tracking = false;
           activePointerId = null;
+          unbindWindowPointer();
         }
         return;
       }
@@ -273,7 +301,8 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
       if (dy > threshold) {
         if (event.cancelable) event.preventDefault();
         currentPull = Math.min(84, (dy - threshold) * 0.48);
-        setPullDistance(currentPull);
+        syncIndicatorHeight(currentPull);
+        setStage(currentPull >= 54 ? "ready" : "pulling");
         if (currentPull >= 54 && !armedHaptic) {
           armedHaptic = true;
           triggerHaptic("tap");
@@ -332,6 +361,12 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
       startY = event.clientY;
       currentPull = 0;
       armedHaptic = false;
+      if (!pointerWindowBound) {
+        pointerWindowBound = true;
+        window.addEventListener("pointermove", onPointerMove, { passive: false });
+        window.addEventListener("pointerup", onPointerUp);
+        window.addEventListener("pointercancel", onPointerCancel);
+      }
     };
 
     const onPointerMove = (event: PointerEvent) => {
@@ -361,20 +396,15 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
     region.addEventListener("touchend", onTouchEnd, { passive: true });
     region.addEventListener("touchcancel", onTouchEnd, { passive: true });
     region.addEventListener("pointerdown", onPointerDown);
-    window.addEventListener("pointermove", onPointerMove, { passive: false });
-    window.addEventListener("pointerup", onPointerUp);
-    window.addEventListener("pointercancel", onPointerCancel);
     region.addEventListener("click", onClickCapture, true);
     return () => {
       window.clearTimeout(suppressTimer);
+      unbindWindowPointer();
       region.removeEventListener("touchstart", onTouchStart);
       region.removeEventListener("touchmove", onTouchMove);
       region.removeEventListener("touchend", onTouchEnd);
       region.removeEventListener("touchcancel", onTouchEnd);
       region.removeEventListener("pointerdown", onPointerDown);
-      window.removeEventListener("pointermove", onPointerMove);
-      window.removeEventListener("pointerup", onPointerUp);
-      window.removeEventListener("pointercancel", onPointerCancel);
       region.removeEventListener("click", onClickCapture, true);
     };
   }, [active, selectionMode, tab]);
@@ -628,10 +658,11 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
       </div>
 
       <div ref={scrollRef} {...tabSwipe} style={{ touchAction: "pan-y" }}
-        className="ios-page-body flex-1 scroll-y pt-2 pb-24 flex flex-col">
+        className="ios-page-body flex-1 scroll-y pt-2 pb-24">
+        <div className="min-h-full flex flex-col">
         {/* 资料卡：已登录 / 未登录（点开登录抽屉） */}
         {user ? (
-          <Surface className="ios-account-card flex flex-col gap-3 a-rise">
+          <Surface className="ios-account-card shrink-0 flex flex-col gap-3 a-rise">
             <div className="flex items-center gap-3.5 min-w-0">
               <Avatar size={56} name={user.nickname} hue={280} ring />
               <div className="flex-1 min-w-0">
@@ -654,7 +685,7 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
           </Surface>
         ) : capabilities.account ? (
           <Button onClick={() => setLoginOpen(true)}
-            className="ios-account-card w-full text-left flex items-center gap-3.5 pressable a-rise">
+            className="ios-account-card shrink-0 w-full text-left flex items-center gap-3.5 pressable a-rise">
             <Avatar size={56} icon={<IUser size={26} />} hue={220} ring />
             <div className="flex-1 min-w-0">
               <div className="text-[16px] font-bold text-on">{tr("未登录")}</div>
@@ -668,7 +699,7 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
             </span>
           </Button>
         ) : (
-          <Surface className="ios-account-card w-full text-left flex items-center gap-3.5 a-rise">
+          <Surface className="ios-account-card shrink-0 w-full text-left flex items-center gap-3.5 a-rise">
             <Avatar size={56} icon={<IUser size={26} />} hue={220} ring />
             <div className="flex-1 min-w-0">
               <div className="text-[16px] font-bold text-on">{tr("本机片库")}</div>
@@ -681,7 +712,7 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
           </Surface>
         )}
 
-        {user && accountSync.error && <div role="alert" className="mt-3 rounded-(--r-sm) bg-s3 px-3.5 py-3 text-[13px] flex flex-wrap items-center justify-between gap-2">
+        {user && accountSync.error && <div role="alert" className="mt-3 shrink-0 rounded-(--r-sm) bg-s3 px-3.5 py-3 text-[13px] flex flex-wrap items-center justify-between gap-2">
           <p className={`${accountSync.authError ? "text-on" : "text-danger"} break-words flex-1 min-w-[200px]`}>{accountSync.error}</p>
           <div className="flex items-center gap-2 shrink-0">
             {accountSync.authError && (
@@ -695,7 +726,7 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
 
         {/* 关注 / 我的主页 */}
         {user && capabilities.account && (
-          <CollectionLinks className="ios-profile-links mt-4">
+          <CollectionLinks className="ios-profile-links mt-4 shrink-0">
             <CollectionLink icon={<IHeart size={18} />} title={tr("我的关注")}
               onClick={() => push({ kind: "following" })} />
             <CollectionLink icon={<IUserF size={18} />} title={tr("我的主页")}
@@ -704,14 +735,14 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
         )}
 
         {/* 我的内容 */}
-        <SegmentedControl className="mt-4" aria-label={tr("我的内容")} activeIndex={tabIndex}>
+        <SegmentedControl className="mt-4 shrink-0" aria-label={tr("我的内容")} activeIndex={tabIndex}>
           {([["fav", tr("我的收藏")], ["history", tr("观看历史")]] as const).map(([k, l]) => (
             <Button aria-pressed={tab === k} key={k} onClick={() => { setTab(k); setSelectedIds([]); }}>{l}</Button>
           ))}
         </SegmentedControl>
 
         {tab === "fav" && !favoriteStateUnknown && (favs.length > 0 || (capabilities.posts && (postFavs.length > 0 || favKind === "post"))) && (
-          <div className="mt-2.5 flex items-center gap-2" role="group" aria-label={tr("收藏内容类型")}>
+          <div className="mt-2.5 shrink-0 flex items-center gap-2" role="group" aria-label={tr("收藏内容类型")}>
             <div className="flex items-center gap-2">
               <Button aria-pressed={favKind === "video"} onClick={() => { setFavKind("video"); setSelectedIds([]); }} className="inline-flex min-h-9 items-center gap-1.5 px-1.5 text-left pressable">
                 <span className="text-[15px] font-bold text-on">{tr("视频")}</span>
@@ -798,10 +829,10 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
           </div>
         )}
         {filteringHydrating && (
-          <span role="status" className="mt-1 block text-[12px] text-mut">{tr("正在加载全部收藏详情…")}</span>
+          <span role="status" className="mt-1 shrink-0 block text-[12px] text-mut">{tr("正在加载全部收藏详情…")}</span>
         )}
 
-        {selectionMode && <div role="region" aria-label={tr("批量管理")} className="sticky top-0 z-20 -mx-1 mt-2 flex items-center gap-2 bg-bg/95 px-1 py-2 text-[13px] backdrop-blur">
+        {selectionMode && <div role="region" aria-label={tr("批量管理")} className="sticky top-0 z-20 -mx-1 mt-2 shrink-0 flex items-center gap-2 bg-bg/95 px-1 py-2 text-[13px] backdrop-blur">
           <span className="font-semibold text-on">{tr("已选 {0} 项", selectedIds.length)}</span>
           <Button disabled={allSelected} className="ml-auto px-2 text-primary disabled:opacity-40" onClick={selectAll}>{tr("全选")}</Button>
           <Button className="px-2 text-primary" onClick={() => { setSelectedIds([]); setRemoveError(""); }}>{tr("取消")}</Button>
@@ -809,13 +840,13 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
         </div>}
 
         <div ref={favRefreshRegionRef} data-favorite-refresh-region className="mt-3 flex-1" aria-busy={loading || syncingFavorites}>
-          {tab === "fav" && (pullRefreshing || pullDistance > 0) && (
-            <div role="status" data-favorite-pull-indicator className="mb-2 flex items-center justify-center gap-2 text-[12px] text-mut overflow-hidden"
-              style={{ height: pullRefreshing ? 38 : Math.round(pullDistance) }}>
+          {tab === "fav" && (pullRefreshing || pullStage !== "idle") && (
+            <div ref={pullIndicatorRef} role="status" data-favorite-pull-indicator className="mb-2 flex items-center justify-center gap-2 text-[12px] text-mut overflow-hidden"
+              style={{ height: pullRefreshing ? 38 : Math.round(pullDistanceRef.current) }}>
               {pullRefreshing
                 ? <Loader className="w-4 h-4 spinner" />
-                : <IRefresh size={14} className={pullDistance >= 54 ? "text-primary rotate-180 transition-transform" : "transition-transform"} />}
-              <span>{pullRefreshing ? tr("正在检查收藏更新…") : pullDistance >= 54 ? tr("松开检查更新") : tr("下拉检查收藏更新")}</span>
+                : <IRefresh size={14} className={pullStage === "ready" ? "text-primary rotate-180 transition-transform" : "transition-transform"} />}
+              <span>{pullRefreshing ? tr("正在检查收藏更新…") : pullStage === "ready" ? tr("松开检查更新") : tr("下拉检查收藏更新")}</span>
             </div>
           )}
           {favoriteSyncFailed ? (
@@ -922,7 +953,8 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
           {hasMore && <div ref={sentinelRef} className="h-4" aria-hidden="true" />}
         </div>
 
-        <div className="text-center text-[12px] text-dim mt-5">{tr("HGhubX {0} · {1} 客户端", APP_VERSION, platform === "android" ? "Android" : platform === "ios" ? "iOS" : platform === "macos" ? "macOS" : platform === "linux" ? "Linux" : "Windows")}</div>
+        <div className="shrink-0 text-center text-[12px] text-dim mt-5">{tr("HGhubX {0} · {1} 客户端", APP_VERSION, platform === "android" ? "Android" : platform === "ios" ? "iOS" : platform === "macos" ? "macOS" : platform === "linux" ? "Linux" : "Windows")}</div>
+        </div>
       </div>
       <Modal open={removeOpen} onClose={() => { if (!removalPending.current) setRemoveOpen(false); }} label={tr("批量移除")}>
         <div className="p-5">
