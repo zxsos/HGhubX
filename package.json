@@ -18,6 +18,7 @@
     "test:network-settings": "node scripts/test-network-settings.mjs",
     "test:ui-feedback": "node scripts/test-ui-feedback.mjs",
     "test:favorite-status": "node scripts/test-favorite-status-counts.mjs",
+    "test:haptic-tap": "node scripts/test-haptic-tap.mjs",
     "test:home-controls": "node tests/test-home-controls.mjs",
     "test:post-flicker": "node scripts/test-post-flicker.mjs",
     "check:i18n": "node scripts/check-i18n.mjs",

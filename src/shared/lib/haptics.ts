@@ -80,18 +80,21 @@ export function triggerHaptic(kind: HapticKind = "tap", overrideLevel?: HapticLe
   } catch { /* ignore */ }
 }
 
-/** Attach one passive capture listener so every mobile button/switch press gets tactile feedback. */
+/** Attach one click listener so only completed activations vibrate; scroll and drag never synthesize a click. */
 export function initMobileHaptics(): () => void {
   if (!isMobile || typeof document === "undefined") return () => {};
-  const onDown = (event: PointerEvent) => {
-    if (!event.isPrimary || (event.pointerType === "mouse" && event.button !== 0)) return;
-    if (currentLevel === "off") return;
-    const target = event.target;
-    if (!(target instanceof Element)) return;
+  const controlAt = (target: EventTarget | null): Element | null => {
+    if (!(target instanceof Element)) return null;
     const control = target.closest(BUTTON_SELECTOR);
-    if (!control || control.closest(SKIP_SELECTOR)) return;
+    return control && !control.closest(SKIP_SELECTOR) ? control : null;
+  };
+  const onClick = (event: MouseEvent) => {
+    if (currentLevel === "off") return;
+    if (!controlAt(event.target)) return;
     triggerHaptic("tap");
   };
-  document.addEventListener("pointerdown", onDown, { capture: true, passive: true });
-  return () => document.removeEventListener("pointerdown", onDown, true);
+  /* Bubble phase: handlers that suppress a drag's synthetic click (tab bar, tab swipe)
+     stop propagation before it reaches document, so only real taps vibrate. */
+  document.addEventListener("click", onClick, { passive: true });
+  return () => document.removeEventListener("click", onClick);
 }
