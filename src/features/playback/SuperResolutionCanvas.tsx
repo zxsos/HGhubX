@@ -561,12 +561,15 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
   const deblock = deblockProp ?? 0;
   const grain = grainProp ?? 0;
   const faceMask = faceMaskProp ?? 0;
+  const paramsRef = useRef({ detailGain, portraitContrast, deblock, grain, faceMask });
+  paramsRef.current = { detailGain, portraitContrast, deblock, grain, faceMask };
 
   useEffect(() => {
     if (!enabled || !active || failed) return;
     const video = videoRef.current as FrameVideo | null;
     const canvas = canvasRef.current;
     if (!video || !canvas) return;
+    const reportDiagnostics = typeof window !== "undefined" && new URLSearchParams(window.location.search).has("sr");
 
     let gl: WebGL2RenderingContext | null = null;
     let programEasu: WebGLProgram | null = null;
@@ -576,6 +579,8 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
     let programDetailResample: WebGLProgram | null = null;
     let detailUpscaler: DetailUpscaler | null = null;
     let videoTexture: WebGLTexture | null = null;
+    let videoTexWidth = 0;
+    let videoTexHeight = 0;
     let filteredTexture: WebGLTexture | null = null;
     let intermediate: WebGLTexture | null = null;
     let detailScaledTexture: WebGLTexture | null = null;
@@ -593,8 +598,9 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
     let width = 0;
     let height = 0;
     let frames = 0;
-    let measuredAt = 0;
+    let sizeDirty = true;
     let measuredSize: ReturnType<typeof outputSize> = null;
+    let resizeObserver: ResizeObserver | null = null;
     let easuSourceLoc: WebGLUniformLocation | null = null;
     let easuInputLoc: WebGLUniformLocation | null = null;
     let easuOutputLoc: WebGLUniformLocation | null = null;
@@ -631,6 +637,7 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
       disposed = true;
       if (frameHandle && video.cancelVideoFrameCallback) video.cancelVideoFrameCallback(frameHandle);
       if (fallbackTimer) window.clearInterval(fallbackTimer);
+      resizeObserver?.disconnect();
       if (gl) {
         if (videoTexture) gl.deleteTexture(videoTexture);
         if (filteredTexture) gl.deleteTexture(filteredTexture);
@@ -651,13 +658,17 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
       video.removeEventListener("loadeddata", drawOnce);
       video.removeEventListener("playing", drawOnce);
       video.removeEventListener("seeked", drawOnce);
-      video.removeEventListener("resize", drawOnce);
-      window.removeEventListener("resize", drawOnce);
+      video.removeEventListener("resize", onSizeDirty);
+      window.removeEventListener("resize", onSizeDirty);
       canvas.removeEventListener("webglcontextlost", onContextLost);
       canvas.style.display = "none";
     };
 
     const drawOnce = () => safeDraw(true);
+    const onSizeDirty = () => {
+      sizeDirty = true;
+      safeDraw(true);
+    };
 
     const resize = (nextWidth: number, nextHeight: number) => {
       if (!gl) return;
@@ -679,7 +690,16 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
       if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) {
         throw new Error("Incomplete framebuffer");
       }
-      for (let unit = 0; unit < 8; unit += 1) {
+      if (variant === "detail") {
+        if (!detailFramebuffer) detailFramebuffer = gl.createFramebuffer();
+        if (!detailFramebuffer) throw new Error("Unable to create detail resample framebuffer");
+        gl.bindFramebuffer(gl.FRAMEBUFFER, detailFramebuffer);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, detailScaledTexture, 0);
+        if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) {
+          throw new Error("Incomplete detail resample framebuffer");
+        }
+      }
+      for (let unit = 0; unit < 2; unit += 1) {
         gl.activeTexture(gl.TEXTURE0 + unit);
         gl.bindTexture(gl.TEXTURE_2D, null);
       }
@@ -691,12 +711,11 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
       const vw = video.videoWidth;
       const vh = video.videoHeight;
       if (!vw || !vh) return false;
-      if (!filteredTexture || filterWidth !== vw || filterHeight !== vh) {
-        if (filteredTexture) gl.deleteTexture(filteredTexture);
-        filteredTexture = createTexture(gl, vw, vh);
-        filterWidth = vw;
-        filterHeight = vh;
-      }
+      if (filteredTexture && filterFramebuffer && filterWidth === vw && filterHeight === vh) return true;
+      if (filteredTexture) gl.deleteTexture(filteredTexture);
+      filteredTexture = createTexture(gl, vw, vh);
+      filterWidth = vw;
+      filterHeight = vh;
       if (!filterFramebuffer) filterFramebuffer = gl.createFramebuffer();
       if (!filterFramebuffer) throw new Error("Unable to create deblock framebuffer");
       gl.bindFramebuffer(gl.FRAMEBUFFER, filterFramebuffer);
@@ -711,10 +730,9 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
     const draw = (force = false) => {
       if (disposed || !gl || !video) return;
       if (video.readyState < 2 || !video.videoWidth) return;
-      const now = performance.now();
-      if (force || !measuredSize || now - measuredAt > 500) {
+      if (force || sizeDirty || !measuredSize) {
         measuredSize = outputSize(video, fit, variant, forceScale);
-        measuredAt = now;
+        sizeDirty = false;
       }
       const size = measuredSize;
       if (!size) {
@@ -722,17 +740,25 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
         canvas.style.display = "none";
         return;
       }
-      canvas.style.display = "block";
-      canvas.dataset.active = "on";
-      canvas.dataset.scale = size.scale.toFixed(2);
+      if (canvas.style.display !== "block") canvas.style.display = "block";
+      if (canvas.dataset.active !== "on") canvas.dataset.active = "on";
+      if (reportDiagnostics || frames === 0) canvas.dataset.scale = size.scale.toFixed(2);
       if (size.width !== width || size.height !== height) resize(size.width, size.height);
       if (!force && frames > 0 && video.paused) return;
 
+      const vw = video.videoWidth;
+      const vh = video.videoHeight;
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, videoTexture);
       gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
       try {
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, video);
+        if (videoTexWidth === vw && videoTexHeight === vh) {
+          gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, video);
+        } else {
+          gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, video);
+          videoTexWidth = vw;
+          videoTexHeight = vh;
+        }
       } catch {
         setFailed(true);
         stop();
@@ -740,22 +766,23 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
       }
 
       if (!programEasu || !intermediate || !framebuffer || !vertexArray) return;
-      const started = performance.now();
+      const started = reportDiagnostics ? performance.now() : 0;
+      const params = paramsRef.current;
       if (variant === "detail") {
         if (!detailUpscaler || !programComposite || !videoTexture) return;
         const baseTexture: WebGLTexture = videoTexture;
         let sourceTexture = baseTexture;
-        if (deblock > 0 && programDeblock && ensureFilterTarget() && filteredTexture) {
+        if (params.deblock > 0 && programDeblock && ensureFilterTarget() && filteredTexture) {
           gl.bindFramebuffer(gl.FRAMEBUFFER, filterFramebuffer);
-          gl.viewport(0, 0, video.videoWidth, video.videoHeight);
+          gl.viewport(0, 0, vw, vh);
           gl.useProgram(programDeblock);
           gl.bindVertexArray(vertexArray);
           gl.activeTexture(gl.TEXTURE0);
           gl.bindTexture(gl.TEXTURE_2D, videoTexture);
           gl.uniform1i(deblockSourceLoc, 0);
-          gl.uniform2f(deblockInputLoc, video.videoWidth, video.videoHeight);
-          gl.uniform2f(deblockOutputLoc, video.videoWidth, video.videoHeight);
-          gl.uniform1f(deblockStrengthLoc, deblock);
+          gl.uniform2f(deblockInputLoc, vw, vh);
+          gl.uniform2f(deblockOutputLoc, vw, vh);
+          gl.uniform1f(deblockStrengthLoc, params.deblock);
           gl.drawArrays(gl.TRIANGLES, 0, 3);
           gl.bindFramebuffer(gl.FRAMEBUFFER, null);
           sourceTexture = filteredTexture;
@@ -765,12 +792,8 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
         if (!detailSize) return;
         let compositeDetail = detailTexture;
         if (detailSize.width > width + 1 || detailSize.height > height + 1) {
-          if (!programDetailResample || !detailScaledTexture) return;
-          if (!detailFramebuffer) detailFramebuffer = gl.createFramebuffer();
-          if (!detailFramebuffer) throw new Error("Unable to create detail resample framebuffer");
+          if (!programDetailResample || !detailScaledTexture || !detailFramebuffer) return;
           gl.bindFramebuffer(gl.FRAMEBUFFER, detailFramebuffer);
-          gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, detailScaledTexture, 0);
-          if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) throw new Error("Incomplete detail resample framebuffer");
           gl.viewport(0, 0, width, height);
           gl.useProgram(programDetailResample);
           gl.bindVertexArray(vertexArray);
@@ -806,13 +829,13 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
         gl.bindTexture(gl.TEXTURE_2D, compositeDetail);
         gl.uniform1i(compositeDetailLoc, 1);
         gl.uniform2f(compositeOutputLoc, width, height);
-        gl.uniform1f(compositeDetailGainLoc, detailGain);
-        gl.uniform1f(compositeLocalContrastLoc, portraitContrast);
-        gl.uniform1f(compositeGrainLoc, grain);
-        gl.uniform1f(compositeFaceMaskLoc, faceMask);
+        gl.uniform1f(compositeDetailGainLoc, params.detailGain);
+        gl.uniform1f(compositeLocalContrastLoc, params.portraitContrast);
+        gl.uniform1f(compositeGrainLoc, params.grain);
+        gl.uniform1f(compositeFaceMaskLoc, params.faceMask);
         gl.uniform1f(compositeFrameLoc, frames);
         gl.drawArrays(gl.TRIANGLES, 0, 3);
-        canvas.dataset.detailPasses = String(detailUpscaler.passCount);
+        if (reportDiagnostics || frames === 0) canvas.dataset.detailPasses = String(detailUpscaler.passCount);
       } else {
         if (!programRcas) return;
         gl.viewport(0, 0, width, height);
@@ -822,7 +845,7 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
         gl.activeTexture(gl.TEXTURE0);
         gl.bindTexture(gl.TEXTURE_2D, videoTexture);
         gl.uniform1i(easuSourceLoc, 0);
-        gl.uniform2f(easuInputLoc, video.videoWidth, video.videoHeight);
+        gl.uniform2f(easuInputLoc, vw, vh);
         gl.uniform2f(easuOutputLoc, width, height);
         gl.drawArrays(gl.TRIANGLES, 0, 3);
 
@@ -845,8 +868,10 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
       }
 
       frames += 1;
-      canvas.dataset.frames = String(frames);
-      canvas.dataset.cpuMs = (performance.now() - started).toFixed(2);
+      if (reportDiagnostics || frames === 1) {
+        canvas.dataset.frames = String(frames);
+        if (reportDiagnostics) canvas.dataset.cpuMs = (performance.now() - started).toFixed(2);
+      }
     };
 
     const safeDraw = (force = false) => {
@@ -872,7 +897,7 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
     };
 
     try {
-      gl = canvas.getContext("webgl2", { alpha: false, antialias: false, premultipliedAlpha: false });
+      gl = canvas.getContext("webgl2", { alpha: false, antialias: false, depth: false, stencil: false, premultipliedAlpha: false, powerPreference: "high-performance" });
       if (!gl) throw new Error("WebGL2 unavailable");
       programEasu = link(gl, VERTEX_SHADER, EASU_SHADER);
       programRcas = link(gl, VERTEX_SHADER, RCAS_SHADER);
@@ -956,10 +981,15 @@ export default function SuperResolutionCanvas({ videoRef, fit = "contain", activ
     video.addEventListener("loadeddata", drawOnce);
     video.addEventListener("playing", drawOnce);
     video.addEventListener("seeked", drawOnce);
-    video.addEventListener("resize", drawOnce);
+    video.addEventListener("resize", onSizeDirty);
+    window.addEventListener("resize", onSizeDirty);
+    if (typeof ResizeObserver !== "undefined") {
+      resizeObserver = new ResizeObserver(onSizeDirty);
+      resizeObserver.observe(video);
+    }
 
     return stop;
-  }, [active, deblock, detailGain, enabled, failed, faceMask, fit, forceScale, grain, portraitContrast, videoRef, variant]);
+  }, [active, enabled, failed, fit, forceScale, videoRef, variant]);
 
   if (!enabled) return null;
 

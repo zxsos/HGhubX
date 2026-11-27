@@ -10,6 +10,7 @@ import { parseMpvShader, type MpvPass } from "./mpvShader";
 
 type TextureTarget = {
   texture: WebGLTexture;
+  framebuffer: WebGLFramebuffer;
   width: number;
   height: number;
 };
@@ -72,10 +73,10 @@ function createTexture(gl: WebGL2RenderingContext, width: number, height: number
 export class DetailUpscaler {
   private readonly gl: WebGL2RenderingContext;
   private readonly passes: PassRuntime[];
-  private readonly framebuffer: WebGLFramebuffer;
   private readonly targets = new Map<string, TextureTarget>();
   private readonly textureFormat: TextureFormat;
   private readonly filter: number;
+  private readonly boundUnits: (WebGLTexture | null)[] = Array(8).fill(null);
   private sourceWidth = 0;
   private sourceHeight = 0;
   private outputWidth = 0;
@@ -105,9 +106,6 @@ export class DetailUpscaler {
       uniforms.set("uOutSize", gl.getUniformLocation(program, "uOutSize"));
       return { pass, program, uniforms };
     });
-    const framebuffer = gl.createFramebuffer();
-    if (!framebuffer) throw new Error("Unable to create detail framebuffer");
-    this.framebuffer = framebuffer;
   }
 
   get passCount() {
@@ -129,13 +127,38 @@ export class DetailUpscaler {
     this.sizeKey = key;
   }
 
+  private createRenderTarget(width: number, height: number, label: string): TextureTarget {
+    const gl = this.gl;
+    const texture = createTexture(gl, width, height, this.textureFormat, this.filter);
+    const framebuffer = gl.createFramebuffer();
+    if (!framebuffer) {
+      gl.deleteTexture(texture);
+      throw new Error(`Unable to create detail framebuffer: ${label}`);
+    }
+    gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
+    if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.deleteFramebuffer(framebuffer);
+      gl.deleteTexture(texture);
+      throw new Error(`Incomplete detail framebuffer: ${label}`);
+    }
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    return { texture, framebuffer, width, height };
+  }
+
   private disposeTargets() {
-    for (const target of this.targets.values()) this.gl.deleteTexture(target.texture);
+    for (const target of this.targets.values()) {
+      this.gl.deleteFramebuffer(target.framebuffer);
+      this.gl.deleteTexture(target.texture);
+    }
     this.targets.clear();
     if (this.outputTexture) {
+      this.gl.deleteFramebuffer(this.outputTexture.framebuffer);
       this.gl.deleteTexture(this.outputTexture.texture);
       this.outputTexture = null;
     }
+    this.boundUnits.fill(null);
   }
 
   private targetSize(pass: MpvPass) {
@@ -145,11 +168,14 @@ export class DetailUpscaler {
     };
   }
 
-  private targetFor(name: string, width: number, height: number) {
+  private targetFor(name: string, width: number, height: number, label: string) {
     const existing = this.targets.get(name);
     if (existing && existing.width === width && existing.height === height) return existing;
-    if (existing) this.gl.deleteTexture(existing.texture);
-    const target = { texture: createTexture(this.gl, width, height, this.textureFormat, this.filter), width, height };
+    if (existing) {
+      this.gl.deleteFramebuffer(existing.framebuffer);
+      this.gl.deleteTexture(existing.texture);
+    }
+    const target = this.createRenderTarget(width, height, label);
     this.targets.set(name, target);
     return target;
   }
@@ -157,10 +183,10 @@ export class DetailUpscaler {
   render(videoTexture: WebGLTexture, vertexArray: WebGLVertexArrayObject): WebGLTexture {
     const gl = this.gl;
     if (!this.sourceWidth || !this.sourceHeight) throw new Error("Detail upscaler has no source size");
-    gl.bindFramebuffer(gl.FRAMEBUFFER, this.framebuffer);
     gl.bindVertexArray(vertexArray);
     gl.disable(gl.DEPTH_TEST);
     gl.disable(gl.BLEND);
+    this.boundUnits.fill(null);
 
     for (const runtime of this.passes) {
       const { pass } = runtime;
@@ -170,34 +196,43 @@ export class DetailUpscaler {
         ? (this.outputTexture && this.outputTexture.width === outSize.width && this.outputTexture.height === outSize.height
           ? this.outputTexture
           : (() => {
-              if (this.outputTexture) gl.deleteTexture(this.outputTexture.texture);
-              this.outputTexture = { texture: createTexture(gl, outSize.width, outSize.height, this.textureFormat, this.filter), ...outSize };
+              if (this.outputTexture) {
+                gl.deleteFramebuffer(this.outputTexture.framebuffer);
+                gl.deleteTexture(this.outputTexture.texture);
+              }
+              this.outputTexture = this.createRenderTarget(outSize.width, outSize.height, pass.desc);
               return this.outputTexture;
             })())
-        : this.targetFor(targetName, outSize.width, outSize.height);
+        : this.targetFor(targetName, outSize.width, outSize.height, pass.desc);
 
-      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, target.texture, 0);
-      if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) throw new Error(`Incomplete detail framebuffer: ${pass.desc}`);
-      // A texture attached to the framebuffer must not stay bound to any
-      // sampler unit, even one the current program does not use.
-      for (let unit = 0; unit < 8; unit += 1) {
-        gl.activeTexture(gl.TEXTURE0 + unit);
-        gl.bindTexture(gl.TEXTURE_2D, null);
+      // Unbind only sampler units that still hold the destination texture to avoid feedback loops.
+      for (let u = 0; u < this.boundUnits.length; u += 1) {
+        if (this.boundUnits[u] === target.texture) {
+          gl.activeTexture(gl.TEXTURE0 + u);
+          gl.bindTexture(gl.TEXTURE_2D, null);
+          this.boundUnits[u] = null;
+        }
       }
+      gl.bindFramebuffer(gl.FRAMEBUFFER, target.framebuffer);
       gl.viewport(0, 0, outSize.width, outSize.height);
       gl.useProgram(runtime.program);
 
       let unit = 0;
       for (const bind of pass.binds) {
-        gl.activeTexture(gl.TEXTURE0 + unit);
+        let tex: WebGLTexture;
         if (bind === "LUMA") {
-          gl.bindTexture(gl.TEXTURE_2D, videoTexture);
+          tex = videoTexture;
           gl.uniform2f(runtime.uniforms.get("uLUMASize") ?? null, this.sourceWidth, this.sourceHeight);
         } else {
           const input = this.targets.get(bind);
           if (!input) throw new Error(`Missing detail input "${bind}" for pass "${pass.desc}"`);
-          gl.bindTexture(gl.TEXTURE_2D, input.texture);
+          tex = input.texture;
           gl.uniform2f(runtime.uniforms.get(`u${bind}Size`) ?? null, input.width, input.height);
+        }
+        if (this.boundUnits[unit] !== tex) {
+          gl.activeTexture(gl.TEXTURE0 + unit);
+          gl.bindTexture(gl.TEXTURE_2D, tex);
+          this.boundUnits[unit] = tex;
         }
         gl.uniform1i(runtime.uniforms.get(`u${bind}`) ?? null, unit);
         unit += 1;
@@ -215,6 +250,5 @@ export class DetailUpscaler {
     const gl = this.gl;
     this.disposeTargets();
     for (const runtime of this.passes) gl.deleteProgram(runtime.program);
-    gl.deleteFramebuffer(this.framebuffer);
   }
 }
