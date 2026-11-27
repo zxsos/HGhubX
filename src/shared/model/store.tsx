@@ -58,6 +58,31 @@ export type PageInput =
   | { kind: "following" }
   | { kind: "user"; id: number; name?: string };
 
+/** Player picture-enhancement mode. CAS only sharpens; detail is the FSRCNNX 2x path. */
+export type EnhanceMode = "off" | "fsr" | "cas" | "detail";
+
+/** Production strength presets for the AI detail path. */
+export const ENHANCE_STRENGTHS = ["standard", "strong", "extreme"] as const;
+export type EnhanceStrength = (typeof ENHANCE_STRENGTHS)[number];
+
+/** Test-only output scale override; "auto" keeps the normal display-driven sizing. */
+export type SuperResolutionTestScale = "auto" | "1x" | "2x";
+
+/** Test-only gain for the FSRCNNX detail composite. */
+export type SuperResolutionTestDetailGain = 1 | 1.5 | 2 | 3;
+
+/** Test-only mid-frequency contrast for skin and facial detail. */
+export type SuperResolutionTestPortraitContrast = 0 | 0.2 | 0.3 | 0.4 | 0.6 | 0.8;
+
+/** Test-only edge-preserving deblock strength for compressed sources. */
+export type SuperResolutionTestDeblock = 0 | 0.2 | 0.4;
+
+/** Test-only film-grain amplitude for synthetic faces. */
+export type SuperResolutionTestGrain = 0 | 0.03 | 0.06 | 0.08;
+
+/** Test-only soft skin-tone mask strength for portrait contrast. */
+export type SuperResolutionTestFaceMask = 0 | 0.5 | 1;
+
 export type Toast = {
   id: number;
   msg: string;
@@ -91,14 +116,31 @@ type Persist = GuestData & {
   startupTab: Tab;
   /** Ambient light around the player, sampled from the current frame. */
   ambientGlow: boolean;
+  /** Experimental picture enhancement for the player; "detail" is the FSRCNNX 2x path. */
+  enhanceMode: EnhanceMode;
+  /** Strength preset used when the picture-enhancement switch is on. */
+  enhanceStrength: EnhanceStrength;
 };
 
 const LS = STORAGE_KEYS.app;
 const DEFAULTS: Persist = {
   likes: [], favs: [], history: [], follows: [],
   muted: true, muteOnStartup: true, volume: 0.7, searchHist: [], swipeEp: true, preferHevc: true,
-  balanceVolume: false, fsIdleSecs: 3, startupTab: "home", ambientGlow: true,
+  balanceVolume: false, fsIdleSecs: 3, startupTab: "home", ambientGlow: true, enhanceMode: "off", enhanceStrength: "standard",
 };
+
+function normalizeEnhanceMode(raw: unknown): EnhanceMode | null {
+  // The four experimental modes are collapsed into the single production
+  // switch; legacy FSR/CAS values migrate to the AI detail preset.
+  if (raw === "fsr" || raw === "cas" || raw === "detail") return "detail";
+  return raw === "off" ? "off" : null;
+}
+
+function normalizeEnhanceStrength(raw: unknown): EnhanceStrength | null {
+  return typeof raw === "string" && (ENHANCE_STRENGTHS as readonly string[]).includes(raw)
+    ? raw as EnhanceStrength
+    : null;
+}
 
 /** 旧版本 history 是 number[]，读出来时升级成带进度的结构 */
 function normalizeHistory(raw: unknown): WatchProgress[] {
@@ -141,7 +183,9 @@ function loadPersist(): Persist {
     const startupTab: Tab = (["home", "search", "category", "profile"] as Tab[]).includes(p.startupTab) ? p.startupTab : "home";
     const ambientGlow = p.ambientGlow !== false;
     const balanceVolume = p.balanceVolume === true;
-    return { ...p, swipeEp, muteOnStartup, muted: muteOnStartup || p.muted === true, balanceVolume, fsIdleSecs, startupTab, ambientGlow, history: normalizeHistory(p.history) };
+    const enhanceMode = normalizeEnhanceMode(p.enhanceMode) ?? "off";
+    const enhanceStrength = normalizeEnhanceStrength(p.enhanceStrength) ?? "standard";
+    return { ...p, swipeEp, muteOnStartup, muted: muteOnStartup || p.muted === true, balanceVolume, fsIdleSecs, startupTab, ambientGlow, enhanceMode, enhanceStrength, history: normalizeHistory(p.history) };
   } catch {
     return DEFAULTS;
   }
@@ -225,6 +269,20 @@ type Store = {
   fsIdleSecs: number; setFsIdleSecs: (s: number) => void;
   startupTab: Tab; setStartupTab: (t: Tab) => void;
   ambientGlow: boolean; setAmbientGlow: (on: boolean) => void;
+  enhanceMode: EnhanceMode; setEnhanceMode: (mode: EnhanceMode) => void;
+  enhanceStrength: EnhanceStrength; setEnhanceStrength: (strength: EnhanceStrength) => void;
+  /** Test-only override for the super-resolution canvas size. */
+  srTestScale: SuperResolutionTestScale; setSrTestScale: (scale: SuperResolutionTestScale) => void;
+  /** Test-only gain for the FSRCNNX detail composite. */
+  srTestDetailGain: SuperResolutionTestDetailGain; setSrTestDetailGain: (gain: SuperResolutionTestDetailGain) => void;
+  /** Test-only mid-frequency contrast for skin and facial detail. */
+  srTestPortraitContrast: SuperResolutionTestPortraitContrast; setSrTestPortraitContrast: (contrast: SuperResolutionTestPortraitContrast) => void;
+  /** Test-only edge-preserving deblock strength for compressed sources. */
+  srTestDeblock: SuperResolutionTestDeblock; setSrTestDeblock: (strength: SuperResolutionTestDeblock) => void;
+  /** Test-only film-grain amplitude for synthetic faces. */
+  srTestGrain: SuperResolutionTestGrain; setSrTestGrain: (grain: SuperResolutionTestGrain) => void;
+  /** Test-only soft skin-tone mask strength for portrait contrast. */
+  srTestFaceMask: SuperResolutionTestFaceMask; setSrTestFaceMask: (mask: SuperResolutionTestFaceMask) => void;
   volume: number; setVolume: (v: number) => void;
   searchHist: string[]; addSearch: (q: string) => void; removeSearch: (q: string) => void; clearSearchHist: () => void;
   strictSecurity: boolean; strictSecurityReady: boolean; securityPending: boolean; cliRelaxed: boolean; setStrictSecurity: (on: boolean) => Promise<void>;
@@ -270,6 +328,37 @@ const NO_CAPABILITIES: ResolvedSourceCapabilities = {
   account: false,
   lines: false,
 };
+
+/** Test-only query override used by the playback fixture; defaults to the standard gain. */
+function readTestDetailGain(): SuperResolutionTestDetailGain {
+  if (typeof window === "undefined") return 1;
+  const raw = new URLSearchParams(window.location.search).get("srgain");
+  return raw === "2" ? 2 : raw === "1.5" ? 1.5 : 1;
+}
+
+function readTestPortraitContrast(): SuperResolutionTestPortraitContrast {
+  if (typeof window === "undefined") return 0;
+  const raw = new URLSearchParams(window.location.search).get("srcontrast");
+  return raw === "0.4" ? 0.4 : raw === "0.3" ? 0.3 : raw === "0.2" ? 0.2 : 0;
+}
+
+function readTestDeblock(): SuperResolutionTestDeblock {
+  if (typeof window === "undefined") return 0;
+  const raw = new URLSearchParams(window.location.search).get("srdeblock");
+  return raw === "0.4" ? 0.4 : raw === "0.2" ? 0.2 : 0;
+}
+
+function readTestGrain(): SuperResolutionTestGrain {
+  if (typeof window === "undefined") return 0;
+  const raw = new URLSearchParams(window.location.search).get("srgrain");
+  return raw === "0.06" ? 0.06 : raw === "0.03" ? 0.03 : 0;
+}
+
+function readTestFaceMask(): SuperResolutionTestFaceMask {
+  if (typeof window === "undefined") return 0;
+  const raw = new URLSearchParams(window.location.search).get("srmask");
+  return raw === "1" ? 1 : raw === "0.5" ? 0.5 : 0;
+}
 
 const Ctx = createContext<Store>(null as unknown as Store);
 export const useStore = () => useContext(Ctx);
@@ -371,6 +460,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [theme, setThemeState] = useState<Theme>(() => resolveTheme(readThemePreference()));
   const themeRef = useRef(theme);
   const [tab, setTabRaw] = useState<Tab>(p.startupTab);
+  const [srTestScale, setSrTestScale] = useState<SuperResolutionTestScale>("auto");
+  const [srTestDetailGain, setSrTestDetailGain] = useState<SuperResolutionTestDetailGain>(readTestDetailGain);
+  const [srTestPortraitContrast, setSrTestPortraitContrast] = useState<SuperResolutionTestPortraitContrast>(readTestPortraitContrast);
+  const [srTestDeblock, setSrTestDeblock] = useState<SuperResolutionTestDeblock>(readTestDeblock);
+  const [srTestGrain, setSrTestGrain] = useState<SuperResolutionTestGrain>(readTestGrain);
+  const [srTestFaceMask, setSrTestFaceMask] = useState<SuperResolutionTestFaceMask>(readTestFaceMask);
   const tabRef = useRef(tab);
   tabRef.current = tab;
   const [stack, setStack] = useState<Page[]>([]);
@@ -750,6 +845,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const setAmbientGlow = useCallback((on: boolean) => {
     setP((s) => ({ ...s, ambientGlow: on }));
   }, []);
+  const setEnhanceMode = useCallback((mode: EnhanceMode) => {
+    setP((s) => ({ ...s, enhanceMode: normalizeEnhanceMode(mode) ?? "off" }));
+  }, []);
+  const setEnhanceStrength = useCallback((strength: EnhanceStrength) => {
+    setP((s) => ({ ...s, enhanceStrength: normalizeEnhanceStrength(strength) ?? "standard" }));
+  }, []);
   const setVolume = useCallback((v: number) => {
     const volume = Math.max(0, Math.min(1, v));
     if (volume > 0) lastVolumeRef.current = volume;
@@ -777,13 +878,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     fsIdleSecs: p.fsIdleSecs, setFsIdleSecs,
     startupTab: p.startupTab, setStartupTab,
     ambientGlow: p.ambientGlow, setAmbientGlow,
+    enhanceMode: p.enhanceMode, setEnhanceMode,
+    enhanceStrength: p.enhanceStrength, setEnhanceStrength,
+    srTestScale, setSrTestScale,
+    srTestDetailGain, setSrTestDetailGain,
+    srTestPortraitContrast, setSrTestPortraitContrast,
+    srTestDeblock, setSrTestDeblock,
+    srTestGrain, setSrTestGrain,
+    srTestFaceMask, setSrTestFaceMask,
     searchHist: p.searchHist, addSearch, removeSearch, clearSearchHist,
     strictSecurity, strictSecurityReady, securityPending, cliRelaxed, setStrictSecurity,
     get toasts() { return toastList; }, toast, lineEpoch,
     sourceState, sourceStateStatus, activeSource, capabilities, refreshSourceState,
   }), [theme, themePreference, setTheme, tab, setTab, stack, push, openRootPage, pop, user, loginOpen, logout,
     p, account,
-    setMuted, setMuteOnStartup, setSwipeEp, setPreferHevc, setBalanceVolume, setFsIdleSecs, setStartupTab, setAmbientGlow, setVolume, addSearch, removeSearch, clearSearchHist, strictSecurity, strictSecurityReady, securityPending, cliRelaxed, setStrictSecurity,
+    setMuted, setMuteOnStartup, setSwipeEp, setPreferHevc, setBalanceVolume, setFsIdleSecs, setStartupTab, setAmbientGlow, setEnhanceMode, setEnhanceStrength, srTestScale, srTestDetailGain, srTestPortraitContrast, srTestDeblock, srTestGrain, srTestFaceMask, setVolume, addSearch, removeSearch, clearSearchHist, strictSecurity, strictSecurityReady, securityPending, cliRelaxed, setStrictSecurity,
     toast, lineEpoch, sourceState, sourceStateStatus, activeSource, capabilities, refreshSourceState, theater, setTheater, fs, setFs, clean, setClean, locked, setLocked]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

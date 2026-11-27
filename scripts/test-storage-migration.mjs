@@ -15,8 +15,8 @@ const state = {
   searchHist: ["保留搜索记录"], volume: 0.42, muted: false,
   muteOnStartup: false, swipeEp: false, preferHevc: true,
 };
-// Migration fills defaults for new fields (idle-hide seconds, startup tab, ambient glow, balance volume): the old seed omits them and persistence must add them.
-const migrated = { ...state, balanceVolume: false, fsIdleSecs: 3, startupTab: "home", ambientGlow: true };
+// Migration fills defaults for new fields (idle-hide seconds, startup tab, ambient glow, balance volume, picture enhancement): the old seed omits them and persistence must add them.
+const migrated = { ...state, balanceVolume: false, fsIdleSecs: 3, startupTab: "home", ambientGlow: true, enhanceMode: "off", enhanceStrength: "standard" };
 const oldData = {
   hghub_app_v1: JSON.stringify(state), hghub_swipe_ep_v2: "1", hghub_theme: "light",
 };

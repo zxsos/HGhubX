@@ -49,11 +49,14 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
   postCacheRef.current = postCache;
   const [limits, setLimits] = useState({ favVideo: 12, favPost: 12, history: 12 });
   const scrollRef = useRef<HTMLDivElement>(null);
+  const favRefreshRegionRef = useRef<HTMLDivElement>(null);
+  const pullIndicatorRef = useRef<HTMLDivElement>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
   const [failedIds, setFailedIds] = useState<number[]>([]);
   const [reload, setReload] = useState(0);
   const [loading, setLoading] = useState(false);
-  const [pullDistance, setPullDistance] = useState(0);
+  const [pullStage, setPullStage] = useState<"idle" | "pulling" | "ready">("idle");
+  const pullDistanceRef = useRef(0);
   const [pullRefreshing, setPullRefreshing] = useState(false);
   const pullRefreshingRef = useRef(false);
   const [logoutOpen, setLogoutOpen] = useState(false);
@@ -230,48 +233,76 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
 
   useEffect(() => {
     const scroller = scrollRef.current;
-    if (!scroller || !active || tab !== "fav" || selectionMode) {
-      setPullDistance(0);
+    const region = favRefreshRegionRef.current;
+    if (!scroller || !region || !active || tab !== "fav" || selectionMode) {
+      pullDistanceRef.current = 0;
+      setPullStage("idle");
       return;
     }
     let tracking = false;
+    let activePointerId: number | null = null;
     let startX = 0;
     let startY = 0;
     let currentPull = 0;
     let armedHaptic = false;
+    let suppressClick = false;
+    let suppressTimer = 0;
+    let stage: "idle" | "pulling" | "ready" = "idle";
+    let pointerWindowBound = false;
 
-    const onStart = (event: TouchEvent) => {
-      if (pullRefreshingRef.current || event.touches.length !== 1 || scroller.scrollTop > 1) {
-        tracking = false;
-        return;
-      }
-      const touch = event.touches[0];
-      tracking = true;
-      startX = touch.clientX;
-      startY = touch.clientY;
-      currentPull = 0;
-      armedHaptic = false;
+    const inRefreshRegion = (target: EventTarget | null) =>
+      target instanceof Element
+      && region.contains(target)
+      && !target.closest("input, textarea, select, [role=menu]");
+
+    const syncIndicatorHeight = (height: number) => {
+      pullDistanceRef.current = height;
+      const indicator = pullIndicatorRef.current;
+      if (indicator) indicator.style.height = `${Math.round(height)}px`;
     };
 
-    const onMove = (event: TouchEvent) => {
-      if (!tracking || event.touches.length !== 1) return;
-      const touch = event.touches[0];
-      const dx = touch.clientX - startX;
-      const dy = touch.clientY - startY;
+    const setStage = (next: "idle" | "pulling" | "ready") => {
+      if (stage === next) return;
+      stage = next;
+      setPullStage(next);
+    };
+
+    const unbindWindowPointer = () => {
+      if (!pointerWindowBound) return;
+      pointerWindowBound = false;
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+      window.removeEventListener("pointercancel", onPointerCancel);
+    };
+
+    const resetGesture = () => {
+      tracking = false;
+      activePointerId = null;
+      currentPull = 0;
+      armedHaptic = false;
+      unbindWindowPointer();
+      syncIndicatorHeight(0);
+      setStage("idle");
+    };
+
+    const updatePull = (dx: number, dy: number, threshold: number, event: Event) => {
       if (dy <= 0 || Math.abs(dx) > Math.abs(dy)) {
-        if (currentPull === 0) tracking = false;
+        if (currentPull === 0) {
+          tracking = false;
+          activePointerId = null;
+          unbindWindowPointer();
+        }
         return;
       }
       if (scroller.scrollTop > 1) {
-        tracking = false;
-        currentPull = 0;
-        setPullDistance(0);
+        resetGesture();
         return;
       }
-      if (dy > 8) {
+      if (dy > threshold) {
         if (event.cancelable) event.preventDefault();
-        currentPull = Math.min(84, (dy - 8) * 0.48);
-        setPullDistance(currentPull);
+        currentPull = Math.min(84, (dy - threshold) * 0.48);
+        syncIndicatorHeight(currentPull);
+        setStage(currentPull >= 54 ? "ready" : "pulling");
         if (currentPull >= 54 && !armedHaptic) {
           armedHaptic = true;
           triggerHaptic("tap");
@@ -281,26 +312,100 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
       }
     };
 
-    const onEnd = () => {
+    const finishGesture = (cancelled: boolean) => {
       if (!tracking) return;
-      tracking = false;
-      const shouldRefresh = currentPull >= 54 && !pullRefreshingRef.current;
-      currentPull = 0;
-      setPullDistance(0);
+      const engaged = currentPull > 0;
+      const shouldRefresh = !cancelled && currentPull >= 54 && !pullRefreshingRef.current;
+      resetGesture();
+      if (engaged) {
+        suppressClick = true;
+        window.clearTimeout(suppressTimer);
+        suppressTimer = window.setTimeout(() => { suppressClick = false; }, 160);
+      }
       if (shouldRefresh) {
         void refreshFavoritesRef.current();
       }
     };
 
-    scroller.addEventListener("touchstart", onStart, { passive: true });
-    scroller.addEventListener("touchmove", onMove, { passive: false });
-    scroller.addEventListener("touchend", onEnd, { passive: true });
-    scroller.addEventListener("touchcancel", onEnd, { passive: true });
+    const onTouchStart = (event: TouchEvent) => {
+      if (pullRefreshingRef.current || event.touches.length !== 1 || scroller.scrollTop > 1 || !inRefreshRegion(event.target)) {
+        tracking = false;
+        return;
+      }
+      const touch = event.touches[0];
+      tracking = true;
+      activePointerId = null;
+      startX = touch.clientX;
+      startY = touch.clientY;
+      currentPull = 0;
+      armedHaptic = false;
+    };
+
+    const onTouchMove = (event: TouchEvent) => {
+      if (!tracking || activePointerId !== null || event.touches.length !== 1) return;
+      const touch = event.touches[0];
+      updatePull(touch.clientX - startX, touch.clientY - startY, 8, event);
+    };
+
+    const onTouchEnd = () => {
+      if (activePointerId !== null) return;
+      finishGesture(false);
+    };
+
+    const onPointerDown = (event: PointerEvent) => {
+      if (event.pointerType === "touch" || !event.isPrimary || event.button !== 0) return;
+      if (pullRefreshingRef.current || scroller.scrollTop > 1 || !inRefreshRegion(event.target)) return;
+      tracking = true;
+      activePointerId = event.pointerId;
+      startX = event.clientX;
+      startY = event.clientY;
+      currentPull = 0;
+      armedHaptic = false;
+      if (!pointerWindowBound) {
+        pointerWindowBound = true;
+        window.addEventListener("pointermove", onPointerMove, { passive: false });
+        window.addEventListener("pointerup", onPointerUp);
+        window.addEventListener("pointercancel", onPointerCancel);
+      }
+    };
+
+    const onPointerMove = (event: PointerEvent) => {
+      if (!tracking || activePointerId !== event.pointerId) return;
+      updatePull(event.clientX - startX, event.clientY - startY, 12, event);
+    };
+
+    const onPointerUp = (event: PointerEvent) => {
+      if (activePointerId !== event.pointerId) return;
+      finishGesture(false);
+    };
+
+    const onPointerCancel = (event: PointerEvent) => {
+      if (activePointerId !== event.pointerId) return;
+      finishGesture(true);
+    };
+
+    const onClickCapture = (event: MouseEvent) => {
+      if (!suppressClick) return;
+      suppressClick = false;
+      event.preventDefault();
+      event.stopPropagation();
+    };
+
+    region.addEventListener("touchstart", onTouchStart, { passive: true });
+    region.addEventListener("touchmove", onTouchMove, { passive: false });
+    region.addEventListener("touchend", onTouchEnd, { passive: true });
+    region.addEventListener("touchcancel", onTouchEnd, { passive: true });
+    region.addEventListener("pointerdown", onPointerDown);
+    region.addEventListener("click", onClickCapture, true);
     return () => {
-      scroller.removeEventListener("touchstart", onStart);
-      scroller.removeEventListener("touchmove", onMove);
-      scroller.removeEventListener("touchend", onEnd);
-      scroller.removeEventListener("touchcancel", onEnd);
+      window.clearTimeout(suppressTimer);
+      unbindWindowPointer();
+      region.removeEventListener("touchstart", onTouchStart);
+      region.removeEventListener("touchmove", onTouchMove);
+      region.removeEventListener("touchend", onTouchEnd);
+      region.removeEventListener("touchcancel", onTouchEnd);
+      region.removeEventListener("pointerdown", onPointerDown);
+      region.removeEventListener("click", onClickCapture, true);
     };
   }, [active, selectionMode, tab]);
   const limitKey = tab === "history" ? "history" : showingPosts ? "favPost" : "favVideo";
@@ -554,18 +659,10 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
 
       <div ref={scrollRef} {...tabSwipe} style={{ touchAction: "pan-y" }}
         className="ios-page-body flex-1 scroll-y pt-2 pb-24">
-        {tab === "fav" && (pullRefreshing || pullDistance > 0) && (
-          <div role="status" className="flex items-center justify-center gap-2 text-[12px] text-mut overflow-hidden"
-            style={{ height: pullRefreshing ? 38 : Math.round(pullDistance) }}>
-            {pullRefreshing
-              ? <Loader className="w-4 h-4 spinner" />
-              : <IRefresh size={14} className={pullDistance >= 54 ? "text-primary rotate-180 transition-transform" : "transition-transform"} />}
-            <span>{pullRefreshing ? tr("正在检查收藏更新…") : pullDistance >= 54 ? tr("松开检查更新") : tr("下拉检查收藏更新")}</span>
-          </div>
-        )}
+        <div className="min-h-full flex flex-col">
         {/* 资料卡：已登录 / 未登录（点开登录抽屉） */}
         {user ? (
-          <Surface className="ios-account-card flex flex-col gap-3 a-rise">
+          <Surface className="ios-account-card shrink-0 flex flex-col gap-3 a-rise">
             <div className="flex items-center gap-3.5 min-w-0">
               <Avatar size={56} name={user.nickname} hue={280} ring />
               <div className="flex-1 min-w-0">
@@ -588,7 +685,7 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
           </Surface>
         ) : capabilities.account ? (
           <Button onClick={() => setLoginOpen(true)}
-            className="ios-account-card w-full text-left flex items-center gap-3.5 pressable a-rise">
+            className="ios-account-card shrink-0 w-full text-left flex items-center gap-3.5 pressable a-rise">
             <Avatar size={56} icon={<IUser size={26} />} hue={220} ring />
             <div className="flex-1 min-w-0">
               <div className="text-[16px] font-bold text-on">{tr("未登录")}</div>
@@ -602,7 +699,7 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
             </span>
           </Button>
         ) : (
-          <Surface className="ios-account-card w-full text-left flex items-center gap-3.5 a-rise">
+          <Surface className="ios-account-card shrink-0 w-full text-left flex items-center gap-3.5 a-rise">
             <Avatar size={56} icon={<IUser size={26} />} hue={220} ring />
             <div className="flex-1 min-w-0">
               <div className="text-[16px] font-bold text-on">{tr("本机片库")}</div>
@@ -615,7 +712,7 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
           </Surface>
         )}
 
-        {user && accountSync.error && <div role="alert" className="mt-3 rounded-(--r-sm) bg-s3 px-3.5 py-3 text-[13px] flex flex-wrap items-center justify-between gap-2">
+        {user && accountSync.error && <div role="alert" className="mt-3 shrink-0 rounded-(--r-sm) bg-s3 px-3.5 py-3 text-[13px] flex flex-wrap items-center justify-between gap-2">
           <p className={`${accountSync.authError ? "text-on" : "text-danger"} break-words flex-1 min-w-[200px]`}>{accountSync.error}</p>
           <div className="flex items-center gap-2 shrink-0">
             {accountSync.authError && (
@@ -629,7 +726,7 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
 
         {/* 关注 / 我的主页 */}
         {user && capabilities.account && (
-          <CollectionLinks className="ios-profile-links mt-4">
+          <CollectionLinks className="ios-profile-links mt-4 shrink-0">
             <CollectionLink icon={<IHeart size={18} />} title={tr("我的关注")}
               onClick={() => push({ kind: "following" })} />
             <CollectionLink icon={<IUserF size={18} />} title={tr("我的主页")}
@@ -638,14 +735,14 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
         )}
 
         {/* 我的内容 */}
-        <SegmentedControl className="mt-4" aria-label={tr("我的内容")} activeIndex={tabIndex}>
+        <SegmentedControl className="mt-4 shrink-0" aria-label={tr("我的内容")} activeIndex={tabIndex}>
           {([["fav", tr("我的收藏")], ["history", tr("观看历史")]] as const).map(([k, l]) => (
             <Button aria-pressed={tab === k} key={k} onClick={() => { setTab(k); setSelectedIds([]); }}>{l}</Button>
           ))}
         </SegmentedControl>
 
         {tab === "fav" && !favoriteStateUnknown && (favs.length > 0 || (capabilities.posts && (postFavs.length > 0 || favKind === "post"))) && (
-          <div className="mt-2.5 flex items-center gap-2" role="group" aria-label={tr("收藏内容类型")}>
+          <div className="mt-2.5 shrink-0 flex items-center gap-2" role="group" aria-label={tr("收藏内容类型")}>
             <div className="flex items-center gap-2">
               <Button aria-pressed={favKind === "video"} onClick={() => { setFavKind("video"); setSelectedIds([]); }} className="inline-flex min-h-9 items-center gap-1.5 px-1.5 text-left pressable">
                 <span className="text-[15px] font-bold text-on">{tr("视频")}</span>
@@ -656,14 +753,6 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
               )}
             </div>
             <div className="ml-auto flex items-center gap-1.5">
-              <Button
-                aria-label={tr("刷新收藏")}
-                disabled={pullRefreshing || loading}
-                onClick={() => void refreshFavoritesForUpdates()}
-                className="ios-filter-pill is-icon"
-              >
-                <IRefresh size={17} strokeWidth={1.8} className={pullRefreshing ? "animate-spin" : ""} />
-              </Button>
               {favKind === "video" && favs.length > 0 && (
                 <div ref={filterMenuRef} className="relative" role="group" aria-label={tr("收藏筛选")}>
                 <Button ref={filterButtonRef} data-favorite-filter-trigger
@@ -740,17 +829,26 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
           </div>
         )}
         {filteringHydrating && (
-          <span role="status" className="mt-1 block text-[12px] text-mut">{tr("正在加载全部收藏详情…")}</span>
+          <span role="status" className="mt-1 shrink-0 block text-[12px] text-mut">{tr("正在加载全部收藏详情…")}</span>
         )}
 
-        {selectionMode && <div role="region" aria-label={tr("批量管理")} className="sticky top-0 z-20 -mx-1 mt-2 flex items-center gap-2 bg-bg/95 px-1 py-2 text-[13px] backdrop-blur">
+        {selectionMode && <div role="region" aria-label={tr("批量管理")} className="sticky top-0 z-20 -mx-1 mt-2 shrink-0 flex items-center gap-2 bg-bg/95 px-1 py-2 text-[13px] backdrop-blur">
           <span className="font-semibold text-on">{tr("已选 {0} 项", selectedIds.length)}</span>
           <Button disabled={allSelected} className="ml-auto px-2 text-primary disabled:opacity-40" onClick={selectAll}>{tr("全选")}</Button>
           <Button className="px-2 text-primary" onClick={() => { setSelectedIds([]); setRemoveError(""); }}>{tr("取消")}</Button>
           <Button variant="danger" className="rounded-(--r-ctl) px-3" onClick={() => { setRemoveError(""); setRemoveOpen(true); }}>{tr("移除")}</Button>
         </div>}
 
-        <div className="mt-3" aria-busy={loading || syncingFavorites}>
+        <div ref={favRefreshRegionRef} data-favorite-refresh-region className="mt-3 flex-1" aria-busy={loading || syncingFavorites}>
+          {tab === "fav" && (pullRefreshing || pullStage !== "idle") && (
+            <div ref={pullIndicatorRef} role="status" data-favorite-pull-indicator className="mb-2 flex items-center justify-center gap-2 text-[12px] text-mut overflow-hidden"
+              style={{ height: pullRefreshing ? 38 : Math.round(pullDistanceRef.current) }}>
+              {pullRefreshing
+                ? <Loader className="w-4 h-4 spinner" />
+                : <IRefresh size={14} className={pullStage === "ready" ? "text-primary rotate-180 transition-transform" : "transition-transform"} />}
+              <span>{pullRefreshing ? tr("正在检查收藏更新…") : pullStage === "ready" ? tr("松开检查更新") : tr("下拉检查收藏更新")}</span>
+            </div>
+          )}
           {favoriteSyncFailed ? (
             <Empty icon={<IStar size={24} />} title={tr("收藏状态未知")}
               sub={accountSync.authError ? tr("登录已过期，重新登录后继续同步") : tr("账号同步未完成，暂时无法确认收藏内容。")}
@@ -855,7 +953,8 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
           {hasMore && <div ref={sentinelRef} className="h-4" aria-hidden="true" />}
         </div>
 
-        <div className="text-center text-[12px] text-dim mt-5">{tr("HGhubX {0} · {1} 客户端", APP_VERSION, platform === "android" ? "Android" : platform === "ios" ? "iOS" : platform === "macos" ? "macOS" : platform === "linux" ? "Linux" : "Windows")}</div>
+        <div className="shrink-0 text-center text-[12px] text-dim mt-5">{tr("HGhubX {0} · {1} 客户端", APP_VERSION, platform === "android" ? "Android" : platform === "ios" ? "iOS" : platform === "macos" ? "macOS" : platform === "linux" ? "Linux" : "Windows")}</div>
+        </div>
       </div>
       <Modal open={removeOpen} onClose={() => { if (!removalPending.current) setRemoveOpen(false); }} label={tr("批量移除")}>
         <div className="p-5">

@@ -3,6 +3,7 @@ import { Loader } from "../../shared/ui/ios/effects";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { api, fmt, cover as imageCover } from "../../shared/api/api";
 import { handleArticleClick, parseInternalVideoId, sanitizeHtml } from "../../shared/lib/html";
+import { formatTimestamp } from "../../shared/lib/time";
 import { commentText } from "./commentText";
 import type { Comment, CommentPage, Episode } from "../../shared/api/types";
 import { useStore } from "../../shared/model/store";
@@ -158,7 +159,7 @@ export function CommentsPanel({ videoId, ep, total, kind = "video", onClose }: {
             <div className="flex-1 min-w-0">
               <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
                 <span className="min-w-0 text-[12px] font-semibold text-on/90 [overflow-wrap:anywhere]">{c.nickname}</span>
-                <span className="shrink-0 text-[12px] text-dim">{c.time}</span>
+                <span className="shrink-0 text-[12px] text-dim">{formatTimestamp(c.time) || formatTimestamp(c.created_at)}</span>
               </div>
               <p className="text-[14px] text-on/80 mt-1 leading-relaxed whitespace-pre-wrap [overflow-wrap:anywhere]">{c.text || tr("该评论包含不支持的内容")}</p>
               <div className="flex items-center gap-3 mt-1.5 text-[12px] text-dim">

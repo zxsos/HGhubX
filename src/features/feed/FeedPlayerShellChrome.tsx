@@ -324,7 +324,7 @@ export function FeedPlayerShellChrome({
         </div>
       ) : (
         <>
-          <Sheet open={active && panel === "more"} label={tr("播放设置")} z="playback-settings-overlay" onClose={() => setPanel(null)}>
+          <Sheet open={active && panel === "more"} label={tr("播放设置")} z={`playback-settings-overlay feed-panel-overlay${landscapeStage ? " is-landscape-drawer" : ""}`} onClose={() => setPanel(null)}>
             <PlaybackSettingsPanel
               rate={rate} onRate={(value) => { setRate(value); videoRef.current?.rate(value); }}
               preferHevc={preferHevc} onPreferHevc={setPreferHevc}
@@ -332,8 +332,8 @@ export function FeedPlayerShellChrome({
               onClose={() => setPanel(null)} />
           </Sheet>
 
-          {/* 评论：移动端底部弹层（右侧操作栏「评论」入口） */}
-          <Sheet open={active && panel === "comments" && capabilities.detail.comments} onClose={() => setPanel(null)}>
+          {/* 评论：移动端底部弹层（横屏全屏切右侧抽屉） */}
+          <Sheet open={active && panel === "comments" && capabilities.detail.comments} z={`feed-panel-overlay${landscapeStage ? " is-landscape-drawer" : ""}`} onClose={() => setPanel(null)}>
             <div className="feed-comments-sheet">
               {panel === "comments" && capabilities.detail.comments && (
                 <Suspense fallback={<PanelFallback />}>
@@ -344,7 +344,7 @@ export function FeedPlayerShellChrome({
           </Sheet>
 
           {/* 图文正文 */}
-          <Sheet open={active && panel === "article"} onClose={() => setPanel(null)}>
+          <Sheet open={active && panel === "article"} z={`feed-panel-overlay${landscapeStage ? " is-landscape-drawer" : ""}`} onClose={() => setPanel(null)}>
             <div className="feed-article-sheet">
               {panel === "article" && (
                 <Suspense fallback={<PanelFallback />}>
@@ -354,7 +354,7 @@ export function FeedPlayerShellChrome({
             </div>
           </Sheet>
 
-          <Sheet open={active && (panel === "detail" || (panel === "episodes" && capabilities.detail.episodes))} label={panel === "detail" ? tr("视频详情") : tr("选集")} onClose={() => setPanel(null)}>
+          <Sheet open={active && (panel === "detail" || (panel === "episodes" && capabilities.detail.episodes))} z={`feed-panel-overlay${landscapeStage ? " is-landscape-drawer" : ""}`} label={panel === "detail" ? tr("视频详情") : tr("选集")} onClose={() => setPanel(null)}>
             <div className="video-details-sheet">
               {/* 双栏抽屉：详情 / 选集 */}
               <div className="shrink-0 flex items-center gap-2 px-4 pb-2">

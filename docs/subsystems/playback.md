@@ -41,8 +41,8 @@
 
 ## 主运行时路径
 
-1. Feed 通过 `api.play(id, ep)` 取得 `streams.main`、旧字段 `video_url`，或仅存在 HEVC 时的
-   `streams.hevc`/`video_url_hevc` 回退；`preferHevc` 且存在 `streams.hevc` 时优先 HEVC。播放器拿到的是上游 m3u8，
+1. Feed 与 TV `PlayerPage`（[`src/tv/PlayerPage.tsx`](../../src/tv/PlayerPage.tsx)）通过 `api.play(id, ep)` 取得 `streams.main`、旧字段 `video_url`，或仅存在 HEVC 时的
+   `streams.hevc`/`video_url_hevc` 回退；`preferHevc`（TV 端为 `quality === "hevc"`）且存在 `streams.hevc` 时优先 HEVC，当 HEVC 播放报错且存在不同的 `streams.main` 时自动回退到默认线路并将偏好持久化为非 HEVC，避免不支持 HEVC 解码的设备卡在报错页（#286）。播放器拿到的是上游 m3u8，
    通过 `playbackSource` 转成 `${LOCAL}/hls?u=...`；已经是 `/hls`、`/seg` 的本地地址
    不会被重复包裹。
 2. `VideoSurface` 在 `Hls.isSupported()` 且不是直通 `/seg` 时创建 hls.js；

@@ -119,8 +119,11 @@ export type Post = {
   video_id?: number;
   author?: { id: number; name: string; avatar?: string; is_following?: boolean };
   counts?: { like: number; comment: number; collect: number; share?: number; hot?: number };
-  created_at?: string;
-  publish_time?: string;
+  created_at?: string | number;
+  publish_time?: string | number;
+  published_at?: string | number;
+  updated_at?: string | number;
+  time?: string | number;
 };
 
 export type TopicCard = {

@@ -28,6 +28,8 @@ Feed 负责列表播放页的条目位置、详情/帖子读取、标签门、�
   `Category`、`ChannelPage` 与频道能力/声明驱动逻辑。
 - [`src/features/authors/authorDirectory.ts`](../../src/features/authors/authorDirectory.ts)：
   作者目录加载（`api.popularAuthors`）与关注列表缓存。
+  [`SearchAuthors`](../../src/features/authors/SearchAuthors.tsx) 的热门作者只负责打开主页；
+  关注/取消关注的长按入口只保留在 [`AuthorsPage`](../../src/features/authors/AuthorsPage.tsx) 的作者列表与已关注列表。
 - [`src/shared/model/store.tsx`](../../src/shared/model/store.tsx) 的 `lineEpoch` 和 `accountScope` 传递；
   [`src/shared/model/store.tsx`](../../src/shared/model/store.tsx) 暴露的 `accountGeneration` 与
   [`src/shared/model/accountData.ts`](../../src/shared/model/accountData.ts) 的 `generation`；
@@ -41,9 +43,13 @@ Feed 负责列表播放页的条目位置、详情/帖子读取、标签门、�
 ## 主运行时路径
 
 1. Feed 使用 `api_feed`/分类/搜索/list page 传入的 `videoIds`，不自行重新请求列表；
-   首页 [`src/features/feed/Home.tsx`](../../src/features/feed/Home.tsx) 在内容偏好 `pinnedTags`
-   非空时，按并发上限 4 从置顶标签分批调用 `api.tagVideos(tag, page, 30)` 去重并随机洗牌推送，
-   置顶标签变化时重置首页列表并丢弃旧作用域在途结果；未置顶任何标签时保持原有 `api.feed` 规则（#269）。
+   首页 [`src/features/feed/Home.tsx`](../../src/features/feed/Home.tsx) 与
+   [`src/features/feed/homeRandom.ts`](../../src/features/feed/homeRandom.ts) 按源缓存已知总页数
+   （`STORAGE_KEYS.homePages` / `hghubx_home_pages_v1`），在默认首页（页池上限 120 页）与置顶标签
+   （`pinnedTags` 非空时每标签页池上限 40 页、并发上限 4 调用 `api.tagVideos`）均构建去重随机页码队列，
+   优先展示近期未看过的新条目并避开连续重复首抽页；首次未知总页数时仍只发第 1 页请求，随机页为空时
+   自动回退第 1 页；再次点击已激活的「首页」导航项派发 `hg:home-refresh` 换一批推荐（失败保留当前列表与页码队列）；
+   请求作用域包含 `accountScope`、`lineEpoch` 与 `pinnedKey`，旧作用域在途结果一律丢弃。
    当前条目由 `position` 与 `effectiveVideoIds` 锚定；列表变化时优先保持正在播放的 id，
    找不到才取相邻可见项。
 2. 详情读取走 `useFeedDetails.requestDetail(id)`。single-flight key 是
@@ -119,13 +125,13 @@ Feed 负责列表播放页的条目位置、详情/帖子读取、标签门、�
 - 搜索页热门题材/标签读取（`api_hot_tags`）直接委托激活源插件的 `hotTags` 方法，受 `capabilities.catalog.tags` 门控；前端 [`src/features/search/SearchTags.tsx`](../../src/features/search/SearchTags.tsx) 严格保留 `api.hotTags()` 返回集合与顺序，不混入全量 `api.tags()`，屏蔽过滤与每批 `BATCH_SIZE = 10` 个「换一批」均只在该热门集合内生效。
 - 搜索页复位（[`src/features/search/Search.tsx`](../../src/features/search/Search.tsx)）：提交查询后，点底栏当前「搜索」tab 与点输入框右侧 X 等效，统一清空查询与结果、回到热搜/历史态并滚回顶部；底栏触发不重新聚焦输入框，避免大屏单手操作时软键盘再次弹出。
 - 标签视频列表（`api_tag_videos`）向激活源 `tagVideos` 透传 `{ tag, page, size, sort }`（标准版与 TV 端标签页默认按需传 `"latest"`，切换指标或明确请求时按对应方式处理）。
-- 标签聚合页（`TagsPage`）顶部提供「置顶标签」板块；长按标签 600ms 切换置顶，再次长按取消，点击仍进入对应标签结果页。置顶项保存到内容偏好 `pinnedTags`（最多 24 个，按最近置顶优先），刷新或重启后保留；普通点按不会误置顶，横向拖动超过 10px 会取消长按。置顶板内的标签只显示名称，不使用高亮边框；分类分组内的已置顶标签保留高亮外框，但不再追加 pin 图标。分类分组经 [`src/features/discover/useNonEmptyTags.ts`](../../src/features/discover/useNonEmptyTags.ts) 仅按服务端显式返回的 `video_count === 0` 同步过滤，不再在挂载后并发探测所有标签，避免仅含图文帖子的标签被误删及界面突然大量跳变消失。搜索页热门标签不受影响。
+- 标签聚合页（`TagsPage`）顶部提供「置顶标签」板块；长按标签 600ms 切换置顶，再次长按取消，点击仍进入对应标签结果页。置顶项保存到内容偏好 `pinnedTags`（最多 24 个，按最近置顶优先），刷新或重启后保留；普通点按不会误置顶，横向拖动超过 10px 会取消长按。置顶板内的标签只显示名称，不使用高亮边框；分类分组内的已置顶标签保留高亮外框，但不再追加 pin 图标。分类分组经 [`src/features/discover/useNonEmptyTags.ts`](../../src/features/discover/useNonEmptyTags.ts) 的 `loadTagDirectory` 采用与作者目录一致的缓存模式：首次进入在渲染前按并发 6 过滤确认无作品标签（未直出 `video_count` 时探测 `api.tagVideos(name, 1, 1)`，视频为 0 且当前源开启 `capabilities.posts` 时再查 `api.postTag(name, 1, 1)` 保留纯图文标签；探测失败按「未知不是空」保留，同时过滤空分组），全量探测完成后按 `${sourceId}:${lineEpoch}` 写入 `STORAGE_KEYS.tagsCache`（`hghubx_tags_cache_v1`），后续进入直接复用缓存不闪烁；点击右上角「刷新」强制重新拉取并全量重探（刷新期间保留现有列表，失败不清空缓存）。搜索页热门标签不受影响。
 - 标签结果页（`TagPage`）标题栏右侧提供同一置顶开关：pin 占原搜索按钮槽位，与左侧标签图标垂直居中对齐；未置顶和已置顶都使用同款圆形强调底，仅针尖朝向不同（未置顶斜向、置顶后针尖向下）。原搜索图标与页脚搜索入口已移出该页，从首页视频标签、详情页标签等直接进入时也能置顶。
-- 图文帖子列表（[`src/features/posts/Posts.tsx`](../../src/features/posts/Posts.tsx) 的 `PostsPage`）先调用 `api.postCategories()` 获取可选帖子分类胶囊：未选分类时走 `api.posts()`，选中分类后走 `api.postCategory(route, ...)`；数据抓取与分类列表完全由当前激活视频源插件驱动，客户端不内置站点分类 slug 或网页解析器。
+- 图文帖子列表（[`src/features/posts/Posts.tsx`](../../src/features/posts/Posts.tsx) 的 `PostsPage`）先调用 `api.postCategories()` 获取可选帖子分类胶囊，并过滤掉 `route === "all"` 或名称为「全部」的伪分类（该分类由旧版前端追加，不由源提供）。分类就绪后默认选中源返回的第一个真实分类，而不是全量列表；只有存在选中分类时才请求 `api_post_category(route, ...)`，不再调用 `api.posts()`。点击当前分类不会取消选中；列表滚动容器支持横向滑动切换相邻分类（左滑下一个、右滑上一个），纵向滚动不受影响。数据抓取与分类列表完全由当前激活视频源插件驱动，客户端不内置站点分类 slug 或网页解析器。
 - 分页列表（频道页、图文列表、专题/标签详情、关注/创作者作品与全局/栏目搜索）统一使用 [`src/shared/lib/useAutoLoadMore.ts`](../../src/shared/lib/useAutoLoadMore.ts)（`IntersectionObserver` + 滚动位置检查）在接近底部哨兵时自动加载下一页，正常态不再展示手动「加载更多」按钮；开启标签屏蔽时同样保持上滑自动加载，仅当连续 2 页过滤后均无可见条目（`AUTO_LOAD_EMPTY_PAGE_LIMIT = 2`）才暂停自动续载并显示手动「加载更多」兜底按钮，点击手动加载或调整筛选会重置计数。
 - 视频卡片（[`src/shared/ui/cards.tsx`](../../src/shared/ui/cards.tsx) 的 `WaterfallCard` 与 `RowCard`）在海报左上角按「原创」「热播」「新片」（`new_at` 72 小时窗口）「完结」（`is_finished`）顺序显示角标，与右上角评分保持间距不遮挡；集数状态位于海报底部遮罩左侧（与播放量同排）：完结视频显示「全 N 集」（N 优先取 `total_episodes`，缺失时回退 `episode_count`），未完结仍显示现有的更新集数文案。「我的」页 `MediaCard` 不再重复显示绿色「已完结」封面标签，每张卡只保留一个左上角角标，并按当前分类切换：「未看完」中使用蓝色「未看 N 集」，「连载中」中使用「更新至 N 集」，「已完结」中使用「全 N 集」，`全部` 中按完结状态显示「更新至 N 集」或「全 N 集」；观看位置与进度继续由卡片左下角进度行表达。
 - 标准版「我的」收藏与观看历史保持原有网格列数；滚动容器接近底部哨兵（提前 300px）时
-  每次扩展 12 项，不再显示「加载更多」按钮。
+  每次扩展 12 项，不再显示「加载更多」按钮。收藏页不再提供与下拉重复的「刷新收藏」按钮，下拉刷新提示块位于收藏列表区域顶部（`[data-favorite-refresh-region]`），手势触发限定在收藏列表区域内，资料卡区域下拉不触发刷新。
 - 标准版「我的 → 收藏 → 视频」默认显示全部收藏并保持收藏顺序（按添加顺序）；右上角单个筛选图标展开「观看状态」菜单，提供「未看完」「连载中」「已完结」三个可以重叠的分类：`未看完` 显示所有 `最新集数 - 已看到集数 > 0` 的收藏，不管它已完结还是连载中（例如 10 集完结视频看到第 2 集即显示「未看 8 集」，从未看过则从第 1 集起算）；`连载中` 显示所有未完结收藏，即使其中还有未看集数；`已完结` 显示所有已完结收藏。三者均按 `updated_at`/`last_ep_at`/`created_at` 的最新更新时间倒序，时间相同按原收藏顺序稳定排序；选择分类后菜单收起，筛选胶囊内显示当前分类与数量；再次点击胶囊只收起/展开菜单，不回退筛选。要回到默认「我的收藏 / 视频 / 全部收藏」，再次点击底部「我的」导航（与搜索 tab 的复位手势一致），同时回到页面顶部。「视频 N」「帖子 N」显示该类型收藏总数，菜单中的「未看完 N」「连载中 N」「已完结 N」显示当前分类计数（同一部可同时计入未看完与连载中/已完结），底部「已显示 X / Y 项本机记录」的 Y 跟随当前分类结果，因此与对应计数一致。进入收藏视频页后按每批最多 6 部渐进补齐全部收藏详情以统计分类，未知详情不会被猜成未完结、已完结或未看完；默认态详情加载失败时提示分类计数可能不完整，筛选态则提示筛选结果可能不完整。播放列表随之按当前筛选顺序传给 Feed；同一激活期间已刷新的条目不重复请求，旧卡片与观看断点保留，刷新失败不将旧集数当空数据，离开页面或切线后丢弃在途结果。
 - 图文详情（[`src/features/posts/Posts.tsx`](../../src/features/posts/Posts.tsx) 的
   `PostDetail`）区分「换帖子/账号」与「仅线路代次变化」：`hg:line-changed`/`hg:proxy-changed`
