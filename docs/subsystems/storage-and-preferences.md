@@ -65,6 +65,8 @@
 | `ACCOUNT_KEY` | — | 按 `[origin, user.id]` 分桶的账号本地副本 |
 | `CREDENTIAL_KEY`（`hghubx_credential_v1`） | — | 登录/注册成功时保存的 `{username, password, userId, origin}`，仅用于同账号 401 后的静默重登；无归属的旧值不用于重登 |
 
+移动端触觉由 [`src/shared/lib/haptics.ts`](../../src/shared/lib/haptics.ts) 的 `initMobileHaptics()` 统一管理：按钮按下记录候选，松手仍在同一控件且位移不超过 `10px` 触发一次 `tap`；用户触摸滚动普通列表/面板时，每滚动 `72px`（最短间隔 `65ms`）触发一次轻刻度 `tick`（跳过程序自动滚回与 `.snap-mandatory` 全屏切集容器）。
+
 应用数据目录还保存 `session.json`（会话）、`line.json`（v2 线路）、`proxy.json`（代理）、
 `security.json`（严格模式）、`cache.json`（缓存上限档位，默认 `128` MB，`0` 表示无上限）和可选的 `playback-diagnostics.json`（诊断开关）；它们由 Rust
 对应的 `bind()`/`set()` 管理，不经过 `localStorage`。
