@@ -63,11 +63,11 @@ html.theme-light {
 .ios-form.flex>.ios-button { min-width:36px; flex-shrink:0; }
 .ios-range { accent-color:var(--p-primary); }
 .ios-surface { background:var(--p-s1); border-radius:var(--r-md); box-shadow:0 2px 8px rgb(0 0 0 / .025); }
-.ios-segmented { position:relative; display:flex; gap:4px; padding:4px; min-width:0; border:1px solid var(--ios-edge); border-radius:var(--control-radius); background:var(--p-s3); }
+.ios-segmented { position:relative; isolation:isolate; overflow:hidden; display:flex; gap:4px; padding:4px; min-width:0; border:1px solid var(--ios-edge); border-radius:var(--control-radius); background:var(--p-s3); }
 .ios-segmented-items { position:relative; z-index:1; display:grid; grid-template-columns:repeat(var(--segment-count,2),minmax(0,1fr)); flex:1; gap:4px; min-width:0; }
 .ios-segmented-items>.ios-button { flex:1; display:flex; align-items:center; justify-content:center; min-width:0; min-height:40px; height:auto; border:0; border-radius:var(--control-radius); background:transparent; box-shadow:none; font-size:14px; font-weight:600; padding:8px 12px; color:var(--p-mut); line-height:1.4; transition:color .16s ease,scale .24s var(--motion-spring); }
 .ios-segmented-items>[aria-pressed=true] { color:var(--p-on-primary)!important; }
-.ios-segmented-indicator { position:absolute; z-index:0; top:4px; bottom:4px; left:4px; width:calc((100% - 8px - (var(--segment-count, 2) - 1)*4px)/var(--segment-count, 2)); border:1px solid var(--ios-edge); border-radius:var(--control-radius); background:var(--p-primary); box-shadow:var(--control-shadow); pointer-events:none; transform:translateX(calc(var(--segment-index, 0)*100% + var(--segment-index, 0)*4px)); transition:transform .34s var(--motion-spring); }
+.ios-segmented-indicator { position:absolute; z-index:0; top:4px; bottom:4px; left:4px; width:calc((100% - 8px - (var(--segment-count, 2) - 1)*4px)/var(--segment-count, 2)); border:1px solid var(--ios-edge); border-radius:var(--control-radius); background:var(--p-primary); box-shadow:var(--control-shadow); pointer-events:none; transform:translateX(calc(var(--segment-index, 0)*100% + var(--segment-index, 0)*4px)); transition:transform .26s var(--motion-glide); }
 .ios-loader { display:inline-block; width:24px; height:24px; border:2.5px solid var(--p-s4); border-top-color:var(--p-primary); border-radius:50%; animation:kf-spin .75s linear infinite; vertical-align:middle; flex-shrink:0; }
 /* Thumb and press halo share the track's coordinates and the same travel distance. */
 .ios-switch { --switch-track-width:52px; --switch-thumb-size:22px; --switch-thumb-inset:2px; --switch-thumb-end-inset:2px; --switch-offset:0px; position:relative; isolation:isolate; display:inline-flex; align-items:center; justify-content:center; width:60px; min-width:60px; height:44px; padding:0; flex-shrink:0; border-radius:var(--control-radius); }
@@ -216,7 +216,7 @@ html.theme-light {
 .ios-auth-note { margin:20px 0 0; font-size:12px; }
 .ios-mobile-nav { position:absolute; inset-inline:0; bottom:0; z-index:50; padding:10px 14px; pointer-events:none; }
 .ios-mobile-nav .hg-glass { position:relative; height:64px; width:min(100%,440px); margin-inline:auto; border-radius:999px; background:var(--ios-glass); border:1px solid var(--ios-edge); box-shadow:var(--ios-shadow); backdrop-filter:blur(28px) saturate(180%); -webkit-backdrop-filter:blur(28px) saturate(180%); pointer-events:auto; }
-.ios-mobile-nav .hg-drop { position:absolute; top:5px; bottom:5px; width:25%; left:0; border-radius:999px; transition:transform .42s var(--ios-spring); pointer-events:none; }
+.ios-mobile-nav .hg-drop { position:absolute; top:5px; bottom:5px; width:25%; left:0; border-radius:999px; transition:transform .28s var(--motion-glide); pointer-events:none; }
 .ios-mobile-nav .hg-drop>.ios-liquid-fill { margin-inline:5px; display:block; width:calc(100% - 10px); height:100%; border-radius:inherit; background:var(--ios-selected); box-shadow:inset 0 1px 0 var(--ios-highlight),0 1px 5px rgb(0 0 0 / .06); }
 .ios-mobile-nav-items { position:relative; display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); height:100%; }
 .ios-mobile-nav .ios-mobile-nav-item { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; color:var(--p-mut); border-radius:999px; min-width:0; font-size:11px; font-weight:600; background:transparent; }
@@ -322,6 +322,7 @@ html.theme-light {
   --motion-accent:#f06d5f;
   --motion-spring:cubic-bezier(.34,1.56,.64,1);
   --motion-spring-soft:cubic-bezier(.22,1.28,.36,1);
+  --motion-glide:cubic-bezier(.22,1,.36,1);
   --ios-spring:var(--motion-spring);
   --p-canvas:#121212; --p-bg:#191919; --p-s1:#242424; --p-s2:#2d2d2d; --p-s3:#373737; --p-s4:#505050;
   --p-on:#f4f1eb; --p-mut:#c2bdb5; --p-dim:#a59f97; --p-primary:#f4f1eb; --p-on-primary:#191919;
@@ -395,7 +396,7 @@ body { background:var(--motion-paper); }
   padding:12px calc(14px + var(--sar,0px)) var(--sab,0px) calc(14px + var(--sal,0px));
 }
 .ios-mobile-nav .hg-glass { height:66px; touch-action:none; }
-.ios-mobile-nav .hg-drop { top:6px; bottom:6px; transition:transform .34s var(--motion-spring); }
+.ios-mobile-nav .hg-drop { top:6px; bottom:6px; transition:transform .28s var(--motion-glide); }
 .ios-mobile-nav .hg-drop.is-dragging { transition:none; }
 .ios-mobile-nav .hg-drop>.ios-liquid-fill { margin-inline:4px; width:calc(100% - 8px); background:var(--motion-ink); box-shadow:0 4px 0 rgb(25 25 25 / .12); }
 .ios-mobile-nav .ios-mobile-nav-item { color:var(--p-mut); transition:color .22s ease,scale .28s var(--motion-spring); }
@@ -535,7 +536,7 @@ html.theme-light {
 .ios-history-chip-remove:active { background:var(--p-s4); color:var(--p-on); }
 
 .ios-dialog { overflow:auto; }
-.ios-mobile-nav .hg-drop { z-index:0; will-change:transform; transition:transform .34s var(--motion-spring); }
+.ios-mobile-nav .hg-drop { z-index:0; will-change:transform; transition:transform .28s var(--motion-glide); }
 .ios-mobile-nav .hg-drop>.ios-liquid-fill { position:relative; overflow:hidden; border-radius:inherit; }
 .ios-mobile-nav .hg-drop>.ios-liquid-fill::after { display:none; }
 .ios-mobile-nav .ios-mobile-nav-item[aria-current=page] { animation:none; }
