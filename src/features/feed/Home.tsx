@@ -9,28 +9,42 @@ import { Button } from "../../shared/ui/ios/controls";
 import { useContentPreferences } from "../../shared/model/contentPreferences";
 import { PreferenceStorageNotice } from "../../shared/ui/PreferenceStorageNotice";
 import { tr } from "../../shared/i18n";
+import {
+  buildRandomPageDeck,
+  getRecentHomeIds,
+  HOME_RANDOM_PAGE_POOL,
+  PINNED_RANDOM_PAGE_POOL,
+  rankUnseenFirst,
+  readKnownPages,
+  rememberRecentHomeIds,
+  shuffle,
+  writeKnownPages,
+} from "./homeRandom";
 
 const loadFeed = () => import("./Feed");
 const Feed = lazy(loadFeed);
 
-/* Fisher-Yates 洗牌：首页第一页随机打乱，避免每次进来都停在同一个 top1 */
-function shuffle<T>(arr: T[]): T[] {
-  const a = [...arr];
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
-}
-
 const PINNED_FETCH_CONCURRENCY = 4;
 
-async function fetchPinnedTagsPage(
+type PinnedDeckState = {
+  decks: Map<string, number[]>;
+  visited: Map<string, Set<number>>;
+  exhausted: Set<string>;
+  lastFirstPage: Map<string, number>;
+};
+
+function tagPageScopeKey(sourceId: string, tag: string): string {
+  return `tag:${sourceId || "default"}:${tag}`;
+}
+
+async function fetchPinnedTagsBatch(
+  sourceId: string,
+  recentKey: string,
   tags: string[],
-  page: number,
-  exhausted: Set<string>,
+  state: PinnedDeckState,
+  reset: boolean,
 ): Promise<{ items: VideoCard[]; done: boolean }> {
-  const candidates = tags.filter((tag) => !exhausted.has(tag));
+  const candidates = shuffle(tags.filter((tag) => !state.exhausted.has(tag)));
   if (!candidates.length) return { items: [], done: true };
   let cursor = 0;
   let succeeded = 0;
@@ -43,15 +57,57 @@ async function fetchPinnedTagsPage(
       const idx = cursor++;
       if (idx >= candidates.length) return;
       const tag = candidates[idx];
+      const scopeKey = tagPageScopeKey(sourceId, tag);
+      let deck = state.decks.get(tag);
+      let visited = state.visited.get(tag);
+      if (!visited) {
+        visited = new Set<number>();
+        state.visited.set(tag, visited);
+      }
+      if (!deck) {
+        const known = readKnownPages(scopeKey);
+        deck = known > 1
+          ? buildRandomPageDeck(known, {
+              maxPoolPages: PINNED_RANDOM_PAGE_POOL,
+              excludeFirst: reset ? state.lastFirstPage.get(tag) : undefined,
+            })
+          : [1];
+        state.decks.set(tag, deck);
+      }
+      const nextPage = deck.shift();
+      if (!nextPage) {
+        state.exhausted.add(tag);
+        continue;
+      }
+      if (reset) state.lastFirstPage.set(tag, nextPage);
+      visited.add(nextPage);
       try {
-        const res = await api.tagVideos(tag, page, 30);
+        let res = await api.tagVideos(tag, nextPage, 30);
+        let list = res?.items || [];
+        if (!list.length && nextPage > 1 && !visited.has(1)) {
+          visited.add(1);
+          res = await api.tagVideos(tag, 1, 30);
+          list = res?.items || [];
+        }
         succeeded++;
-        const list = res?.items || [];
         collected.push(...list);
-        if (!list.length || (res?.pagination && page >= res.pagination.pages)) {
-          exhausted.add(tag);
+        const totalPages = res?.pagination?.pages ?? 0;
+        if (totalPages >= 1) {
+          writeKnownPages(scopeKey, totalPages);
+          const refreshedDeck = buildRandomPageDeck(totalPages, {
+            maxPoolPages: PINNED_RANDOM_PAGE_POOL,
+            exclude: visited,
+          });
+          state.decks.set(tag, refreshedDeck);
+          if (!list.length || refreshedDeck.length === 0) {
+            state.exhausted.add(tag);
+          }
+        } else if (!list.length || deck.length === 0) {
+          state.exhausted.add(tag);
         }
       } catch (err) {
+        visited.delete(nextPage);
+        deck.unshift(nextPage);
         failed++;
         if (firstError === null) firstError = err;
       }
@@ -65,24 +121,27 @@ async function fetchPinnedTagsPage(
   if (succeeded === 0 && firstError !== null) throw firstError;
   const deduped = new Map<number, VideoCard>();
   for (const item of collected) deduped.set(item.id, item);
+  const recentIds = getRecentHomeIds(recentKey);
+  const ranked = rankUnseenFirst([...deduped.values()], recentIds);
   return {
-    items: shuffle([...deduped.values()]),
-    done: failed === 0 && tags.every((tag) => exhausted.has(tag)),
+    items: ranked,
+    done: failed === 0 && tags.every((tag) => state.exhausted.has(tag)),
   };
 }
 
 export default function Home({ active, bottomInset }: { active: boolean; bottomInset: number }) {
-  const { toast, lineEpoch, push } = useStore();
+  const { toast, lineEpoch, push, activeSource, accountScope } = useStore();
+  const sourceId = activeSource?.id ?? "";
   const { preferences, revision, blockReason, storageError } = useContentPreferences();
   const pinnedTags = preferences.pinnedTags;
   const pinnedKey = useMemo(() => [...pinnedTags].sort().join("\0"), [pinnedTags]);
-  const feedScope = `${lineEpoch}:${pinnedKey}`;
+  const feedScope = `${accountScope}:${lineEpoch}:${pinnedKey}`;
   const filtering = !preferences.paused && (preferences.blockedTags.length > 0 || preferences.hideUntagged);
   const [excluded, setExcluded] = useState<{ revision: number; epoch: number; ids: number[] }>({ revision, epoch: lineEpoch, ids: [] });
   const autoFill = useRef(1);
   useEffect(() => { autoFill.current = 1; }, [revision, lineEpoch, pinnedKey]);
   const [items, setItems] = useState<VideoCard[]>([]);
-  const [page, setPage] = useState(1);
+  const [refreshCycle, setRefreshCycle] = useState(0);
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState("");
@@ -91,7 +150,15 @@ export default function Home({ active, bottomInset }: { active: boolean; bottomI
   activeRef.current = active;
   const mounted = useRef(false);
   const attemptedScope = useRef<string | null>(null);
-  const exhaustedTagsRef = useRef(new Set<string>());
+  const feedDeckRef = useRef<number[]>([]);
+  const feedVisitedRef = useRef(new Set<number>());
+  const lastFeedFirstPageRef = useRef(0);
+  const pinnedDeckRef = useRef<PinnedDeckState>({
+    decks: new Map(),
+    visited: new Map(),
+    exhausted: new Set(),
+    lastFirstPage: new Map(),
+  });
   const [feedMounted, setFeedMounted] = useState(false);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   /* 翻页失败退避：失败后 5 秒内不再因滚动触发重试，连续失败只提示一次 */
@@ -99,6 +166,10 @@ export default function Home({ active, bottomInset }: { active: boolean; bottomI
   const failStreak = useRef(0);
   const lineEpochRef = useRef(lineEpoch);
   lineEpochRef.current = lineEpoch;
+  const accountScopeRef = useRef(accountScope);
+  accountScopeRef.current = accountScope;
+  const sourceIdRef = useRef(sourceId);
+  sourceIdRef.current = sourceId;
   const pinnedTagsRef = useRef(pinnedTags);
   pinnedTagsRef.current = pinnedTags;
   const pinnedKeyRef = useRef(pinnedKey);
@@ -107,69 +178,129 @@ export default function Home({ active, bottomInset }: { active: boolean; bottomI
   const itemsRef = useRef(items);
   itemsRef.current = items;
 
+  const resetDecks = useCallback(() => {
+    feedDeckRef.current = [];
+    feedVisitedRef.current.clear();
+    pinnedDeckRef.current.decks.clear();
+    pinnedDeckRef.current.visited.clear();
+    pinnedDeckRef.current.exhausted.clear();
+  }, []);
+
   useEffect(() => {
     if (pinnedKeyRef.current === pinnedKey) return;
     pinnedKeyRef.current = pinnedKey;
-    exhaustedTagsRef.current.clear();
+    resetDecks();
     attemptedScope.current = null;
     failStreak.current = 0;
     retryAt.current = 0;
     setItems([]);
-    setPage(1);
     setDone(false);
     setError("");
-  }, [pinnedKey]);
+  }, [pinnedKey, resetDecks]);
 
-  const load = useCallback(async (p: number): Promise<void> => {
-    if (!activeRef.current || loadingRef.current || (done && p > 1)) return;
+  const load = useCallback(async (reset: boolean, options?: { manual?: boolean }): Promise<void> => {
+    if (!activeRef.current || loadingRef.current || (done && !reset)) return;
     const requestEpoch = lineEpochRef.current;
+    const requestAccountScope = accountScopeRef.current;
+    const requestSourceId = sourceIdRef.current;
     const requestPinnedKey = pinnedKeyRef.current;
     const requestPinned = [...pinnedTagsRef.current];
-    const requestScope = `${requestEpoch}:${requestPinnedKey}`;
-    if (p === 1) {
+    const requestScope = `${requestAccountScope}:${requestEpoch}:${requestPinnedKey}`;
+    const recentKey = `${requestAccountScope}:${requestSourceId || "default"}`;
+    const prevFeedDeck = [...feedDeckRef.current];
+    const prevFeedVisited = new Set(feedVisitedRef.current);
+    const prevPinnedDecks = new Map([...pinnedDeckRef.current.decks.entries()].map(([k, v]) => [k, [...v]]));
+    const prevPinnedVisited = new Map([...pinnedDeckRef.current.visited.entries()].map(([k, v]) => [k, new Set(v)]));
+    const prevPinnedExhausted = new Set(pinnedDeckRef.current.exhausted);
+    if (reset) {
       attemptedScope.current = requestScope;
-      exhaustedTagsRef.current.clear();
+      resetDecks();
     }
     let retryAfterScopeChange = false;
     loadingRef.current = true;
     setLoading(true);
     setError("");
-    if (p === 1) setDone(false);
+    if (reset) setDone(false);
     try {
       let ordered: VideoCard[];
       let nextDone: boolean;
       if (requestPinned.length > 0) {
-        const res = await fetchPinnedTagsPage(requestPinned, p, exhaustedTagsRef.current);
+        const res = await fetchPinnedTagsBatch(requestSourceId, recentKey, requestPinned, pinnedDeckRef.current, reset);
         ordered = res.items;
         nextDone = res.done;
       } else {
-        const res = await api.feed(p, 30);
-        const list = res?.items || [];
-        ordered = p === 1 ? shuffle(list) : list;
-        nextDone = !list.length || !!(res?.pagination && p >= res.pagination.pages);
+        const feedPageKey = `feed:${requestSourceId || "default"}`;
+        if (reset) {
+          const known = readKnownPages(feedPageKey);
+          feedDeckRef.current = known > 1
+            ? buildRandomPageDeck(known, {
+                maxPoolPages: HOME_RANDOM_PAGE_POOL,
+                excludeFirst: lastFeedFirstPageRef.current || undefined,
+              })
+            : [1];
+        }
+        const targetPage = feedDeckRef.current.shift();
+        if (!targetPage) {
+          ordered = [];
+          nextDone = true;
+        } else {
+          if (reset) lastFeedFirstPageRef.current = targetPage;
+          feedVisitedRef.current.add(targetPage);
+          let res = await api.feed(targetPage, 30);
+          let list = res?.items || [];
+          if (!list.length && targetPage > 1 && !feedVisitedRef.current.has(1)) {
+            feedVisitedRef.current.add(1);
+            res = await api.feed(1, 30);
+            list = res?.items || [];
+          }
+          const totalPages = res?.pagination?.pages ?? 0;
+          if (totalPages >= 1) {
+            writeKnownPages(`feed:${sourceIdRef.current || requestSourceId || "default"}`, totalPages);
+            feedDeckRef.current = buildRandomPageDeck(totalPages, {
+              maxPoolPages: HOME_RANDOM_PAGE_POOL,
+              exclude: feedVisitedRef.current,
+            });
+            nextDone = !list.length || feedDeckRef.current.length === 0;
+          } else {
+            nextDone = !list.length || feedDeckRef.current.length === 0;
+          }
+          const recentIds = getRecentHomeIds(recentKey);
+          ordered = rankUnseenFirst(list, recentIds);
+        }
       }
       if (!mounted.current) return;
       if (requestScope !== feedScopeRef.current) {
         retryAfterScopeChange = requestPinnedKey !== pinnedKeyRef.current || !itemsRef.current.length;
         return;
       }
+      rememberRecentHomeIds(recentKey, ordered.map((x) => x.id));
       setItems((prev) => {
-        const base = p === 1 ? [] : prev;
+        const base = reset ? [] : prev;
         const seen = new Set(base.map((x) => x.id));
         return [...base, ...ordered.filter((x) => !seen.has(x.id))];
       });
-      setPage(p);
+      if (reset && options?.manual && ordered.length > 0) {
+        setRefreshCycle((cycle) => cycle + 1);
+        toast(tr("已换一批推荐"), "info");
+      }
       failStreak.current = 0;
       retryAt.current = 0;
       setDone(nextDone);
     } catch (e) {
       if (!mounted.current) return;
+      if (reset && itemsRef.current.length > 0) {
+        feedDeckRef.current = prevFeedDeck;
+        feedVisitedRef.current = prevFeedVisited;
+        pinnedDeckRef.current.decks = prevPinnedDecks;
+        pinnedDeckRef.current.visited = prevPinnedVisited;
+        pinnedDeckRef.current.exhausted = prevPinnedExhausted;
+      }
       const message = (e as Error).message || tr("加载失败");
       const stale = requestScope !== feedScopeRef.current;
       if (!stale) {
-        setError(message);
-        if (p > 1) retryAt.current = Date.now() + 5000;
-        if (failStreak.current++ === 0) toast(message, "info");
+        if (!options?.manual || !itemsRef.current.length) setError(message);
+        if (!reset) retryAt.current = Date.now() + 5000;
+        if (options?.manual || failStreak.current++ === 0) toast(message, "info");
       }
       /* 请求在旧线路或旧置顶集合上发出：等 finally 里按新作用域补拉一次 */
       if (stale && (requestPinnedKey !== pinnedKeyRef.current || !itemsRef.current.length)) {
@@ -182,17 +313,27 @@ export default function Home({ active, bottomInset }: { active: boolean; bottomI
       if (retryAfterScopeChange && activeRef.current) {
         setDone(false);
         setError("");
-        void load(1);
+        void load(true);
       }
     }
-  }, [done, toast]);
+  }, [done, resetDecks, toast]);
+
+  useEffect(() => {
+    const onRefresh = () => {
+      if (!activeRef.current) return;
+      autoFill.current = 1;
+      void load(true, { manual: true });
+    };
+    window.addEventListener("hg:home-refresh", onRefresh);
+    return () => window.removeEventListener("hg:home-refresh", onRefresh);
+  }, [load]);
 
   /* A never-visited/hidden home does no new work. New-line/pin retries resume on return.
      Loaded pages and an already mounted player remain intact across navigation. */
   useEffect(() => {
     if (!active || items.length || loadingRef.current || attemptedScope.current === feedScope) return;
     void loadFeed();
-    void load(1);
+    void load(true);
   }, [active, feedScope, items.length, load]);
   useEffect(() => { if (active && items.length) setFeedMounted(true); }, [active, items.length]);
 
@@ -210,9 +351,9 @@ export default function Home({ active, bottomInset }: { active: boolean; bottomI
   useEffect(() => {
     if (!active || !filtering || ids.length || !hiddenCount || loading || loadingRef.current || done || error || autoFill.current >= 3) return;
     autoFill.current++;
-    void load(page + 1);
-  }, [active, filtering, ids.length, hiddenCount, loading, done, error, page, load, revision]);
-  const loadNextFilteredPage = () => { autoFill.current = 1; void load(page + 1); };
+    void load(false);
+  }, [active, filtering, ids.length, hiddenCount, loading, done, error, load, revision]);
+  const loadNextFilteredPage = () => { autoFill.current = 1; void load(false); };
 
 
   return (
@@ -223,8 +364,8 @@ export default function Home({ active, bottomInset }: { active: boolean; bottomI
       <div className="relative flex-1 min-h-0">
       {ids.length > 0 && (active || feedMounted) ? (
         <Suspense fallback={<div className="absolute inset-0 flex items-center justify-center"><Loader className="w-9 h-9 spinner" /></div>}>
-          <Feed videoIds={ids} mode="home" active={active} bottomInset={bottomInset} onBlocked={onBlocked}
-            onNearEnd={() => { if (!loading && !done && Date.now() >= retryAt.current) load(page + 1); }} />
+          <Feed key={refreshCycle} videoIds={ids} mode="home" active={active} bottomInset={bottomInset} onBlocked={onBlocked}
+            onNearEnd={() => { if (!loading && !done && Date.now() >= retryAt.current) void load(false); }} />
         </Suspense>
       ) : hiddenCount > 0 ? (
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-bg px-5 pb-24">
@@ -235,10 +376,10 @@ export default function Home({ active, bottomInset }: { active: boolean; bottomI
         </div>
       ) : !loading && error ? (
         <div className="absolute inset-0 flex items-center justify-center bg-bg">
-          <Empty icon={<ISearch size={26} />} title={tr("首页加载失败")} sub={error} action={tr("重试")} onAction={() => void load(1)} />
+          <Empty icon={<ISearch size={26} />} title={tr("首页加载失败")} sub={error} action={tr("重试")} onAction={() => void load(true)} />
         </div>
       ) : !loading && done ? (
-        <div className="absolute inset-0 flex items-center justify-center bg-bg"><Empty icon={<ISearch size={26} />} title={tr("暂无视频")} sub={tr("稍后刷新试试")} action={tr("刷新")} onAction={() => void load(1)} /></div>
+        <div className="absolute inset-0 flex items-center justify-center bg-bg"><Empty icon={<ISearch size={26} />} title={tr("暂无视频")} sub={tr("稍后刷新试试")} action={tr("刷新")} onAction={() => void load(true)} /></div>
       ) : (
         <div className="absolute inset-0 flex items-center justify-center"><Loader className="w-9 h-9 spinner" /></div>
       )}

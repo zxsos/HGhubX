@@ -96,6 +96,11 @@ loopback、Windows 的自定义标题栏与注册表代理判断、Android 的 W
 3. 系统代理判断读 `HKCU\...\Internet Settings` 的 `ProxyEnable`/`ProxyServer`；真正的代理
    读取交给 reqwest 的 `system-proxy`。`system_proxy_fingerprint()` 把注册表值纳入媒体配置代次，
    代理软件开关后不会复用旧客户端。PAC 不支持。
+4. 桌面端（Windows / macOS / Linux）通过 `tauri.conf.json` 的 `plugins.deep-link.desktop.schemes`
+   声明 `hghubx` 协议，并在 [`src-tauri/src/lib.rs`](../../src-tauri/src/lib.rs) 仅对桌面目标接入
+   `tauri-plugin-single-instance`（`features = ["deep-link"]`）与 `tauri-plugin-deep-link`：
+   Windows 与 Linux 启动时调用 `register_all()` 自动注册协议（兼容便携包与解压版），已运行实例
+   收到二次启动或 macOS `OpenURL` 时聚焦主窗口并经 `hg:deep-link` / `source_take_deep_link` 弹出导入确认框。
 
 ### Android
 
@@ -157,7 +162,8 @@ loopback、Windows 的自定义标题栏与注册表代理判断、Android 的 W
 子页的 `.ios-subpage-header` 外层底色与分隔线铺满页面面板。导航、榜单切换、分类筛选及页内搜索框
 仍与正文列对齐；普通标题和滚动体维持原来的限宽与安全区内边距。
 移动壳合并 Android 原生 inset 与 iOS WebView 的 CSS 安全区；标题、内容和浮动底栏按左、右
-分别留出内边距，底栏在原生手势区之上，同级滚动页继续留出最后一项的可见距离。
+分别留出内边距，底栏在原生手势区之上，同级滚动页继续留出最后一项的可见距离。移动端底栏
+（`TabBar`）横向拖动或轻弹时，通过直写 `MainTabs` 可见页签容器的 `translate3d` 与底栏胶囊同步跟手滑动（两端带轻微橡皮筋阻尼，预览页签保持 `active={false}` 与 `inert` 不抢跑加载或播放），松手后以 280ms 缓动落位并清零 `transform`、恢复非活跃页 `hidden`，静止态不常驻合成层。
 挂到移动壳外的模态框与半屏面板直接读取同一套原生变量和 `env()`，低高度横屏缩小外边距，
 内容过长时在安全区内滚动。老 WebView 用原生变量回退，无需新增布局依赖。
 `App.tsx` 的 `LayerBox` 对被压栈覆盖的 `MainTabs` 与非顶层栈页统一从合成器隐藏（常规用 `hidden pointer-events-none`，

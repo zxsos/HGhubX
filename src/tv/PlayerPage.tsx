@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api, fmtTime } from "../shared/api/api";
 import VideoSurface, { type VideoHandle } from "../features/playback/VideoSurface";
+import { preheatHlsStart, rememberAttemptedKey, shouldPreheatNext } from "../features/playback/nextEpisodePreheat";
 import { useContentPreferences } from "../shared/model/contentPreferences";
 import type { Detail } from "../shared/api/types";
 import type { TvContent, TvProgress } from "./model";
@@ -39,6 +40,7 @@ export default function PlayerPage({ content, sourceKey, part: initialPart, resu
   const [denied, setDenied] = useState<{ request: string; content: TvContent } | null>(null);
   const [attempt, setAttempt] = useState(0);
   const [error, setError] = useState("");
+  const [fallbackNotice, setFallbackNotice] = useState("");
   const [saveError, setSaveError] = useState("");
   const [preferenceError, setPreferenceError] = useState("");
   const [playing, setPlaying] = useState(false);
@@ -64,6 +66,9 @@ export default function PlayerPage({ content, sourceKey, part: initialPart, resu
   const clock = useRef<Clock>({ key, content, part: initialPart, seconds: finiteSeconds(resumeSeconds), duration: 0, ready: false });
   const lastSaved = useRef(0);
   const prefetched = useRef(new Map<string, { streams: TvStreams; at: number }>());
+  const preheated = useRef(new Set<string>());
+  const preheatFlight = useRef<{ key: string; controller: AbortController } | null>(null);
+  const cancelPreheat = () => { preheatFlight.current?.controller.abort(); preheatFlight.current = null; };
   const sourceReady = !!sourceKey.split("@")[0];
   const request = `${sourceKey}:${key}:${part}:${preferences.revision}:${attempt}`;
   const loaded = sourceReady && prepared?.request === request ? prepared : null;
@@ -101,8 +106,8 @@ export default function PlayerPage({ content, sourceKey, part: initialPart, resu
     };
     const pagehide = () => persistRef.current();
     const sourceChanged = () => {
-      persistRef.current(); transportEpoch.current++; setPrepared(null); setDenied(null);
-      setPlaying(false); setWaiting(true); setModal(null); setSeek(null); setControls(true);
+      cancelPreheat(); persistRef.current(); transportEpoch.current++; setPrepared(null); setDenied(null);
+      setFallbackNotice(""); setPlaying(false); setWaiting(true); setModal(null); setSeek(null); setControls(true);
     };
     document.addEventListener("visibilitychange", visibility);
     window.addEventListener("pagehide", pagehide);
@@ -110,7 +115,7 @@ export default function PlayerPage({ content, sourceKey, part: initialPart, resu
     window.addEventListener("hg:proxy-changed", sourceChanged);
     const timer = window.setInterval(() => { if (!document.hidden) persistRef.current(); }, 5000);
     return () => {
-      persistRef.current(); mounted.current = false;
+      cancelPreheat(); persistRef.current(); mounted.current = false;
       document.removeEventListener("visibilitychange", visibility);
       window.removeEventListener("pagehide", pagehide);
       window.removeEventListener("hg:line-changed", sourceChanged);
@@ -123,7 +128,7 @@ export default function PlayerPage({ content, sourceKey, part: initialPart, resu
     let alive = true;
     const transport = transportEpoch.current;
     const current = () => alive && mounted.current && latest.current.request === request && transport === transportEpoch.current;
-    setError(""); setWaiting(true); setPlaying(false); setSeek(null); setModal(null); setControls(true);
+    setError(""); setFallbackNotice(""); setWaiting(true); setPlaying(false); setSeek(null); setModal(null); setControls(true);
     persistRef.current();
     if (clock.current.key !== key || clock.current.part !== part) {
       clock.current = { key, content, part, seconds: 0, duration: 0, ready: false };
@@ -188,10 +193,20 @@ export default function PlayerPage({ content, sourceKey, part: initialPart, resu
   }, [playing, foreground, session, blocked]);
 
   useEffect(() => {
+    return () => cancelPreheat();
+  }, [session, foreground]);
+
+  useEffect(() => {
     if (!controls || !playing || waiting || !foreground || seek !== null || modal || error || blocked) return;
     const timer = window.setTimeout(() => setControls(false), 4000);
     return () => window.clearTimeout(timer);
   }, [controls, playing, waiting, foreground, seek, modal, activity, error, blocked]);
+
+  useEffect(() => {
+    if (!fallbackNotice) return;
+    const timer = window.setTimeout(() => setFallbackNotice(""), 4000);
+    return () => window.clearTimeout(timer);
+  }, [fallbackNotice]);
 
   const changePart = (next: string) => {
     if (!loaded?.parts.some(candidate => candidate.id === next) || next === part) return;
@@ -265,7 +280,7 @@ export default function PlayerPage({ content, sourceKey, part: initialPart, resu
   const changeQuality = (next: Quality) => {
     if (next === quality || next === "hevc" && !loaded?.streams.hevc) return;
     persist(); pendingRestore.current = clock.current.seconds; restoredSession.current = "";
-    setPlaying(false); setWaiting(true); setQuality(next);
+    setError(""); setFallbackNotice(""); setPlaying(false); setWaiting(true); setQuality(next);
     persistPreferences({ rate, quality: next });
   };
   const changeRate = (next: number) => {
@@ -322,14 +337,40 @@ export default function PlayerPage({ content, sourceKey, part: initialPart, resu
         if (restoredSession.current !== session) { restore(session, video.current?.el()?.duration || 0); return; }
         clock.current.seconds = finiteSeconds(value); clock.current.ready = true; setTime(value);
         if (Date.now() - lastSaved.current >= 5000) persist();
+        if (playing && !waiting && !error && !blocked && foreground && content.kind === "video" && loaded && shouldPreheatNext(value, clock.current.duration)) {
+          const nextPart = loaded.parts[loaded.parts.findIndex(candidate => candidate.id === part) + 1];
+          const cached = nextPart ? prefetched.current.get(`${sourceKey}:${key}:${preferences.revision}:${nextPart.id}`) : undefined;
+          const nextUrl = cached ? (quality === "hevc" ? cached.streams.hevc || cached.streams.main : cached.streams.main) : "";
+          const preheatKey = nextPart && nextUrl ? `${session}:${nextPart.id}:${nextUrl}` : "";
+          if (preheatKey && !preheated.current.has(preheatKey) && preheatFlight.current?.key !== preheatKey) {
+            cancelPreheat();
+            const controller = new AbortController();
+            preheatFlight.current = { key: preheatKey, controller };
+            void preheatHlsStart(nextUrl, controller.signal).finally(() => {
+              if (preheatFlight.current?.controller === controller) preheatFlight.current = null;
+              if (!controller.signal.aborted) rememberAttemptedKey(preheated.current, preheatKey);
+            });
+          }
+        }
       }}
       onPlaying={() => { if (currentSession(session)) { setPlaying(true); setWaiting(false); setError(""); } }}
       onPause={() => { if (currentSession(session)) { setPlaying(false); setControls(true); persist(); } }}
       onWaiting={() => { if (currentSession(session)) { setWaiting(true); setControls(true); } }}
       onEnded={() => onEnded(session)}
-      onError={message => { if (currentSession(session)) { setError(message); setWaiting(false); setPlaying(false); setControls(true); } }}
+      onError={message => {
+        if (!currentSession(session)) return;
+        if (quality === "hevc" && loaded?.streams.hevc && loaded.streams.main && loaded.streams.hevc !== loaded.streams.main) {
+          persist(); pendingRestore.current = clock.current.seconds; restoredSession.current = "";
+          setError(""); setPlaying(false); setWaiting(true); setQuality("main");
+          setFallbackNotice("HEVC 高清暂不可用，已自动切回默认线路");
+          persistPreferences({ rate, quality: "main" });
+          return;
+        }
+        setFallbackNotice(""); setError(message); setWaiting(false); setPlaying(false); setControls(true);
+      }}
       onClick={showControls} />}
     {blocked ? <div className="tv-player-message" role="status"><h1>内容已屏蔽</h1><p>{blocked}</p><div data-tv-region="player-blocked"><button data-tv-focus="player:blocked-back" onClick={exit}>返回详情</button></div></div> : <>
+      {fallbackNotice && !error && <div className="tv-player-notice" role="status">{fallbackNotice}</div>}
       {waiting && !error && <div className="tv-player-loading" role="status">正在加载…</div>}
       {error && <div className="tv-player-message" role="alert"><h2>播放暂时中断</h2><p>{error}</p><div data-tv-region="player-error"><button data-tv-focus="player:retry" onClick={retryPlayback}>重试当前{content.kind === "post" ? "分段" : "剧集"}</button><button data-tv-focus="player:error-back" onClick={exit}>返回详情</button></div></div>}
       <div className="tv-player-controls" hidden={!controls}>

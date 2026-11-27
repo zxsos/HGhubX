@@ -1,7 +1,7 @@
 import { MediaCard } from "../../shared/ui/cards";
 import { Button, Surface } from "../../shared/ui/ios/controls";
 import { Loader } from "../../shared/ui/ios/effects";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type TouchEvent } from "react";
 import { api, cover, fmt, isMobile } from "../../shared/api/api";
 import type { Post, PostCategory } from "../../shared/api/types";
 import { ACTION_TOAST_SLOT, useStore } from "../../shared/model/store";
@@ -16,7 +16,7 @@ import { TagBlockMenu } from "../../shared/ui/TagBlockMenu";
 import { useContentPreferences } from "../../shared/model/contentPreferences";
 import { usePaginatedList } from "../../shared/lib/usePaginatedList";
 import { CommentsPanel } from "../feed/Panels";
-import { postHot } from "./postData";
+import { formatPostTime, postHot } from "./postData";
 import { tr } from "../../shared/i18n";
 
 /* ================= 帖子列表 ================= */
@@ -27,20 +27,34 @@ export function PostsPage({ onBack, wide }: { onBack: () => void; wide: boolean 
   const [searching, setSearching] = useState(false);
   const [categories, setCategories] = useState<PostCategory[]>([]);
   const [selectedRoute, setSelectedRoute] = useState("");
+  const [categoriesLoading, setCategoriesLoading] = useState(true);
+  const swipeStart = useRef<{ x: number; y: number } | null>(null);
   useEffect(() => {
     let alive = true;
     setSelectedRoute("");
+    setCategoriesLoading(true);
     api.postCategories()
       .then((res) => {
         if (!alive) return;
-        setCategories(Array.isArray(res?.items) ? res.items.filter((c) => c?.route && c?.name) : []);
+        const next = Array.isArray(res?.items)
+          ? res.items.filter((c) => c?.route && c?.name && c.route !== "all" && c.name !== "全部")
+          : [];
+        setCategories(next);
+        /* Only real feed tabs are exposed; default to the first source category. */
+        setSelectedRoute(next[0]?.route ?? "");
+        setCategoriesLoading(false);
       })
       .catch(() => {
-        if (alive) setCategories([]);
+        if (!alive) return;
+        setCategories([]);
+        setSelectedRoute("");
+        setCategoriesLoading(false);
       });
     return () => { alive = false; };
   }, [lineEpoch]);
+  const categoriesReady = categories.length > 0 && selectedRoute !== "";
   const { items, page, pages, loading, err, autoLoadPaused, loadMore, scroller: scrollRef, sentinel } = usePaginatedList<Post>({
+    enabled: categoriesReady,
     filtering,
     isVisible: (item) => !blockReason(item.tags),
     resetKey: `${lineEpoch}:${selectedRoute}`,
@@ -48,8 +62,30 @@ export function PostsPage({ onBack, wide }: { onBack: () => void; wide: boolean 
     getId: (item) => item.id,
     request: (next) => selectedRoute
       ? api.postCategory(selectedRoute, next, 20, "latest")
-      : api.posts(next, 20, "latest"),
+      : Promise.resolve({ items: [] as Post[], pagination: { page: next, pages: 1, size: 20, total: 0 } }),
   });
+  const switchTab = (direction: 1 | -1) => {
+    if (categories.length < 2) return;
+    const index = categories.findIndex((c) => c.route === selectedRoute);
+    const target = categories[index + direction];
+    if (target) setSelectedRoute(target.route);
+  };
+  const onTouchStart = (event: TouchEvent<HTMLDivElement>) => {
+    if (categories.length < 2) return;
+    const touch = event.touches[0];
+    if (touch) swipeStart.current = { x: touch.clientX, y: touch.clientY };
+  };
+  const onTouchEnd = (event: TouchEvent<HTMLDivElement>) => {
+    const start = swipeStart.current;
+    swipeStart.current = null;
+    if (!start || categories.length < 2) return;
+    const touch = event.changedTouches[0];
+    if (!touch) return;
+    const dx = touch.clientX - start.x;
+    const dy = touch.clientY - start.y;
+    if (Math.abs(dx) < 48 || Math.abs(dx) <= Math.abs(dy) * 1.4) return;
+    switchTab(dx < 0 ? 1 : -1);
+  };
 
   return (
     <div className="ios-page absolute inset-0 bg-bg flex flex-col">
@@ -59,7 +95,7 @@ export function PostsPage({ onBack, wide }: { onBack: () => void; wide: boolean 
           <span className="w-9 h-9 rounded-[12px] bg-pc text-on-pc flex items-center justify-center shrink-0"><IFlame size={18} strokeWidth={1.9} /></span>
           <div className="flex-1 min-w-0">
             <h1 className="text-[17px] font-bold text-on leading-tight">{tr("图文帖子")}</h1>
-            <div role="status" className="text-[12px] text-mut leading-tight mt-0.5">{loading && !items.length ? tr("加载中…") : tr("已加载 {0} 篇 · {1}/{2} 页", items.length, Math.max(page, 1), Math.max(pages, 1))}</div>
+            <div role="status" className="text-[12px] text-mut leading-tight mt-0.5">{categoriesLoading || (loading && !items.length) ? tr("加载中…") : tr("已加载 {0} 篇 · {1}/{2} 页", items.length, Math.max(page, 1), Math.max(pages, 1))}</div>
           </div>
           {capabilities.search && (
             <Button onClick={() => setSearching(true)} aria-label={tr("搜索帖子")} className="ios-nav-btn"><ISearch size={18} /></Button>
@@ -67,17 +103,26 @@ export function PostsPage({ onBack, wide }: { onBack: () => void; wide: boolean 
         </div>
         {categories.length > 0 && (
           <div className="ios-subpage-inner ios-channel-tabs pb-3 flex flex-wrap items-center gap-1.5">
-            <Button aria-pressed={selectedRoute === ""} onClick={() => setSelectedRoute("")} className="ios-filter-pill">{tr("全部")}</Button>
             {categories.map((cat) => (
-              <Button key={cat.route} aria-pressed={selectedRoute === cat.route} onClick={() => setSelectedRoute(cat.route)} className="ios-filter-pill">
+              <Button key={cat.route} aria-pressed={selectedRoute === cat.route}
+                onClick={() => setSelectedRoute(cat.route)}
+                className="ios-filter-pill">
                 {cat.name}
               </Button>
             ))}
           </div>
         )}
       </div>
-      <div ref={scrollRef} aria-busy={loading} className="flex-1 scroll-y pt-3.5 pb-8">
-        {items.length ? (
+      <div ref={scrollRef} data-posts-scroll aria-busy={loading} className="flex-1 scroll-y pt-3.5 pb-8"
+        style={{ touchAction: "pan-y" }}
+        onTouchStart={onTouchStart}
+        onTouchEnd={onTouchEnd}
+        onTouchCancel={() => { swipeStart.current = null; }}>
+        {categoriesLoading ? (
+          <div className="flex justify-center py-12"><Loader className="w-8 h-8 spinner" /></div>
+        ) : !categoriesReady ? (
+          <Empty icon={<IFireF size={26} />} title={tr("暂无帖子分类")} />
+        ) : items.length ? (
           <FilteredContent items={items} scopeKey="posts">{visible => (
           <div className={`ios-media-grid ${wide ? "is-wide" : ""}`}>
             {visible.map((p) => (
@@ -291,7 +336,10 @@ export function PostDetail({ id, onBack, active = true }: { id: number; onBack: 
             <div className="px-4 pt-3.5 mx-auto max-w-[800px] select-text">
               <h1 className="text-[17px] font-bold text-on leading-snug">{currentPost.title}</h1>
               <div className="flex items-center gap-2 mt-2 text-[12px] text-mut">
-                <span>{currentPost.publish_time || currentPost.created_at}</span>
+                {(() => {
+                  const postTime = formatPostTime(currentPost);
+                  return postTime ? <span>{postTime}</span> : null;
+                })()}
                 <span className="flex items-center gap-1"><IFireF size={10} />{fmt(postHot(currentPost))}</span>
               </div>
               <div className="flex flex-wrap gap-1.5 mt-2.5">

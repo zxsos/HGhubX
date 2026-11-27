@@ -33,6 +33,7 @@ time = { version = "0.3", features = ["formatting"] }
 # 症状正是「浏览器能开目标站点、HGhubX 打不开」。见 src/net/mod.rs 顶部说明。
 reqwest = { version = "0.12", default-features = false, features = [
   "rustls-tls",
+  "http2",
   "system-proxy",
   "socks",
   "gzip",
@@ -91,6 +92,11 @@ objc2-web-kit = { version = "0.3", default-features = false, features = [
   "WKWebViewConfiguration",
   "WKPreferences",
 ] }
+
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+# 桌面端系统协议（hghubx://）注册、macOS OpenURL 回调与单实例转发（移动端仍由各自 Manifest/Info.plist 承接）。
+tauri-plugin-deep-link = "=2.6.3"
+tauri-plugin-single-instance = { version = "=2.5.5", features = ["deep-link"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 # 读 HKCU Internet Settings 判断系统代理是否启用（只报 bool，地址交给 reqwest system-proxy）。

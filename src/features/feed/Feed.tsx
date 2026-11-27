@@ -8,6 +8,8 @@ import { useStore, useStickyToast } from "../../shared/model/store";
 import { Img, registerRotatedToastHost } from "../../shared/ui/ui";
 import { registerOverlayBack } from "../../shared/lib/back";
 import { PlaybackLock, VideoSurface, createPlaybackClock, type VideoHandle } from "../playback";
+import { useNextEpisodePreheat } from "../playback/nextEpisodePreheat";
+import { useNextEpisodeUrlPrefetch } from "./useNextEpisodePrefetch";
 import { tracePlayback } from "../../shared/diagnostics/playbackDiagnostics";
 import { useContentPreferences } from "../../shared/model/contentPreferences";
 import { TagBlockMenu } from "../../shared/ui/TagBlockMenu";
@@ -454,27 +456,22 @@ export default function Feed({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active, curId, curEp, proxyRetry, allowed, permissionKey, requestPlay, capabilities.playback.hls, capabilities.playback.mp4]);
 
-  /* 当前集拿到地址后再预取下一集，避免首帧加载期间争抢网络。 */
-  useEffect(() => {
-    if (!active || !curId || kind !== "video" || !allowed || playingKey !== playKey || episodes.length === 0) return;
-    let alive = true;
-    const ep = epMap[curId] || 1;
-    const nextEpisode = ep + 1;
-    if (nextEpisode > episodes.length) return;
-    const key = `${accountScope}:${curId}:${nextEpisode}`;
-    if (playUrls[key]) return;
-    requestPlay(curId, nextEpisode)
-      .then((info) => {
-        if (!alive || !playGuard.current.allowed || playGuard.current.permissionKey !== permissionKey) return;
-        const h = info?.streams?.hevc || info?.video_url_hevc || "";
-        const u = info?.streams?.main || info?.video_url || h;
-        if (u) setPlayUrls((m) => ({ ...m, [key]: u }));
-        if (h) setHevcUrls((m) => ({ ...m, [key]: h }));
-      })
-      .catch(() => { /* 预热失败不影响当前播放 */ });
-    return () => { alive = false; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active, curId, curEp, episodes.length, allowed, permissionKey, playingKey, playKey, requestPlay]);
+  /* 当前集起播后先预取下一集播放地址，进入片尾窗口再预热下一集 m3u8 / key / 首片。 */
+  const nextEpKey = `${accountScope}:${curId}:${curEp + 1}`;
+  const nextFeedKey = nextVideoId ? `${accountScope}:${nextVideoId}:1` : "";
+  const preheatReady = active && kind === "video" && allowed && playingKey === playKey && !paused && !err;
+  useNextEpisodeUrlPrefetch({
+    active, curId, curEp, episodesLength: episodes.length, kind, allowed, playingKey, playKey,
+    accountScope, permissionKey, hasNextUrl: !!playUrls[nextEpKey], playGuard, requestPlay, setPlayUrls, setHevcUrls,
+  });
+  useNextEpisodePreheat({
+    enabled: preheatReady && curEp < episodes.length, clock: playbackClock, duration,
+    nextUrl: preferHevc && hevcUrls[nextEpKey] ? hevcUrls[nextEpKey] : playUrls[nextEpKey] || "",
+    scopeKey: `${accountScope}:${store.lineEpoch}:${proxyRetry}:${permissionKey}:${curId}:${curEp + 1}:${preferHevc ? "h" : "m"}`,
+    nextFeedEnabled: preheatReady && Boolean(nextVideoId),
+    nextFeedUrl: nextFeedKey ? (preferHevc && hevcUrls[nextFeedKey] ? hevcUrls[nextFeedKey] : playUrls[nextFeedKey] || "") : "",
+    nextFeedScopeKey: `${accountScope}:${store.lineEpoch}:${proxyRetry}:${permissionKey}:feed:${nextVideoId ?? 0}:${preferHevc ? "h" : "m"}`,
+  });
 
   /* 当前视频首帧请求完成后，再验证并预取下一部，屏蔽规则始终先于播放地址。 */
   useEffect(() => {

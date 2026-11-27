@@ -9,10 +9,10 @@ import type { AuthorItem } from "./authorDirectory";
 const HOLD_MS = 600;
 const MOVE_PX = 10;
 
-/** Author pill: tap opens the profile, deliberate hold follows or unfollows. */
-export function AuthorChip({ author, followed, busy = false, showFollowers = true, highlight = true, onOpen, onToggleFollow }: {
-  author: AuthorItem; followed: boolean; busy?: boolean; showFollowers?: boolean; highlight?: boolean;
-  onOpen: () => void; onToggleFollow: (author: AuthorItem) => void;
+/** Author pill: tap opens the profile; only chips that opt in also support deliberate hold-to-follow. */
+export function AuthorChip({ author, followed, busy = false, showFollowers = true, highlight = true, holdToFollow = true, onOpen, onToggleFollow }: {
+  author: AuthorItem; followed: boolean; busy?: boolean; showFollowers?: boolean; highlight?: boolean; holdToFollow?: boolean;
+  onOpen: () => void; onToggleFollow?: (author: AuthorItem) => void;
 }) {
   const [pressing, setPressing] = useState(false);
   const timer = useRef<number | null>(null);
@@ -35,6 +35,7 @@ export function AuthorChip({ author, followed, busy = false, showFollowers = tru
   useEffect(() => () => clearTimer(), [clearTimer]);
 
   const pointerDown = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (!holdToFollow) return;
     if (event.pointerType === "mouse" && event.button !== 0) return;
     if (busy) return;
     clearTimer();
@@ -49,7 +50,7 @@ export function AuthorChip({ author, followed, busy = false, showFollowers = tru
       origin.current = null;
       setPressing(false);
       triggerHaptic("medium");
-      onToggleFollow(author);
+      onToggleFollow?.(author);
     }, HOLD_MS);
   };
   const pointerMove = (event: ReactPointerEvent<HTMLButtonElement>) => {
@@ -77,10 +78,13 @@ export function AuthorChip({ author, followed, busy = false, showFollowers = tru
   };
 
   return <Button type="button"
-    aria-label={followed ? tr("长按取消关注作者：{0}", author.name) : tr("长按关注作者：{0}", author.name)}
+    aria-label={holdToFollow
+      ? followed ? tr("长按取消关注作者：{0}", author.name) : tr("长按关注作者：{0}", author.name)
+      : tr("打开作者：{0}", author.name)}
     data-author-id={author.id} data-following={highlight && followed ? "true" : undefined} data-pressing={pressing ? "true" : undefined}
-    onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={pointerCancel}
-    onPointerLeave={cancelHold} onClick={click} onContextMenu={event => event.preventDefault()}
+    onPointerDown={holdToFollow ? pointerDown : undefined} onPointerMove={holdToFollow ? pointerMove : undefined}
+    onPointerUp={holdToFollow ? pointerUp : undefined} onPointerCancel={holdToFollow ? pointerCancel : undefined}
+    onPointerLeave={holdToFollow ? cancelHold : undefined} onClick={click} onContextMenu={event => event.preventDefault()}
     className="ios-filter-pill tag-pin-pill max-w-full min-w-0 gap-1.5 text-left">
     <span className="min-w-0 whitespace-normal break-words text-on/95">{author.name}</span>
     {showFollowers && author.followers > 0 && <span aria-label={tr("{0} 粉丝", fmt(author.followers))} className="shrink-0 inline-flex items-center gap-0.5 text-[11.5px] font-medium text-dim tabular-nums"><IUserF size={11} className="text-primary/85" />{fmt(author.followers)}</span>}

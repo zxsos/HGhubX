@@ -2,7 +2,7 @@ import { Button, Surface } from "../../shared/ui/ios/controls";
 import { Loader } from "../../shared/ui/ios/effects";
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { api, fmt } from "../../shared/api/api";
-import type { Post, TopicCard, TopicDetail, VideoCard } from "../../shared/api/types";
+import type { Post, TagGroup, TopicCard, TopicDetail, VideoCard } from "../../shared/api/types";
 import { ACTION_TOAST_SLOT, useStore } from "../../shared/model/store";
 import { MAX_BLOCKED_TAGS, MAX_PINNED_TAGS, MAX_TAG_LENGTH, useContentPreferences } from "../../shared/model/contentPreferences";
 import { AUTO_LOAD_EMPTY_PAGE_LIMIT, useAutoLoadMore } from "../../shared/lib/useAutoLoadMore";
@@ -15,7 +15,7 @@ import { tr } from "../../shared/i18n";
 import { VideoSortMenu } from "../../shared/ui/VideoSortMenu";
 import { TagStatusMenu, type WorkStatus } from "./TagStatusMenu";
 import { sortVideosByMetric, type VideoSortDirection, type VideoSortMetric } from "../../shared/model/videoSort";
-import { clearTagVideoCountCache, useNonEmptyTags } from "./useNonEmptyTags";
+import { loadTagDirectory, peekTagDirectory } from "./useNonEmptyTags";
 import { triggerHaptic } from "../../shared/lib/haptics";
 
 const TopicIcon = ILayers;
@@ -418,39 +418,70 @@ function TagPinChip({ name, hotScore, pinned, board = false, onOpen, onTogglePin
 }
 
 export function TagsPage({ onBack, wide }: { onBack: () => void; wide: boolean }) {
-  const { push, toast, lineEpoch, capabilities } = useStore();
+  const { push, toast, lineEpoch, activeSource, sourceStateStatus, capabilities } = useStore();
   const { preferences, isTagPinned, togglePinnedTag } = useContentPreferences();
   const pinnedTags = preferences.pinnedTags;
   const [searching, setSearching] = useState(false);
-  const [probeNonce, setProbeNonce] = useState(0);
-  const fetchTags = useCallback(async () => {
-    try {
-      return await api.tags();
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error ?? "");
-      if (/未实现|unimplemented|not implemented/i.test(msg)) {
-        const hot = await api.hotTags();
-        return {
-          categories: hot?.items?.length
-            ? [{
-                name: tr("热门标签"),
-                tags: hot.items.map((item, idx) => ({ id: idx + 1, name: item.name, slug: item.slug })),
-              }]
-            : [],
-        };
-      }
-      throw error;
+  const cacheKey = `${activeSource?.id ?? "default"}:${lineEpoch}`;
+  const sourceReady = sourceStateStatus !== "loading";
+  const [state, setState] = useState<{ key: string; groups: TagGroup[] | null; loading: boolean; error: string }>(() => {
+    const cached = sourceReady ? peekTagDirectory(cacheKey) : null;
+    return { key: cacheKey, groups: cached, loading: cached === null, error: "" };
+  });
+  const sequence = useRef(0);
+  const busy = useRef(false);
+
+  const load = useCallback(async (force = false) => {
+    if (!sourceReady) return;
+    if (busy.current && !force) return;
+    busy.current = true;
+    const token = ++sequence.current;
+    const cached = force ? null : peekTagDirectory(cacheKey);
+    if (!force && cached !== null) {
+      setState({ key: cacheKey, groups: cached, loading: false, error: "" });
+      busy.current = false;
+      return;
     }
-  }, []);
-  const { data, loading, err, load } = useDiscoveryData("tags", fetchTags);
-  const rawGroups = useMemo(() => data?.categories ?? [], [data]);
-  const groups = useNonEmptyTags(rawGroups, lineEpoch, probeNonce);
+    setState(previous => {
+      const existing = previous.key === cacheKey ? previous.groups : cached;
+      return { key: cacheKey, groups: existing, loading: true, error: "" };
+    });
+    try {
+      const categories = await loadTagDirectory(cacheKey, {
+        force,
+        postsEnabled: capabilities.posts,
+        fallbackLabel: tr("热门标签"),
+      });
+      if (token === sequence.current) {
+        setState({ key: cacheKey, groups: categories, loading: false, error: "" });
+      }
+    } catch (error) {
+      if (token === sequence.current) {
+        const message = error instanceof Error ? error.message : tr("标签加载失败，请重试");
+        setState(previous => {
+          const existing = previous.key === cacheKey ? previous.groups : null;
+          return { key: cacheKey, groups: existing, loading: false, error: message };
+        });
+      }
+    } finally {
+      if (token === sequence.current) busy.current = false;
+    }
+  }, [cacheKey, capabilities.posts, sourceReady]);
+
+  useEffect(() => {
+    if (!sourceReady) return;
+    busy.current = false;
+    void load(false);
+    return () => { sequence.current++; busy.current = false; };
+  }, [load, sourceReady]);
+
+  const groups = useMemo(() => (state.key === cacheKey && state.groups ? state.groups : []), [cacheKey, state.groups, state.key]);
+  const loading = !sourceReady || state.loading;
+  const err = state.key === cacheKey ? state.error : "";
 
   const refresh = useCallback(async () => {
-    clearTagVideoCountCache(lineEpoch);
-    setProbeNonce((n) => n + 1);
-    await load();
-  }, [lineEpoch, load]);
+    await load(true);
+  }, [load]);
 
   const totalTags = groups.reduce((sum, g) => sum + (g.tags?.length || 0), 0);
   const togglePin = useCallback((name: string) => {
@@ -471,7 +502,7 @@ export function TagsPage({ onBack, wide }: { onBack: () => void; wide: boolean }
           <span className="w-9 h-9 rounded-[12px] bg-pc text-on-pc flex items-center justify-center shrink-0"><TagIcon size={18} /></span>
           <div className="flex-1 min-w-0">
             <h1 className="text-[17px] font-bold text-on leading-tight">{tr("标签")}</h1>
-            <div className="text-[12px] text-mut leading-tight mt-0.5">{loading && !rawGroups.length ? tr("加载中…") : tr("{0} 个标签 · {1} 组", totalTags, groups.length)}</div>
+            <div className="text-[12px] text-mut leading-tight mt-0.5">{loading && !groups.length ? tr("加载中…") : tr("{0} 个标签 · {1} 组", totalTags, groups.length)}</div>
           </div>
           {capabilities.search && <Button onClick={() => setSearching(true)} aria-label={tr("搜索")} className="ios-nav-btn"><ISearch size={18} /></Button>}
           <Button aria-label={tr("刷新")} disabled={loading} aria-busy={loading} onClick={() => void refresh()} className="ios-nav-btn">{loading ? <Loader className="w-4 h-4" /> : <IRefresh size={18} />}</Button>
@@ -479,8 +510,8 @@ export function TagsPage({ onBack, wide }: { onBack: () => void; wide: boolean }
       </div>
 
       <div className="flex-1 scroll-y pt-3.5 pb-8" aria-busy={loading}>
-        {rawGroups.length > 0 && <RefreshStatus loading={loading} error={err} onRetry={() => void refresh()} />}
-        {rawGroups.length > 0 && <Surface data-pin-board className="mb-3.5 rounded-[22px] bg-s1 p-4 a-rise" aria-label={tr("置顶标签")}>
+        {groups.length > 0 && <RefreshStatus loading={loading} error={err} onRetry={() => void refresh()} />}
+        {groups.length > 0 && <Surface data-pin-board className="mb-3.5 rounded-[22px] bg-s1 p-4 a-rise" aria-label={tr("置顶标签")}>
           <div className="flex items-baseline justify-between gap-2">
             <h2 className="flex items-center gap-1.5 text-[14.5px] font-bold text-on"><IPin size={15} className="text-primary" />{tr("置顶标签")}</h2>
             <span className="text-[12px] text-dim tabular-nums" aria-live="polite">{tr("{0} 个", pinnedTags.length)}</span>
@@ -490,9 +521,9 @@ export function TagsPage({ onBack, wide }: { onBack: () => void; wide: boolean }
             {pinnedTags.map(name => <TagPinChip key={name} name={name} pinned board onOpen={() => push({ kind: "tag", tag: name, name })} onTogglePin={togglePin} />)}
           </div>}
         </Surface>}
-        {loading && !rawGroups.length ? (
+        {loading && !groups.length ? (
           <div className="flex justify-center py-12"><Loader className="w-8 h-8 spinner" /></div>
-        ) : err && !rawGroups.length ? (
+        ) : err && !groups.length ? (
           <Empty icon={<TagIcon size={26} />} title={tr("标签加载失败")} sub={err} action={tr("重试")} onAction={() => void refresh()} />
         ) : groups.length ? (
           <div className={`grid gap-3.5 ${wide ? "grid-cols-2" : "grid-cols-1"}`}>{groups.map((g) => (

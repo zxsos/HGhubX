@@ -33,6 +33,7 @@
     "android:build": "tauri android build",
     "android:tv:init": "node scripts/build-android-tv.mjs --android-init",
     "android:tv:build": "node scripts/build-android-tv.mjs --android-build",
+    "test:posts-tabs": "node scripts/test-posts-tabs.mjs",
     "test:category-hitbox": "node scripts/test-category-hitbox.mjs"
   },
   "dependencies": {

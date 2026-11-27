@@ -43,10 +43,14 @@ export function usePendingDeepLink(): [string | null, () => void] {
     const onEvent = (e: Event) => {
       const detail = (e as CustomEvent<string>).detail;
       accept(typeof detail === "string" ? detail : window.__HG_DEEP_LINK__);
+      void api.sourceTakeDeepLink().catch(() => {});
     };
     window.addEventListener("hg:deep-link", onEvent);
     return () => window.removeEventListener("hg:deep-link", onEvent);
   }, []);
 
-  return [pending, () => setPending(null)];
+  return [pending, () => {
+    delete window.__HG_DEEP_LINK_HANDLED__;
+    setPending(null);
+  }];
 }
