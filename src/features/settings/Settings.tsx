@@ -18,6 +18,7 @@ import { copyText } from "../../shared/lib/clipboard";
 import { HAPTIC_LEVELS, setHapticLevel, triggerHaptic, useHapticLevel, type HapticLevel } from "../../shared/lib/haptics";
 import { Loader } from "../../shared/ui/ios/effects";
 import { isBalanceVolumeSupported } from "../playback/balanceVolume";
+import { PictureEnhanceSetting } from "../playback/PictureEnhanceSetting";
 import { IBack, IBoltF, IBroom, IChevR, ICompress, IGlobe, IHeart, IHome, IInfo, ILink, ILockF, IMoon, IRefresh, IScan, ISun, IVol, IVolMute, Logo } from "../../shared/ui/icons";
 import { LOCALE_OPTIONS, N_, setLocale, tr, useLocale, type Locale } from "../../shared/i18n";
 
@@ -255,6 +256,7 @@ export default function Settings({ onBack, initialSection }: { onBack: () => voi
               </div>
               <Toggle desktop on={preferHevc} onChange={setPreferHevc} label={tr("优先高清")} />
             </div>
+            <PictureEnhanceSetting />
             <div className="ios-settings-row">
               <span className="ios-setting-icon"><ISun size={16} /></span>
               <div className="flex-1 min-w-0">
