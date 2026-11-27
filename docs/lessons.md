@@ -65,6 +65,7 @@
 | 2026-11-26 | 离线示例源播放能力契约不一致 | `demo-offline` 声明支持 `hls`/`mp4` 但 `playback()` 返回空串，首次打开缺少可交互演示且点击播放看似故障 | 校验器无条件要求所有包开启 `playback`；引导页未提供内置示例试用与一键撤回入口 | 允许零网络离线示例源诚实关闭 `playback`（`hls: false, mp4: false`），客户端置灰播放并提示导入真实源；引导页保持默认空态并提供「试用离线示例源」与「移除示例源」 | [`src-tauri/src/source/manifest.rs`](../src-tauri/src/source/manifest.rs)、[`examples/sources/demo-offline/`](../examples/sources/demo-offline/)、[`src/shared/lib/demoSource.ts`](../src/shared/lib/demoSource.ts) |
 | 2026-11-26 | 切源后封面正常但播放失败 | 从离线示例源导入或切换视频源后，推荐流封面可见但播放一直失败，再导入一次才正常 | `hg:source-changed` 先同步推进 `lineEpoch`，`sourceState`/`capabilities` 稍后才异步更新；`Feed` 播放 effect 未依赖 `capabilities.playback`；`MainTabs` 未按活动源重建，首页保留旧源条目 | 切源时 `lineEpoch` 与新源快照在同一次更新中推进；读取能力的 effect 必须把能力字段列入依赖；主标签页按活动源 id 重建 | `src/shared/model/store.tsx` 的 `loadSourceState`；`src/features/feed/Feed.tsx`；`src/app/App.tsx` 的 `MainTabs`（常驻回归待核实） |
 | 2026-11-27 | 移动端手势测试误用横屏视口 | `Playback (core)` 的 `gesture` 场景在严格模式命中 2 个「播放」按钮并隐藏竖屏选集条导致失败 | `test-playback.mjs` 为 `gesture` 启用了 iPhone 移动 UA（`mobileContext=true`），却仍分配 `1000×900` 横屏视口，触发移动端横屏自动全屏 | 所有 `mobileContext` 场景统一使用 `390×844` 竖屏视口，避免模拟手机上下文混用宽于高的横屏尺寸 | `scripts/test-playback.mjs` 的 `gesture` 场景 |
+| 2026-11-27 | 收藏筛选菜单 `Escape` 关闭竞态 | `Browser smoke` 的 `favorite-status-counts` 在打开筛选菜单后按 `Escape` 偶发无法关闭并超时 | `Profile.tsx` 仅在 `.ios-filter-menu` 自身处理 `Escape`，而焦点移入菜单在 `requestAnimationFrame` 中异步执行，焦点落入前按键会被漏掉 | 弹层/菜单打开期间在 `document` 捕获阶段监听 `Escape` 并归还焦点至触发按钮，避免依赖异步聚焦时序 | `src/features/account/Profile.tsx`；`scripts/test-favorite-status-counts.mjs`（常驻竞态复现待核实） |
 
 新回归的追加方式：
 

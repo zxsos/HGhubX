@@ -201,8 +201,19 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
     const closeOnOutsidePress = (event: PointerEvent) => {
       if (!filterMenuRef.current?.contains(event.target as Node)) setFilterMenuOpen(false);
     };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      setFilterMenuOpen(false);
+      filterButtonRef.current?.focus();
+    };
     document.addEventListener("pointerdown", closeOnOutsidePress, true);
-    return () => document.removeEventListener("pointerdown", closeOnOutsidePress, true);
+    document.addEventListener("keydown", closeOnEscape, true);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutsidePress, true);
+      document.removeEventListener("keydown", closeOnEscape, true);
+    };
   }, [filterMenuOpen]);
 
   useEffect(() => {
