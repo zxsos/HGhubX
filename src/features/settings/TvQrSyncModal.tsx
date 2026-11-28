@@ -6,6 +6,7 @@ import {
   platform,
   type DiscoveredTv,
   type PairedPeerSummary,
+  type SubscriptionPreview,
   type TvBidirectionalSyncResult,
   type TvSyncData,
 } from "../../shared/api/api";
@@ -136,11 +137,14 @@ export default function TvQrSyncModal({
   open,
   onClose,
   onSuccess,
+  onSubscription,
   initialView = "scan",
 }: {
   open: boolean;
   onClose: () => void;
   onSuccess?: () => void;
+  /** 扫到订阅清单时交给调用方展示订阅选择器；未提供时提示到「视频源」导入。 */
+  onSubscription?: (preview: SubscriptionPreview) => void;
   initialView?: "scan" | "hub";
 }) {
   const { favs, postFavs, history, preferHevc, mergePeerLibrary, toast } = useStore();
@@ -338,7 +342,15 @@ export default function TvQrSyncModal({
         );
         finishBidirectionalSync(res, true);
       } else {
-        const summary = await api.sourceImport(raw, true);
+        const res = await api.sourceResolveImport(raw, true);
+        if (res.kind === "subscription") {
+          if (!onSubscription) throw new Error(tr("这是订阅清单，请在「视频源」中导入"));
+          setStatus("idle");
+          onSubscription(res.preview);
+          onClose();
+          return;
+        }
+        const summary = res.summary;
         notifySourceChanged();
         setDoneBanner({ title: tr("已导入 {0} v{1}", summary.name, summary.version), badges: [] });
         setStatus("done");
@@ -353,7 +365,7 @@ export default function TvQrSyncModal({
     } finally {
       busyRef.current = false;
     }
-  }, [stopCamera, buildSyncPayload, finishBidirectionalSync, toast, onSuccess, onClose]);
+  }, [stopCamera, buildSyncPayload, finishBidirectionalSync, toast, onSuccess, onSubscription, onClose]);
 
   const syncWithPairedTv = useCallback(async (tv: MergedTvItem) => {
     if (!tv.pairId || busyRef.current) return;

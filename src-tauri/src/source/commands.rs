@@ -143,6 +143,9 @@ pub(crate) async fn import_source_raw(
     activate: bool,
 ) -> Result<InstalledSourceSummary, String> {
     let raw = resolve_raw_input(input).await?;
+    if parse_subscription(&raw, &HashSet::new())?.is_some() {
+        return Err("这是订阅清单，暂不支持在此直接导入；请在手机/电脑端「视频源管理」中导入订阅后，再推送或同步到电视".into());
+    }
     let pkg = decode_package_input(&raw)?;
     validate_package(&pkg)?;
     let store = store_arc();

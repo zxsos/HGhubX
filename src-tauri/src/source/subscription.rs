@@ -525,6 +525,8 @@ fn classify_probe_stream(list: &[Value]) -> ProbeStreamCandidate {
     }
 }
 
+// Note: the reason literals returned by `short_probe_error` and `probe_maccms_site`
+// are mapped as i18n dictionary keys in `src/features/settings/SubscriptionPicker.tsx`; keep them in sync.
 fn short_probe_error(err: &str, prefix: &str) -> String {
     let lower = err.to_ascii_lowercase();
     if err.contains("超时") || lower.contains("timeout") || lower.contains("timed out") {

@@ -6,16 +6,37 @@ import {
   type SubscriptionProbeResult,
   type SubscriptionSiteInput,
 } from "../../shared/api/api";
-import { tr } from "../../shared/i18n";
+import { N_, tr } from "../../shared/i18n";
 import { Button, Input } from "../../shared/ui/ios/controls";
 
 const PROBE_BATCH_SIZE = 6;
 
-function defaultSelectedIds(preview: SubscriptionPreview): Set<string> {
-  const uninstalled = preview.items.filter((item) => !item.installed);
-  if (!uninstalled.length) return new Set();
-  const initial = uninstalled.length <= 5 ? uninstalled : uninstalled.slice(0, 3);
-  return new Set(initial.map((item) => item.id));
+const PROBE_REASON_KEYS: ReadonlySet<string> = new Set([
+  N_("仅支持 HTTPS"),
+  N_("地址无效"),
+  N_("返回格式无效"),
+  N_("暂无片源"),
+  N_("清单格式无效"),
+  N_("片源非 HTTPS"),
+  N_("无直链片源"),
+  N_("超时"),
+  N_("DNS 失败"),
+  N_("响应过大"),
+  N_("不可达"),
+  N_("片源超时"),
+  N_("片源DNS 失败"),
+  N_("片源响应过大"),
+  N_("片源不可达"),
+]);
+
+function probeReasonLabel(reason?: string | null): string {
+  if (!reason) return tr("不可用");
+  if (PROBE_REASON_KEYS.has(reason)) return tr(reason);
+  const restricted = /^片源受限 \((\d+)\)$/.exec(reason);
+  if (restricted) return tr("片源受限 ({0})", restricted[1]);
+  const streamErr = /^片源异常 \((\d+)\)$/.exec(reason);
+  if (streamErr) return tr("片源异常 ({0})", streamErr[1]);
+  return reason;
 }
 
 export default function SubscriptionPicker({
@@ -30,7 +51,7 @@ export default function SubscriptionPicker({
   onConfirm: (items: SubscriptionSiteInput[]) => Promise<void>;
 }) {
   const [query, setQuery] = useState("");
-  const [selected, setSelected] = useState<Set<string>>(() => defaultSelectedIds(preview));
+  const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [probes, setProbes] = useState<Record<string, SubscriptionProbeResult>>({});
   const [probing, setProbing] = useState(false);
   const [probingIds, setProbingIds] = useState<Set<string>>(() => new Set());
@@ -302,11 +323,14 @@ export default function SubscriptionPicker({
                   <span className="shrink-0 text-[10.5px] px-1.5 py-0.5 rounded bg-mint/15 text-mint font-medium tabular-nums">
                     {tr("可用 · {0}ms", probe.ms)}
                   </span>
-                ) : (
-                  <span className="shrink-0 max-w-[110px] truncate text-[10.5px] px-1.5 py-0.5 rounded bg-danger/15 text-danger">
-                    {probe.reason || tr("不可用")}
-                  </span>
-                )
+                ) : (() => {
+                  const label = probeReasonLabel(probe.reason);
+                  return (
+                    <span title={label} className="shrink-0 max-w-[110px] truncate text-[10.5px] px-1.5 py-0.5 rounded bg-danger/15 text-danger">
+                      {label}
+                    </span>
+                  );
+                })()
               ) : null}
             </label>
           );
