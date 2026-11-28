@@ -7,7 +7,7 @@ type Handler = () => boolean;
 export type RegisterStartupBack = (handler: () => void) => () => void;
 
 let handler: Handler | null = null;
-const overlays: { handle: Handler }[] = [];
+const overlays: { handle: Handler; isActive?: () => boolean }[] = [];
 
 // The launch overlay owns back while it covers an already-mounted App: back skips
 // the reveal (LaunchAnimation's own listener) and must not navigate beneath it.
@@ -19,6 +19,13 @@ const notifyConsumers = () => { consumerListeners.forEach((fn) => fn()); };
 
 export function hasActiveBackConsumer(): boolean {
   return startupHolds > 0 || overlays.length > 0 || handler !== null;
+}
+
+/** 左缘跟手返回专用：忽略声明自己当前不活跃的临时层（如被上层子页 `inert` 遮住的页内搜索）。 */
+export function blocksEdgeSwipeBack(): boolean {
+  return startupHolds > 0 || handler !== null || overlays.some((o) => {
+    try { return o.isActive ? o.isActive() : true; } catch { return true; }
+  });
 }
 
 function subscribeBackConsumers(listener: () => void) {
@@ -43,9 +50,10 @@ export function holdBackForStartup(): () => void {
   };
 }
 
-/** Dialogs can nest; dismiss the newest overlay before a player panel or page. */
-export function registerOverlayBack(h: Handler) {
-  const entry = { handle: h };
+/** Dialogs can nest; dismiss the newest overlay before a player panel or page.
+ *  `isActive` only affects edge-swipe back; hardware back still asks every overlay via its handler. */
+export function registerOverlayBack(h: Handler, isActive?: () => boolean) {
+  const entry = { handle: h, isActive };
   overlays.push(entry);
   notifyConsumers();
   return () => {

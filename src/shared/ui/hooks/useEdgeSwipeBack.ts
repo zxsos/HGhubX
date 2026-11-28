@@ -1,5 +1,5 @@
 import { useEffect, useRef, type RefObject } from "react";
-import { hasActiveBackConsumer } from "../../lib/back";
+import { blocksEdgeSwipeBack } from "../../lib/back";
 
 const EDGE_ZONE_PX = 36;
 const LOCK_DISTANCE_PX = 8;
@@ -66,7 +66,7 @@ export function useEdgeSwipeBack(
     };
 
     const onStart = (e: TouchEvent) => {
-      if (e.touches.length !== 1 || hasActiveBackConsumer()) return;
+      if (e.touches.length !== 1 || blocksEdgeSwipeBack()) return;
       const touch = e.touches[0];
       const rect = el.getBoundingClientRect();
       if (rect.width <= 0 || touch.clientX - rect.left > EDGE_ZONE_PX) return;
