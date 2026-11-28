@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useRef, useSyncExternalStore, type RefObject } from "react";
 import type Hls from "hls.js";
 import type { FragBufferedData, FragLoadedData, FragLoadingData, HlsListeners } from "hls.js";
+import { N_ } from "../i18n";
 import { copyText } from "../lib/clipboard";
 
 let registeredHlsVersion: string | null = null;
@@ -91,7 +92,7 @@ export function initPlaybackLog() {
 }
 
 export async function setPlaybackLog(on: boolean) {
-  if (!state.ready || state.pending) throw new Error("日志设置尚未就绪");
+  if (!state.ready || state.pending) throw new Error(N_("日志设置尚未就绪"));
   publish({ pending: true });
   try {
     await flushPlaybackLog();
@@ -104,7 +105,7 @@ export async function setPlaybackLog(on: boolean) {
 export async function copyPlaybackLog() {
   await flushPlaybackLog();
   const text = await playbackLogApi.read();
-  if (!text) throw new Error("尚无诊断日志，请开启后复现问题");
+  if (!text) throw new Error(N_("尚无诊断日志，请开启后复现问题"));
   await copyText(text);
 }
 
@@ -169,7 +170,7 @@ export async function sharePlaybackLog(opts: { title: string; isMobile: boolean;
   const isHarmony = opts.platform === "harmony";
   const isIos = opts.platform === "ios";
   const res = await playbackLogApi.exportFull(!opts.isMobile || isHarmony || isIos, opts.title);
-  if (!res.content) throw new Error("尚无诊断日志，请开启后复现问题");
+  if (!res.content) throw new Error(N_("尚无诊断日志，请开启后复现问题"));
   const base = { filename: res.filename, path: res.path, bytes: res.bytes, lineCount: res.lineCount };
 
   if (!opts.isMobile) {

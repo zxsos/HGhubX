@@ -1000,6 +1000,8 @@ const en: Record<string, string> = {
   "测速中…": "Testing…",
   "不可用": "Unavailable",
   "暂无可用的已测站点": "No working sites tested yet",
+  "日志设置尚未就绪": "Log settings are not ready yet",
+  "尚无诊断日志，请开启后复现问题": "No diagnostic log yet. Turn it on and reproduce the issue",
 };
 
 export default en;

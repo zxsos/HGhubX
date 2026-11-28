@@ -490,7 +490,7 @@ export default function Settings({ onBack, initialSection }: { onBack: () => voi
             <Button disabled={!playbackLog.ready || playbackLog.pending || copyingLog} onClick={async () => {
               setCopyingLog(true);
               try { await copyPlaybackLog(); toast(tr("播放诊断日志已复制"), "ok"); }
-              catch (e) { toast((e as Error).message || tr("复制日志失败"), "info"); }
+              catch (e) { toast((e as Error).message ? tr((e as Error).message) : tr("复制日志失败"), "info"); }
               finally { setCopyingLog(false); }
             }} className="ios-settings-row text-left pressable disabled:opacity-60">
               <span className="ios-setting-icon"><ILink size={16} /></span>
@@ -511,7 +511,7 @@ export default function Settings({ onBack, initialSection }: { onBack: () => voi
                 else if (res.path) toast(tr("全量日志已保存（{0}）：{1}", size, res.path), "ok");
                 else toast(tr("全量日志已导出（{0}）", size), "ok");
               } catch (e) {
-                toast((e as Error).message || tr("分享日志失败"), "info");
+                toast((e as Error).message ? tr((e as Error).message) : tr("分享日志失败"), "info");
               } finally {
                 setSharingLog(false);
               }
