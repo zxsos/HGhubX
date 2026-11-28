@@ -323,7 +323,7 @@ export default function SourceManager({ open, onClose }: { open: boolean; onClos
               </Button>
             )}
           </div>
-          {(state?.sources.length ?? 0) >= 6 && (
+          {((state?.sources.length ?? 0) >= 6 || !!sourceQuery) && (
             <Input
               value={sourceQuery}
               onChange={(e) => setSourceQuery(e.target.value)}
