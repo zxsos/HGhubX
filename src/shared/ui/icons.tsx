@@ -49,6 +49,7 @@ export const ILogout = S(<><path d="M14 4.5H7A2.5 2.5 0 0 0 4.5 7v10A2.5 2.5 0 0
 export const ILogin = S(<><path d="M10 4.5h7A2.5 2.5 0 0 1 19.5 7v10a2.5 2.5 0 0 1-2.5 2.5h-7" /><path d="m12 8 4 4-4 4" /><path d="M16 12H4.5" /></>);
 export const ILink = S(<><path d="M9.5 14.5 14.5 9.5" /><path d="M11 6.5 13 4.5a4 4 0 0 1 6.5 6.5l-2 2" /><path d="M13 17.5 11 19.5A4 4 0 0 1 4.5 13l2-2" /></>);
 export const IClock = S(<><circle cx="12" cy="12" r="8.5" /><path d="M12 7v5.2l3.4 2" /></>);
+export const IHistory = S(<><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path d="M3 3v5h5" /><path d="M12 7v5l4 2" /></>);
 export const ISendF = S(<path d="M3.6 11 19.4 3.6c.8-.4 1.6.4 1.3 1.2L14.4 20.7c-.3.8-1.5.8-1.8 0l-2-5.4a1 1 0 0 0-.6-.6l-6.3-1.9c-.9-.2-.9-1.4-.1-1.8Z" />, true);
 export const IRefresh = S(<><path d="M20 12a8 8 0 1 1-2.5-5.8" /><path d="M20 3.5V7h-3.5" /></>);
 export const ISparkF = S(<path d="M12 2.5c.6 3.9 1.7 6.1 3.3 7.7 1.6 1.6 3.8 2.6 6.2 3.3-3.9.6-6.1 1.7-7.7 3.3-1.6 1.6-2.6 3.8-3.3 6.2-.6-3.9-1.7-6.1-3.3-7.7-1.6-1.6-3.8-2.6-6.2-3.3 3.9-.6 6.1-1.7 7.7-3.3 1.6-1.6 2.6-3.8 3.3-6.2Z" />, true);

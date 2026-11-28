@@ -69,6 +69,17 @@ try {
   const authorsPage = page.locator(".ios-page").filter({ has: page.getByRole("heading", { name: "作者", exact: true }) });
   const allChips = authorsPage.locator("button[data-author-id]");
   await allChips.first().waitFor();
+  const authorSearch = authorsPage.locator(".ios-subpage-bar").getByRole("button", { name: "搜索", exact: true });
+  assert.equal(await authorSearch.count(), 1, "authors page exposes the header search entry");
+  assert.equal(await authorsPage.locator(".ios-subpage-bar").getByRole("button", { name: "刷新作者", exact: true }).count(), 1,
+    "the header keeps the existing refresh action next to search");
+  await authorSearch.click();
+  const authorSearchDialog = page.getByRole("dialog", { name: "视频搜索" });
+  await authorSearchDialog.waitFor();
+  assert.equal(await authorSearchDialog.getByRole("textbox", { name: "视频搜索关键词" }).count(), 1);
+  await page.screenshot({ path: join(output, "authors-search.png"), animations: "disabled" });
+  await authorSearchDialog.getByRole("button", { name: "退出搜索" }).click();
+  await authorSearchDialog.waitFor({ state: "detached" });
   assert.equal(await allChips.count(), 35, "all-authors page shows every author found in the complete feed");
   assert.equal(await authorsPage.locator("[data-author-total]").getAttribute("data-author-total"), "35", "the header reports all thirty-five authors");
   assert.ok((await allChips.first().innerText()).includes("150万"), "author chips show the follower count");
