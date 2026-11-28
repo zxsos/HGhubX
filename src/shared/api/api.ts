@@ -262,6 +262,8 @@ export const api = {
     call<SourceResolveResult>("source_resolve_import", { input, activate }),
   sourceImportSubscription: (items: SubscriptionSiteInput[], activateFirst = true) =>
     call<SubscriptionImportOutcome>("source_import_subscription", { items, activateFirst }),
+  sourceProbeSubscription: (items: SubscriptionSiteInput[]) =>
+    call<SubscriptionProbeResult[]>("source_probe_subscription", { items }),
   sourceActivate: (id: string | null) => call<SourceStateSnapshot>("source_activate", { id }),
   sourceRollback: (id: string) => call<InstalledSourceSummary>("source_rollback", { id }),
   sourceRemove: (id: string) => call<SourceStateSnapshot>("source_remove", { id }),
@@ -472,6 +474,14 @@ export type SubscriptionSiteInput = {
   id?: string;
   name: string;
   api: string;
+};
+
+export type SubscriptionProbeResult = {
+  id: string;
+  ok: boolean;
+  ms: number;
+  playable: boolean;
+  reason: string | null;
 };
 
 export type SubscriptionImportFailure = {

@@ -991,6 +991,15 @@ const en: Record<string, string> = {
   "全量日志已保存（{0}）：{1}": "Full log saved ({0}): {1}",
   "全量日志已导出（{0}）": "Full log exported ({0})",
   "分享日志失败": "Failed to share log",
+  "测试可用性": "Test availability",
+  "重新测试": "Retest",
+  "停止测试（{0}/{1}）": "Stop ({0}/{1})",
+  "一键选可用（{0}）": "Select working ({0})",
+  "仅看可用": "Working only",
+  "已测 {0}/{1} · {2} 个可播": "Tested {0}/{1} · {2} playable",
+  "测速中…": "Testing…",
+  "不可用": "Unavailable",
+  "暂无可用的已测站点": "No working sites tested yet",
 };
 
 export default en;

@@ -409,6 +409,7 @@ pub fn run() {
             source::commands::source_import,
             source::commands::source_resolve_import,
             source::commands::source_import_subscription,
+            source::commands::source_probe_subscription,
             source::commands::source_activate,
             source::commands::source_rollback,
             source::commands::source_remove,

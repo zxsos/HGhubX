@@ -1,11 +1,15 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  api,
   hostOf,
   type SubscriptionPreview,
+  type SubscriptionProbeResult,
   type SubscriptionSiteInput,
 } from "../../shared/api/api";
 import { tr } from "../../shared/i18n";
 import { Button, Input } from "../../shared/ui/ios/controls";
+
+const PROBE_BATCH_SIZE = 6;
 
 function defaultSelectedIds(preview: SubscriptionPreview): Set<string> {
   const uninstalled = preview.items.filter((item) => !item.installed);
@@ -27,8 +31,25 @@ export default function SubscriptionPicker({
 }) {
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<Set<string>>(() => defaultSelectedIds(preview));
+  const [probes, setProbes] = useState<Record<string, SubscriptionProbeResult>>({});
+  const [probing, setProbing] = useState(false);
+  const [probingIds, setProbingIds] = useState<Set<string>>(() => new Set());
+  const [probeTotal, setProbeTotal] = useState(0);
+  const [probeDone, setProbeDone] = useState(0);
+  const [onlyAvailable, setOnlyAvailable] = useState(false);
+  const probeRunRef = useRef(0);
 
-  const filtered = useMemo(() => {
+  useEffect(() => () => {
+    probeRunRef.current += 1;
+  }, []);
+
+  const stopProbe = () => {
+    probeRunRef.current += 1;
+    setProbing(false);
+    setProbingIds(new Set());
+  };
+
+  const searched = useMemo(() => {
     const kw = query.trim().toLowerCase();
     if (!kw) return preview.items;
     return preview.items.filter(
@@ -38,6 +59,81 @@ export default function SubscriptionPicker({
         item.key.toLowerCase().includes(kw),
     );
   }, [preview.items, query]);
+
+  const filtered = useMemo(() => {
+    if (!onlyAvailable) return searched;
+    return searched.filter((item) => probes[item.id]?.ok);
+  }, [searched, onlyAvailable, probes]);
+
+  const testedCount = useMemo(
+    () => preview.items.reduce((acc, item) => acc + (probes[item.id] ? 1 : 0), 0),
+    [preview.items, probes],
+  );
+  const availableCount = useMemo(
+    () => preview.items.reduce((acc, item) => acc + (probes[item.id]?.ok ? 1 : 0), 0),
+    [preview.items, probes],
+  );
+  const availableSelectable = useMemo(() => {
+    const okItems = searched.filter((item) => probes[item.id]?.ok);
+    const okUninstalled = okItems.filter((item) => !item.installed);
+    return okUninstalled.length > 0 ? okUninstalled : okItems;
+  }, [searched, probes]);
+
+  const startProbe = async () => {
+    if (probing) {
+      stopProbe();
+      return;
+    }
+    const untested = searched.filter((item) => !probes[item.id]);
+    const targets = untested.length > 0 ? untested : searched;
+    if (!targets.length) return;
+
+    const runId = ++probeRunRef.current;
+    if (untested.length === 0) {
+      setProbes((prev) => {
+        const next = { ...prev };
+        targets.forEach((item) => { delete next[item.id]; });
+        return next;
+      });
+    }
+    setProbing(true);
+    setProbeTotal(targets.length);
+    setProbeDone(0);
+
+    try {
+      for (let i = 0; i < targets.length; i += PROBE_BATCH_SIZE) {
+        if (probeRunRef.current !== runId) return;
+        const batch = targets.slice(i, i + PROBE_BATCH_SIZE);
+        setProbingIds(new Set(batch.map((item) => item.id)));
+        try {
+          const results = await api.sourceProbeSubscription(
+            batch.map(({ id, name, api: url }) => ({ id, name, api: url })),
+          );
+          if (probeRunRef.current !== runId) return;
+          setProbes((prev) => {
+            const next = { ...prev };
+            results.forEach((r) => { next[r.id] = r; });
+            return next;
+          });
+        } catch {
+          if (probeRunRef.current !== runId) return;
+          setProbes((prev) => {
+            const next = { ...prev };
+            batch.forEach((item) => {
+              next[item.id] = { id: item.id, ok: false, ms: 0, playable: false, reason: null };
+            });
+            return next;
+          });
+        }
+        setProbeDone(Math.min(targets.length, i + batch.length));
+      }
+    } finally {
+      if (probeRunRef.current === runId) {
+        setProbing(false);
+        setProbingIds(new Set());
+      }
+    }
+  };
 
   const toggle = (id: string) => {
     setSelected((prev) => {
@@ -60,10 +156,21 @@ export default function SubscriptionPicker({
     setSelected(new Set(filtered.filter((item) => !item.installed).map((item) => item.id)));
   };
 
+  const selectAvailable = () => {
+    if (!availableSelectable.length) return;
+    setSelected(new Set(availableSelectable.map((item) => item.id)));
+  };
+
+  const handleCancel = () => {
+    stopProbe();
+    onCancel();
+  };
+
   const submit = () => {
+    stopProbe();
     const chosen = preview.items
       .filter((item) => selected.has(item.id))
-      .map(({ id, name, api }) => ({ id, name, api }));
+      .map(({ id, name, api: url }) => ({ id, name, api: url }));
     if (chosen.length) void onConfirm(chosen);
   };
 
@@ -75,6 +182,8 @@ export default function SubscriptionPicker({
     skipNotes.push(tr("已忽略 {0} 个不兼容条目", preview.skippedUnsupportedCount));
   }
 
+  const allSearchedTested = searched.length > 0 && searched.every((item) => !!probes[item.id]);
+
   return (
     <div className="space-y-2.5">
       <div className="flex items-center justify-between gap-2">
@@ -84,6 +193,11 @@ export default function SubscriptionPicker({
             {tr("发现 {0} 个可用站点", preview.items.length)}
             {skipNotes.length > 0 ? ` · ${skipNotes.join(" · ")}` : ""}
           </div>
+          {testedCount > 0 && (
+            <div className="text-[11px] text-mint tabular-nums mt-0.5">
+              {tr("已测 {0}/{1} · {2} 个可播", testedCount, preview.items.length, availableCount)}
+            </div>
+          )}
         </div>
       </div>
 
@@ -97,6 +211,43 @@ export default function SubscriptionPicker({
       )}
 
       <div className="flex items-center gap-1.5 flex-wrap">
+        <Button
+          disabled={busy || searched.length === 0}
+          onClick={() => { void startProbe(); }}
+          className={`h-7 px-2.5 rounded-(--r-sm) text-[11.5px] font-medium pressable tabular-nums ${
+            probing
+              ? "bg-amber-500/20 text-amber-500 ring-1 ring-amber-500/40"
+              : "bg-primary/20 text-primary ring-1 ring-primary/35"
+          }`}
+        >
+          {probing
+            ? tr("停止测试（{0}/{1}）", probeDone, probeTotal)
+            : allSearchedTested
+              ? tr("重新测试")
+              : tr("测试可用性")}
+        </Button>
+        {availableSelectable.length > 0 && (
+          <Button
+            disabled={busy}
+            onClick={selectAvailable}
+            className="h-7 px-2.5 rounded-(--r-sm) bg-mint/15 text-mint ring-1 ring-mint/35 text-[11.5px] font-medium pressable tabular-nums"
+          >
+            {tr("一键选可用（{0}）", availableSelectable.length)}
+          </Button>
+        )}
+        {testedCount > 0 && (
+          <Button
+            disabled={busy}
+            onClick={() => setOnlyAvailable((v) => !v)}
+            className={`h-7 px-2.5 rounded-(--r-sm) text-[11.5px] pressable ${
+              onlyAvailable
+                ? "bg-mint/15 text-mint ring-1 ring-mint/35"
+                : "bg-s3 text-on"
+            }`}
+          >
+            {tr("仅看可用")}
+          </Button>
+        )}
         <Button disabled={busy} onClick={selectAllVisible} className="h-7 px-2.5 rounded-(--r-sm) bg-s3 text-[11.5px] text-on pressable">
           {tr("全选")}
         </Button>
@@ -110,9 +261,13 @@ export default function SubscriptionPicker({
 
       <div className="max-h-[34vh] overflow-y-auto space-y-1 pr-0.5">
         {filtered.length === 0 ? (
-          <div className="py-4 text-center text-[12px] text-mut">{tr("未找到匹配的视频源")}</div>
+          <div className="py-4 text-center text-[12px] text-mut">
+            {onlyAvailable ? tr("暂无可用的已测站点") : tr("未找到匹配的视频源")}
+          </div>
         ) : filtered.map((item) => {
           const checked = selected.has(item.id);
+          const probe = probes[item.id];
+          const testing = probingIds.has(item.id);
           return (
             <label
               key={item.id}
@@ -138,13 +293,28 @@ export default function SubscriptionPicker({
                 </div>
                 <div className="text-[11px] text-dim font-mono truncate">{hostOf(item.api)}</div>
               </div>
+              {testing ? (
+                <span className="shrink-0 text-[10.5px] px-1.5 py-0.5 rounded bg-s4/90 text-mut tabular-nums">
+                  {tr("测速中…")}
+                </span>
+              ) : probe ? (
+                probe.ok ? (
+                  <span className="shrink-0 text-[10.5px] px-1.5 py-0.5 rounded bg-mint/15 text-mint font-medium tabular-nums">
+                    {tr("可用 · {0}ms", probe.ms)}
+                  </span>
+                ) : (
+                  <span className="shrink-0 max-w-[110px] truncate text-[10.5px] px-1.5 py-0.5 rounded bg-danger/15 text-danger">
+                    {probe.reason || tr("不可用")}
+                  </span>
+                )
+              ) : null}
             </label>
           );
         })}
       </div>
 
       <div className="flex items-center gap-2 pt-0.5">
-        <Button disabled={busy} onClick={onCancel} className="h-9 px-3.5 rounded-(--r-ctl) bg-s3 text-[13px] text-on pressable">
+        <Button disabled={busy} onClick={handleCancel} className="h-9 px-3.5 rounded-(--r-ctl) bg-s3 text-[13px] text-on pressable">
           {tr("返回")}
         </Button>
         <Button

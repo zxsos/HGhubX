@@ -6,8 +6,8 @@ use super::manifest::{
 use super::runtime::{host_http_request, invoke_source};
 use super::store::{InstalledSourceSummary, SourceStateSnapshot};
 use super::subscription::{
-    build_maccms_package, parse_subscription, probe_maccms_channels, SubscriptionPreview,
-    SubscriptionSiteInput, MAX_SUBSCRIPTION_ITEMS,
+    build_maccms_package, parse_subscription, probe_maccms_channels, probe_maccms_site,
+    SubscriptionPreview, SubscriptionProbeResult, SubscriptionSiteInput, MAX_SUBSCRIPTION_ITEMS,
 };
 use super::verify::verify_package;
 use super::store_arc;
@@ -223,6 +223,37 @@ pub async fn source_resolve_import(
     }
     sync_active_source_side_effects();
     Ok(SourceResolveResult::Imported { summary })
+}
+
+#[tauri::command]
+pub async fn source_probe_subscription(
+    items: Vec<SubscriptionSiteInput>,
+) -> Result<Vec<SubscriptionProbeResult>, String> {
+    if items.is_empty() {
+        return Ok(Vec::new());
+    }
+    if items.len() > MAX_SUBSCRIPTION_ITEMS {
+        return Err(format!("单次最多检测 {MAX_SUBSCRIPTION_ITEMS} 个站点"));
+    }
+    let sem = Arc::new(Semaphore::new(6));
+    let mut join_set = JoinSet::new();
+    for (idx, site) in items.into_iter().enumerate() {
+        let permit_sem = Arc::clone(&sem);
+        let id = site.id.unwrap_or_else(|| site.api.clone());
+        let api = site.api;
+        join_set.spawn(async move {
+            let _permit = permit_sem.acquire_owned().await.ok();
+            (idx, probe_maccms_site(id, &api).await)
+        });
+    }
+    let mut out = Vec::new();
+    while let Some(res) = join_set.join_next().await {
+        if let Ok(entry) = res {
+            out.push(entry);
+        }
+    }
+    out.sort_by_key(|(idx, _)| *idx);
+    Ok(out.into_iter().map(|(_, r)| r).collect())
 }
 
 #[tauri::command]

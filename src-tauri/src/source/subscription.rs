@@ -16,6 +16,7 @@ use base64::Engine;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
+use std::time::Instant;
 use url::Url;
 
 pub const MAX_SUBSCRIPTION_ITEMS: usize = 200;
@@ -50,6 +51,16 @@ pub struct SubscriptionSiteInput {
     pub id: Option<String>,
     pub name: String,
     pub api: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SubscriptionProbeResult {
+    pub id: String,
+    pub ok: bool,
+    pub ms: u64,
+    pub playable: bool,
+    pub reason: Option<String>,
 }
 
 fn sha256_short_hex(text: &str) -> String {
@@ -455,6 +466,192 @@ pub(crate) async fn probe_maccms_channels(api: &str, origin: &str) -> Option<Sou
     let parsed: Value = serde_json::from_str(text.trim_start_matches('\u{feff}').trim()).ok()?;
     let classes = parsed.get("class").and_then(Value::as_array)?;
     extract_maccms_channels(classes)
+}
+
+enum ProbeStreamCandidate {
+    HttpsHls(String),
+    HttpsMp4(String),
+    InsecureOnly,
+    None,
+}
+
+fn classify_probe_stream(list: &[Value]) -> ProbeStreamCandidate {
+    let mut mp4: Option<String> = None;
+    let mut saw_http_only = false;
+    for item in list.iter().take(5) {
+        let Some(play_url) = item.get("vod_play_url").and_then(Value::as_str) else {
+            continue;
+        };
+        for group in play_url.split("$$$") {
+            for part in group.split('#') {
+                let raw = part.rsplit_once('$').map_or(part, |(_, u)| u).trim();
+                if raw.is_empty() {
+                    continue;
+                }
+                let normalized = if raw.starts_with("//") {
+                    format!("https:{raw}")
+                } else {
+                    raw.to_string()
+                };
+                let lower = normalized.to_ascii_lowercase();
+                let path = lower.split(['?', '#']).next().unwrap_or(&lower);
+                let is_hls = path.contains(".m3u8") || lower.contains(".m3u8");
+                let is_mp4 = path.ends_with(".mp4");
+                if !is_hls && !is_mp4 {
+                    continue;
+                }
+                if lower.starts_with("http://") {
+                    saw_http_only = true;
+                    continue;
+                }
+                if !lower.starts_with("https://") {
+                    continue;
+                }
+                if is_hls {
+                    return ProbeStreamCandidate::HttpsHls(normalized);
+                }
+                if mp4.is_none() {
+                    mp4 = Some(normalized);
+                }
+            }
+        }
+    }
+    if let Some(url) = mp4 {
+        ProbeStreamCandidate::HttpsMp4(url)
+    } else if saw_http_only {
+        ProbeStreamCandidate::InsecureOnly
+    } else {
+        ProbeStreamCandidate::None
+    }
+}
+
+fn short_probe_error(err: &str, prefix: &str) -> String {
+    let lower = err.to_ascii_lowercase();
+    if err.contains("超时") || lower.contains("timeout") || lower.contains("timed out") {
+        format!("{prefix}超时")
+    } else if err.contains("DNS") || lower.contains("dns") {
+        format!("{prefix}DNS 失败")
+    } else if err.contains("超出上限") {
+        format!("{prefix}响应过大")
+    } else {
+        format!("{prefix}不可达")
+    }
+}
+
+/// Probe a MacCMS subscription site end-to-end: API availability + direct playable stream reachability
+/// (catches dead endpoints, non-m3u8 embed-only sites, and geo-blocked 403/451 media CDNs before import).
+pub(crate) async fn probe_maccms_site(id: String, api: &str) -> SubscriptionProbeResult {
+    let started = Instant::now();
+    let fail = |reason: String| SubscriptionProbeResult {
+        id: id.clone(),
+        ok: false,
+        ms: started.elapsed().as_millis() as u64,
+        playable: false,
+        reason: Some(reason),
+    };
+    let parsed = match crate::network_policy::parse_target(api.trim()) {
+        Ok(u) if u.scheme() == "https" => u,
+        Ok(_) => return fail("仅支持 HTTPS".into()),
+        Err(_) => return fail("地址无效".into()),
+    };
+    let origin = parsed.origin().ascii_serialization();
+    let detail_url = append_query(api.trim(), "ac=detail&pg=1");
+    let mut headers = HashMap::new();
+    headers.insert("Accept".into(), "application/json".into());
+    let resp = match host_http_request(
+        "GET",
+        &detail_url,
+        &headers,
+        None,
+        Some(&[origin]),
+        1024 * 1024,
+        5,
+    )
+    .await
+    {
+        Ok(r) => r,
+        Err(e) => return fail(short_probe_error(&e, "")),
+    };
+    let status = resp.get("status").and_then(Value::as_u64).unwrap_or(0);
+    if !(200..300).contains(&status) {
+        return fail(format!("HTTP {status}"));
+    }
+    let text = resp.get("text").and_then(Value::as_str).unwrap_or("");
+    let json_val: Value = match serde_json::from_str(text.trim_start_matches('\u{feff}').trim()) {
+        Ok(v) => v,
+        Err(_) => return fail("返回格式无效".into()),
+    };
+    let Some(list) = json_val.get("list").and_then(Value::as_array) else {
+        return fail("返回格式无效".into());
+    };
+    if list.is_empty() {
+        return fail("暂无片源".into());
+    }
+
+    let mut media_headers = HashMap::new();
+    media_headers.insert("Accept".into(), "*/*".into());
+    match classify_probe_stream(list) {
+        ProbeStreamCandidate::HttpsHls(stream_url) => {
+            let mresp = match host_http_request(
+                "GET",
+                &stream_url,
+                &media_headers,
+                None,
+                None,
+                256 * 1024,
+                4,
+            )
+            .await
+            {
+                Ok(r) => r,
+                Err(e) => return fail(short_probe_error(&e, "片源")),
+            };
+            let mstatus = mresp.get("status").and_then(Value::as_u64).unwrap_or(0);
+            if mstatus == 403 || mstatus == 451 {
+                return fail(format!("片源受限 ({mstatus})"));
+            }
+            if !(200..300).contains(&mstatus) {
+                return fail(format!("片源异常 ({mstatus})"));
+            }
+            let body = mresp.get("text").and_then(Value::as_str).unwrap_or("");
+            if !body.contains("#EXTM3U") && !body.contains("#EXT-X-") {
+                return fail("清单格式无效".into());
+            }
+        }
+        ProbeStreamCandidate::HttpsMp4(stream_url) => {
+            let head = host_http_request("HEAD", &stream_url, &media_headers, None, None, 16 * 1024, 4).await;
+            let mstatus = match head {
+                Ok(r) => r.get("status").and_then(Value::as_u64).unwrap_or(0),
+                Err(e) => return fail(short_probe_error(&e, "片源")),
+            };
+            let final_status = if mstatus == 405 {
+                let mut range_headers = media_headers;
+                range_headers.insert("Range".into(), "bytes=0-63".into());
+                match host_http_request("GET", &stream_url, &range_headers, None, None, 16 * 1024, 4).await {
+                    Ok(r) => r.get("status").and_then(Value::as_u64).unwrap_or(0),
+                    Err(e) => return fail(short_probe_error(&e, "片源")),
+                }
+            } else {
+                mstatus
+            };
+            if final_status == 403 || final_status == 451 {
+                return fail(format!("片源受限 ({final_status})"));
+            }
+            if !(200..300).contains(&final_status) {
+                return fail(format!("片源异常 ({final_status})"));
+            }
+        }
+        ProbeStreamCandidate::InsecureOnly => return fail("片源非 HTTPS".into()),
+        ProbeStreamCandidate::None => return fail("无直链片源".into()),
+    }
+
+    SubscriptionProbeResult {
+        id,
+        ok: true,
+        ms: started.elapsed().as_millis() as u64,
+        playable: true,
+        reason: None,
+    }
 }
 
 /// Generic MacCMS v10 JSON protocol adapter executed inside HGhubX's QuickJS sandbox.
