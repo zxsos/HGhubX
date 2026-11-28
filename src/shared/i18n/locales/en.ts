@@ -429,7 +429,7 @@ const en: Record<string, string> = {
   "查看完整协议与中国大陆下载传播限制": "View full agreement & Mainland China restrictions",
   "查看提示": "View Notice",
   "查看日志保存位置": "Log storage location",
-  "查看更多": "View More",
+  "正在加载更多评论": "Loading more comments",
   "查看标签 {0}": "View tag {0}",
   "查看标签 {0}，长按可屏蔽": "View tag {0}; hold to block",
   "标清": "SD",

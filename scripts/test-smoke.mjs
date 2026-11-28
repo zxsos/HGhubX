@@ -21,6 +21,7 @@ const tests = [
   ["haptic-tap", "scripts/test-haptic-tap.mjs"],
   ["metric-sort", "scripts/test-metric-sort.mjs"],
   ["home-controls", "tests/test-home-controls.mjs"],
+  ["comments-autoload", "scripts/test-comments-autoload.mjs"],
   ["rank-swipe", "scripts/test-rank-swipe.mjs"],
   ["search-tab-swipe", "scripts/test-search-tab-swipe.mjs"],
   ["search-nav-reset", "scripts/test-search-nav-reset.mjs"],
