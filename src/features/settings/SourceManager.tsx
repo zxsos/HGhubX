@@ -31,6 +31,7 @@ export default function SourceManager({ open, onClose }: { open: boolean; onClos
   const [sourceQuery, setSourceQuery] = useState("");
   const [managing, setManaging] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const [confirmBatch, setConfirmBatch] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const load = async () => {
@@ -50,6 +51,7 @@ export default function SourceManager({ open, onClose }: { open: boolean; onClos
       setSourceQuery("");
       setManaging(false);
       setSelectedIds(new Set());
+      setConfirmBatch(false);
     }
   }, [open]);
 
@@ -241,10 +243,15 @@ export default function SourceManager({ open, onClose }: { open: boolean; onClos
   const exitManaging = () => {
     setManaging(false);
     setSelectedIds(new Set());
+    setConfirmBatch(false);
   };
 
+  const selectedSources = (state?.sources ?? []).filter((s) => selectedIds.has(s.id));
+  const selectedActive = selectedSources.some((s) => s.active);
+  const selectedHidden = selectedSources.filter((s) => !visibleSources.includes(s)).length;
+
   const removeSelected = async () => {
-    const ids = (state?.sources ?? []).filter((s) => selectedIds.has(s.id)).map((s) => s.id);
+    const ids = selectedSources.map((s) => s.id);
     if (!ids.length || actionId) return;
     setActionId("rm:batch");
     setError("");
@@ -258,6 +265,7 @@ export default function SourceManager({ open, onClose }: { open: boolean; onClos
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setActionId("");
+      setConfirmBatch(false);
     }
   };
 
@@ -331,7 +339,33 @@ export default function SourceManager({ open, onClose }: { open: boolean; onClos
               className="w-full h-8 px-2.5 rounded-(--r-sm) bg-s2 text-[12px] text-on"
             />
           )}
-          {managing && (state?.sources.length ?? 0) > 0 && (
+          {managing && confirmBatch && selectedSources.length > 0 && (
+            <div role="alertdialog" aria-label={tr("批量移除")} className="rounded-(--r-md) bg-danger/10 ring-1 ring-danger/40 p-3 space-y-2">
+              <p className="text-[12.5px] font-medium text-on">{tr("确认移除选中的 {0} 个视频源？", selectedSources.length)}</p>
+              {selectedActive && <p className="text-[11.5px] text-danger">{tr("其中包含正在使用的视频源。")}</p>}
+              {selectedHidden > 0 && <p className="text-[11.5px] text-mut">{tr("其中 {0} 个不在当前筛选结果中。", selectedHidden)}</p>}
+              <div className="flex items-center gap-2 pt-0.5">
+                <Button
+                  autoFocus
+                  disabled={!!actionId}
+                  onClick={() => setConfirmBatch(false)}
+                  className="flex-1 h-8 rounded-(--r-sm) bg-s3 text-[12px] text-on pressable"
+                >
+                  {tr("取消")}
+                </Button>
+                <Button
+                  variant="danger"
+                  disabled={!!actionId}
+                  aria-busy={actionId === "rm:batch"}
+                  onClick={() => void removeSelected()}
+                  className="flex-1 h-8 rounded-(--r-sm) text-[12px] font-semibold pressable disabled:opacity-50"
+                >
+                  {actionId === "rm:batch" ? tr("正在移除…") : tr("确认移除")}
+                </Button>
+              </div>
+            </div>
+          )}
+          {managing && !confirmBatch && (state?.sources.length ?? 0) > 0 && (
             <div className="flex items-center gap-1.5 flex-wrap">
               <Button
                 disabled={!!actionId}
@@ -359,11 +393,11 @@ export default function SourceManager({ open, onClose }: { open: boolean; onClos
                 {tr("清空")}
               </Button>
               <Button
-                disabled={!!actionId || selectedIds.size === 0}
-                onClick={() => void removeSelected()}
+                disabled={!!actionId || selectedSources.length === 0}
+                onClick={() => setConfirmBatch(true)}
                 className="h-7 px-2.5 rounded-(--r-sm) bg-danger/15 text-[11.5px] font-medium text-danger pressable ml-auto disabled:opacity-45"
               >
-                {actionId === "rm:batch" ? tr("正在移除…") : tr("移除所选（{0}）", selectedIds.size)}
+                {tr("移除所选（{0}）", selectedSources.length)}
               </Button>
             </div>
           )}
