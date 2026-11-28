@@ -134,6 +134,8 @@ function TabBar({ swipe }: { swipe: TabSwipeBridge }) {
   const dragRafRef = useRef(0);
   const pendingDragRef = useRef<{ pos: number; tabs: readonly Tab[] } | null>(null);
   const settleRafRef = useRef(0);
+  const lightRafRef = useRef(0);
+  const pendingLightRef = useRef<{ x: number; y: number; on: boolean } | null>(null);
   const wasDraggingRef = useRef(false);
   const dropPosRef = useRef(index);
   const [dragState, setDragState] = useState<{ active: boolean; previewIndex: number }>({
@@ -141,10 +143,40 @@ function TabBar({ swipe }: { swipe: TabSwipeBridge }) {
     previewIndex: index,
   });
 
+  const applyNavLight = (x: string, y: string, on: boolean) => {
+    const glass = glassRef.current;
+    if (!glass) return;
+    glass.style.setProperty("--nav-lx", x);
+    glass.style.setProperty("--nav-ly", y);
+    glass.style.setProperty("--nav-glow", on ? "1" : "0");
+  };
+
+  const scheduleNavLight = (clientX: number, clientY: number, on: boolean) => {
+    const glass = glassRef.current;
+    if (!glass) return;
+    const rect = glass.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
+    pendingLightRef.current = {
+      x: Math.max(0, Math.min(rect.width, clientX - rect.left)),
+      y: Math.max(0, Math.min(rect.height, clientY - rect.top)),
+      on,
+    };
+    if (!lightRafRef.current) {
+      lightRafRef.current = window.requestAnimationFrame(() => {
+        lightRafRef.current = 0;
+        const p = pendingLightRef.current;
+        if (!p) return;
+        pendingLightRef.current = null;
+        applyNavLight(`${p.x}px`, `${p.y}px`, p.on);
+      });
+    }
+  };
+
   useEffect(() => () => {
     window.clearTimeout(suppressTimerRef.current);
     if (dragRafRef.current) window.cancelAnimationFrame(dragRafRef.current);
     if (settleRafRef.current) window.cancelAnimationFrame(settleRafRef.current);
+    if (lightRafRef.current) window.cancelAnimationFrame(lightRafRef.current);
   }, []);
 
   useLayoutEffect(() => {
@@ -169,7 +201,8 @@ function TabBar({ swipe }: { swipe: TabSwipeBridge }) {
     }
     dropPosRef.current = index;
     drop.style.transform = targetTransform;
-  }, [dragState.active, index]);
+    applyNavLight(`${((index + 0.5) / Math.max(1, items.length)) * 100}%`, "45%", false);
+  }, [dragState.active, index, items.length]);
 
   const flushDragFrame = () => {
     dragRafRef.current = 0;
@@ -189,6 +222,11 @@ function TabBar({ swipe }: { swipe: TabSwipeBridge }) {
     if (!e.isPrimary || (e.pointerType === "mouse" && e.button !== 0)) return;
     const rect = glassRef.current?.getBoundingClientRect();
     if (!rect || rect.width <= 0) return;
+    applyNavLight(
+      `${Math.max(0, Math.min(rect.width, e.clientX - rect.left))}px`,
+      `${Math.max(0, Math.min(rect.height, e.clientY - rect.top))}px`,
+      true,
+    );
     dragRef.current = {
       pointerId: e.pointerId,
       startX: e.clientX,
@@ -206,6 +244,9 @@ function TabBar({ swipe }: { swipe: TabSwipeBridge }) {
 
   const onPointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
     const drag = dragRef.current;
+    if (e.pointerType === "mouse" || (drag && drag.pointerId === e.pointerId)) {
+      scheduleNavLight(e.clientX, e.clientY, true);
+    }
     if (!drag || drag.pointerId !== e.pointerId) return;
     const dx = e.clientX - drag.startX;
     const dy = e.clientY - drag.startY;
@@ -280,6 +321,7 @@ function TabBar({ swipe }: { swipe: TabSwipeBridge }) {
       swipe.endDrag(fromPos, target, tabKeys);
       if (!cancelled && target !== drag.startIndex) setTab(items[target].key);
     }
+    glassRef.current?.style.setProperty("--nav-glow", "0");
     setDragState({ active: false, previewIndex: index });
   };
 
@@ -299,7 +341,10 @@ function TabBar({ swipe }: { swipe: TabSwipeBridge }) {
         onPointerMove={onPointerMove}
         onPointerUp={(e) => finishDrag(e, false)}
         onPointerCancel={(e) => finishDrag(e, true)}
+        onPointerLeave={() => { if (!dragRef.current) glassRef.current?.style.setProperty("--nav-glow", "0"); }}
         onClickCapture={onClickCapture}>
+      <span className="ios-nav-point-light" aria-hidden="true" />
+      <span className="ios-nav-rim-light" aria-hidden="true" />
       <div ref={dropRef} className={`hg-drop${dragState.active ? " is-dragging" : ""}`} aria-hidden="true"><LiquidIndicator /></div>
       <div className="ios-mobile-nav-items">
         {items.map(({ key, label, Icon, Active }, i) => {
