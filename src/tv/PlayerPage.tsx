@@ -66,6 +66,7 @@ export default function PlayerPage({ content, sourceKey, part: initialPart, resu
   const endedSession = useRef("");
   const restoredSession = useRef("");
   const outroSkippedSession = useRef("");
+  const pendingNotice = useRef("");
   const pendingRestore = useRef(finiteSeconds(resumeSeconds));
   const clock = useRef<Clock>({ key, content, part: initialPart, seconds: finiteSeconds(resumeSeconds), duration: 0, ready: false });
   const lastSaved = useRef(0);
@@ -111,7 +112,7 @@ export default function PlayerPage({ content, sourceKey, part: initialPart, resu
     };
     const pagehide = () => persistRef.current();
     const sourceChanged = () => {
-      cancelPreheat(); persistRef.current(); transportEpoch.current++; setPrepared(null); setDenied(null);
+      cancelPreheat(); persistRef.current(); transportEpoch.current++; pendingNotice.current = ""; setPrepared(null); setDenied(null);
       setFallbackNotice(""); setPlaying(false); setWaiting(true); setModal(null); setSeek(null); setControls(true);
     };
     document.addEventListener("visibilitychange", visibility);
@@ -133,7 +134,7 @@ export default function PlayerPage({ content, sourceKey, part: initialPart, resu
     let alive = true;
     const transport = transportEpoch.current;
     const current = () => alive && mounted.current && latest.current.request === request && transport === transportEpoch.current;
-    setError(""); setFallbackNotice(""); setWaiting(true); setPlaying(false); setSeek(null); setModal(null); setControls(true);
+    setError(""); setFallbackNotice(pendingNotice.current); pendingNotice.current = ""; setWaiting(true); setPlaying(false); setSeek(null); setModal(null); setControls(true);
     persistRef.current();
     if (clock.current.key !== key || clock.current.part !== part) {
       clock.current = { key, content, part, seconds: 0, duration: 0, ready: false };
@@ -254,7 +255,7 @@ export default function PlayerPage({ content, sourceKey, part: initialPart, resu
     outroSkippedSession.current = "";
     setTime(0); setAttempt(value => value + 1); setModal(null); interact();
   };
-  const onEnded = (token: string) => {
+  const onEnded = (token: string, notice = "") => {
     if (!currentSession(token) || endedSession.current === token || document.hidden || !wanted.current) return;
     const element = video.current?.el();
     // VideoSurface also emits near-end from timeupdate. A paused seek/background
@@ -265,7 +266,7 @@ export default function PlayerPage({ content, sourceKey, part: initialPart, resu
     persist(); setPlaying(false); setWaiting(false); interact();
     const index = loaded!.parts.findIndex(candidate => candidate.id === part);
     const next = loaded!.parts[index + 1];
-    if (next && autoNext) changePart(next.id);
+    if (next && autoNext) { pendingNotice.current = notice; changePart(next.id); }
     else { wanted.current = false; setModal("ended"); }
   };
   const restore = (token: string, value: number) => {
@@ -298,7 +299,7 @@ export default function PlayerPage({ content, sourceKey, part: initialPart, resu
   };
   const changeQuality = (next: Quality) => {
     if (next === quality || next === "hevc" && !loaded?.streams.hevc) return;
-    persist(); pendingRestore.current = clock.current.seconds; restoredSession.current = "";
+    persist(); pendingRestore.current = clock.current.seconds; restoredSession.current = ""; pendingNotice.current = "";
     setError(""); setFallbackNotice(""); setPlaying(false); setWaiting(true); setQuality(next);
     persistPreferences({ rate, quality: next });
   };
@@ -364,8 +365,7 @@ export default function PlayerPage({ content, sourceKey, part: initialPart, resu
           && outroSkippedSession.current !== session && endedSession.current !== session
         ) {
           outroSkippedSession.current = session;
-          setFallbackNotice("已跳过片尾，即将播放下一集");
-          onEnded(session);
+          onEnded(session, "已跳过片尾，即将播放下一集");
           return;
         }
         if (playing && !waiting && !error && !blocked && foreground && content.kind === "video" && loaded && shouldPreheatNext(value, clock.current.duration)) {
