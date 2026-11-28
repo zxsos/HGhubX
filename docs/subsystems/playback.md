@@ -53,7 +53,7 @@
    `http://127.0.0.1:17650`，由 GStreamer 直接取 HLS。
 3. hls.js 使用 `autoStartLoad: false`，在 `MANIFEST_PARSED` 后按
    `startPosition`/`resume` 调 `startLoad`。`FRAG_BUFFERED` 清空恢复计数和错误；
-   `ERROR` 只把 fatal network/media 交给 `createHlsRecovery`。
+   `ERROR` 只把 fatal network/media 交给 `createHlsRecovery`；上游媒体返回终止型 `403`/`404`/`410`/`451` 时，本地代理（`media/mod.rs`）原样透传状态码，`hls.js` 与 `createHlsRecovery` 均立即快速失败并通过 `hlsErrorMessage` 给出明确的地区/防盗链或失效提示（不再空转重试）。
 4. `usePlaybackActivity` 在页面失活或应用切至后台（`document.hidden`）时同步暂停并 `stopLoad()`
    （处于画中画 `pictureInPictureElement` 时保持播放，退出画中画且页面仍失活/后台时再暂停），
    并驱动 `hlsRecovery.activityChanged()` 取消后台重试计时；后台挂起不读取已被系统原生暂停的

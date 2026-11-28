@@ -1,10 +1,9 @@
 import { useContext, useEffect, useLayoutEffect, useImperativeHandle, useRef, forwardRef, useState, type MutableRefObject } from "react";
 import Hls from "hls.js";
 import { isMobile, platform } from "../../shared/api/api";
-import { formatErrorWithCode } from "../../shared/api/errorFormat";
 import { PageCoveredContext } from "../../shared/model/pageVisibility";
 import { connectNativeMedia, playbackSource } from "./mediaTransport";
-import { mediaErrorMessage } from "./mediaErrors";
+import { hlsErrorMessage, mediaErrorMessage } from "./mediaErrors";
 import { mediaHost, mediaResource, observeHls, registerHlsVersion, usePlayerDiagnostics } from "../../shared/diagnostics/playbackDiagnostics";
 import { usePlaybackActivity } from "./usePlaybackActivity";
 import { useProxyPlaybackRecovery } from "./useProxyPlaybackRecovery";
@@ -292,11 +291,7 @@ const VideoSurface = forwardRef<VideoHandle, Props>(function VideoSurface(
         onFatal: data => {
           const detail = `${data.type}/${data.details}/${data.response?.code ?? ""}/${String(data.reason ?? "").slice(0, 80)}`;
           (window as unknown as { __hlsErr?: string }).__hlsErr = detail;
-          const readable = data.type === Hls.ErrorTypes.NETWORK_ERROR
-            ? formatErrorWithCode(tr("视频网络加载失败，请检查线路或重试"), "MEDIA_NET")
-            : data.type === Hls.ErrorTypes.MEDIA_ERROR
-              ? formatErrorWithCode(tr("视频解码异常，请重试"), "MEDIA_DECODE")
-              : formatErrorWithCode(tr("视频暂时无法播放，请重试"), "MEDIA_ERR");
+          const readable = hlsErrorMessage(data.type, data.response?.code);
           onError?.(readable);
           if (data.type !== Hls.ErrorTypes.NETWORK_ERROR && data.type !== Hls.ErrorTypes.MEDIA_ERROR) {
             hls.destroy(); hlsRef.current = null;
