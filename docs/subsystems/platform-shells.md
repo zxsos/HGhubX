@@ -167,7 +167,7 @@ loopback、Windows 的自定义标题栏与注册表代理判断、Android 的 W
 ### HarmonyOS（自签版）
 
 1. Rust 侧通过 `#[cfg(all(target_os = "linux", not(target_env = "ohos")))]` 排除桌面 WebKitGTK、GStreamer loopback、GNOME `gsettings` 代理与桌面深链/单实例依赖，通过 `#[cfg_attr(target_env = "ohos", tauri::ohos::entry_point)]` 注册入口并在 `api/update.rs` 的 `open_url` 中 `await` 异步 opener；媒体 `LOCAL_ORIGIN` 与前端 `LOCAL` 对齐为 `hg://localhost`，更新检查 `asset_rank` 匹配 `.hap`。在 `src-tauri/src/lib.rs` 中注册 `OpenHarmonyApp::on_back_press_intercept`，并经 `set_back_intercept` 命令按前端导航/弹层状态动态开关拦截：有弹窗、全屏、子页或非首页时拦截并向 WebView 派发 `hg:ohos-back`，位于首页根层级且无覆层时返回 `false` 交回鸿蒙系统退后台。
-2. 前端 `src/shared/api/api.ts` 按 `OpenHarmony|HarmonyOS|ArkWeb` 识别 `isHarmony` / `platform = "harmony"`，手持设备共用移动端触屏界面，且首启协议页隐藏退出按钮（与 iOS 一致）；`src/shared/lib/back.ts` 统一订阅 Android `app:back-button` 与 HarmonyOS `hg:ohos-back`，同时移动壳所有非 `feed` 子页与无源设置页经 `useEdgeSwipeBack` 支持左缘右滑跟手返回。
+2. 前端 `src/shared/api/api.ts` 按 `OpenHarmony|HarmonyOS|ArkWeb` 识别 `isHarmony` / `platform = "harmony"`，手持设备共用移动端触屏界面，且首启协议页隐藏退出按钮（与 iOS 一致）；`src/shared/lib/back.ts` 统一订阅 Android `app:back-button` 与 HarmonyOS `hg:ohos-back`，同时移动壳所有非 `feed` 子页与无源设置页经 `useEdgeSwipeBack` 支持左缘右滑跟手返回，拖动锁定时临时为紧邻下层的 `.ios-layer-hidden` 节点附加 `data-edge-reveal` 露出上一页预览，松手提交或回弹结束后立即清除（保持被覆盖层 `pointer-events: none` 与 `inert` 不变）。
 3. 主线 `src-tauri/Cargo.toml` 与 `Cargo.lock` 保持官方 crates.io Tauri 2 稳定依赖；仅在 [`.github/workflows/release.yml`](../../.github/workflows/release.yml) 的 `harmonyos` job 中由 [`scripts/patch-ohos-cargo.mjs`](../../scripts/patch-ohos-cargo.mjs) 临时切换 OpenHarmony Tauri 分支与锁定 `ohos-*` 绑定 crate，构建未签名 `HGhubX_<ver>_ohos_arm64_unsigned.hap` 随标准版 Release 一并发布（由用户自签侧载安装）。
 
 ### 共享页面壳几何

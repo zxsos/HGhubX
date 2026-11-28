@@ -442,6 +442,7 @@ body { background:var(--motion-paper); }
 .ios-tab-active { animation:motion-tab-in .16s var(--motion-glide) both; }
 .ios-tab-pane-hidden,
 .ios-layer-hidden { visibility:hidden; content-visibility:hidden; contain:strict; pointer-events:none; z-index:0; }
+.ios-layer-hidden[data-edge-reveal] { visibility:visible; content-visibility:visible; contain:layout paint; }
 .ios-tab-pane-swiping { animation:none!important; will-change:transform; contain:layout style paint; }
 .ios-tab-pane-settled,
 [data-tab-pane][data-visited="true"].ios-tab-active { animation:none!important; }

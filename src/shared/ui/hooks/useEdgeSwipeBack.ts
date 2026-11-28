@@ -50,6 +50,7 @@ export function useEdgeSwipeBack(
     let velocity = 0;
     let width = 1;
     let resetTimer = 0;
+    let revealed: HTMLElement | null = null;
 
     const clearStyle = () => {
       window.clearTimeout(resetTimer);
@@ -57,6 +58,10 @@ export function useEdgeSwipeBack(
       el.style.transition = "";
       el.style.transform = "";
       el.style.boxShadow = "";
+      if (revealed) {
+        revealed.removeAttribute("data-edge-reveal");
+        revealed = null;
+      }
     };
 
     const detachTracking = () => {
@@ -100,6 +105,11 @@ export function useEdgeSwipeBack(
           return;
         }
         locked = true;
+        const prev = el.previousElementSibling;
+        if (prev instanceof HTMLElement && prev.classList.contains("ios-layer-hidden")) {
+          revealed = prev;
+          revealed.setAttribute("data-edge-reveal", "");
+        }
       }
       if (e.cancelable) e.preventDefault();
       const now = e.timeStamp || performance.now();
