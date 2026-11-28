@@ -519,7 +519,7 @@ export default function Settings({ onBack, initialSection }: { onBack: () => voi
               <span className="ios-setting-icon"><IShare size={16} /></span>
               <div className="flex-1 min-w-0">
                 <div className="text-[14px] text-on">{sharingLog ? tr("正在导出…") : tr("分享全量诊断日志")}</div>
-                <div className="text-[12px] text-mut">{isMobile ? tr("导出完整日志（含轮转与错误记录），直接调起系统分享") : tr("导出完整日志到下载目录并打开位置，不受剪贴板长度限制")}</div>
+                <div className="text-[12px] text-mut">{(isMobile || platform === "harmony") ? tr("导出完整日志（含轮转与错误记录），直接调起系统分享") : tr("导出完整日志到下载目录并打开位置，不受剪贴板长度限制")}</div>
               </div>
               <IChevR size={15} className="text-mut" />
             </Button>

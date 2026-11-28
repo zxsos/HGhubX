@@ -172,7 +172,7 @@ export async function sharePlaybackLog(opts: { title: string; isMobile: boolean;
   if (!res.content) throw new Error("尚无诊断日志，请开启后复现问题");
   const base = { filename: res.filename, path: res.path, bytes: res.bytes, lineCount: res.lineCount };
 
-  if (!opts.isMobile) {
+  if (!opts.isMobile && !isHarmony) {
     if (res.nativeOpened) return { ...base, method: "reveal" };
     const webShare = await tryWebShareFile(res.filename, res.content, opts.title);
     if (webShare === "shared") return { ...base, method: "share" };
