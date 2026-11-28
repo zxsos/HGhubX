@@ -100,7 +100,7 @@ function DeepLinkImportPrompt({ onImported }: { onImported: () => void }) {
             <SubscriptionPicker
               preview={subscription}
               busy={busy}
-              onCancel={close}
+              onCancel={() => { setSubscription(null); setError(""); }}
               onConfirm={confirmSubscription}
             />
           </>
