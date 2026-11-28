@@ -37,7 +37,7 @@ pub fn bind(app_data_dir: &Path) {
 
 #[allow(unused_imports)]
 pub(crate) use commands::{
-    active_default_origin, active_image_decrypt, active_origins, invoke_active,
+    active_default_origin, active_image_decrypt, active_origins, active_source_id, invoke_active,
 };
 
 #[cfg(test)]

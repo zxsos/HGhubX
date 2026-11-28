@@ -617,17 +617,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     };
   }, [sourceState, activeSource]);
 
-  const prevSourceIdRef = useRef<string | null>(null);
+  const prevSourceIdRef = useRef<string | null | undefined>(undefined);
+  const readBootRef = useRef<() => void>(() => {});
   useLayoutEffect(() => {
     accountRef.current.setGuestSource(activeSource?.id ?? null);
   }, [activeSource?.id]);
   useEffect(() => {
+    if (sourceState === null) return;
     const nextId = activeSource?.id ?? null;
-    if (prevSourceIdRef.current !== null && prevSourceIdRef.current !== nextId) {
+    if (prevSourceIdRef.current !== undefined && prevSourceIdRef.current !== nextId) {
       setStack([]);
+      // Run app_boot AFTER useLayoutEffect has updated guestSourceId & generation,
+      // so setGuestSource cannot invalidate restoreSession when switching back to a logged-in source.
+      readBootRef.current();
     }
     prevSourceIdRef.current = nextId;
-  }, [activeSource?.id]);
+  }, [sourceState, activeSource?.id]);
 
   useEffect(() => {
     const media = matchMedia("(prefers-color-scheme: dark)");
@@ -679,18 +684,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         setCliRelaxed(!!r.cli_relaxed);
       }).catch(() => { /* 离线也能用 */ });
     };
+    readBootRef.current = readBoot;
     readBoot();
     // 切线/代理变化后由 boot 决定会话：可信线路间后端保留登录（rebase），
     // 不再先 setUser(null) 闪退；不可信/自定义切线后端已清会话，boot 返回 null 正常登出。
+    // 切源后的 boot 由上方 activeSource?.id effect 在 setGuestSource 完成后触发，避免 generation 竞态丢会话。
     const changed = () => { readBoot(); };
     window.addEventListener("hg:line-changed", changed);
     window.addEventListener("hg:proxy-changed", changed);
-    window.addEventListener("hg:source-changed", changed);
     return () => {
       active = false;
+      readBootRef.current = () => {};
       window.removeEventListener("hg:line-changed", changed);
       window.removeEventListener("hg:proxy-changed", changed);
-      window.removeEventListener("hg:source-changed", changed);
     };
   }, []);
 
@@ -745,9 +751,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const bump = () => setLineEpoch((n) => n + 1);
     window.addEventListener("hg:line-changed", bump);
     window.addEventListener("hg:proxy-changed", bump);
+    window.addEventListener("hg:source-changed", bump);
     return () => {
       window.removeEventListener("hg:line-changed", bump);
       window.removeEventListener("hg:proxy-changed", bump);
+      window.removeEventListener("hg:source-changed", bump);
     };
   }, []);
 

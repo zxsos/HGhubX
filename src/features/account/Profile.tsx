@@ -736,7 +736,7 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
           </Surface>
         )}
 
-        {user && accountSync.error && <div role="alert" className="mt-3 shrink-0 rounded-(--r-sm) bg-s3 px-3.5 py-3 text-[13px] flex flex-wrap items-center justify-between gap-2">
+        {user && capabilities.account && accountSync.error && <div role="alert" className="mt-3 shrink-0 rounded-(--r-sm) bg-s3 px-3.5 py-3 text-[13px] flex flex-wrap items-center justify-between gap-2">
           <p className={`${accountSync.authError ? "text-on" : "text-danger"} break-words flex-1 min-w-[200px]`}>{accountSync.error}</p>
           <div className="flex items-center gap-2 shrink-0">
             {accountSync.authError && (

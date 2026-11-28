@@ -519,6 +519,13 @@ pub(crate) fn active_default_origin() -> String {
     active_origins().into_iter().next().unwrap_or_default()
 }
 
+pub(crate) fn active_source_id() -> String {
+    store_arc()
+        .active_package()
+        .map(|p| p.manifest.id)
+        .unwrap_or_default()
+}
+
 pub(crate) fn active_image_decrypt() -> Option<([u8; 16], [u8; 16])> {
     let pkg = store_arc().active_package()?;
     let cfg = pkg.manifest.media?.image_decrypt?;
