@@ -59,6 +59,12 @@ export function useEdgeSwipeBack(
       el.style.boxShadow = "";
     };
 
+    const detachTracking = () => {
+      el.removeEventListener("touchmove", onMove);
+      el.removeEventListener("touchend", onEnd);
+      el.removeEventListener("touchcancel", onEnd);
+    };
+
     const onStart = (e: TouchEvent) => {
       if (e.touches.length !== 1 || hasActiveBackConsumer()) return;
       const touch = e.touches[0];
@@ -74,6 +80,11 @@ export function useEdgeSwipeBack(
       lastT = e.timeStamp || performance.now();
       velocity = 0;
       width = rect.width;
+      // Only attach non-passive touchmove while tracking a genuine left-edge swipe
+      // so normal vertical scrolling across the page stays 100% compositor-driven.
+      el.addEventListener("touchmove", onMove, { passive: false });
+      el.addEventListener("touchend", onEnd, { passive: true });
+      el.addEventListener("touchcancel", onEnd, { passive: true });
     };
 
     const onMove = (e: TouchEvent) => {
@@ -85,6 +96,7 @@ export function useEdgeSwipeBack(
         if (Math.hypot(dx, dy) < LOCK_DISTANCE_PX) return;
         if (dx <= 0 || dx < Math.abs(dy) * 1.35) {
           active = false;
+          detachTracking();
           return;
         }
         locked = true;
@@ -105,6 +117,7 @@ export function useEdgeSwipeBack(
     };
 
     const onEnd = (e: TouchEvent) => {
+      detachTracking();
       if (!active) return;
       const wasLocked = locked;
       active = false;
@@ -129,15 +142,10 @@ export function useEdgeSwipeBack(
     };
 
     el.addEventListener("touchstart", onStart, { passive: true });
-    el.addEventListener("touchmove", onMove, { passive: false });
-    el.addEventListener("touchend", onEnd, { passive: true });
-    el.addEventListener("touchcancel", onEnd, { passive: true });
     return () => {
+      detachTracking();
       clearStyle();
       el.removeEventListener("touchstart", onStart);
-      el.removeEventListener("touchmove", onMove);
-      el.removeEventListener("touchend", onEnd);
-      el.removeEventListener("touchcancel", onEnd);
     };
   }, [ref, enabled]);
 }
