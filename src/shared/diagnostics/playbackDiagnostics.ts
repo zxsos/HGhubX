@@ -226,8 +226,11 @@ export async function sharePlaybackLog(opts: { title: string; isMobile: boolean;
   if (webShare === "cancelled") return { ...base, method: "cancelled" };
 
   if (androidShareErr) throw new Error(androidShareErr);
-  if (triggerBlobDownload(res.filename, res.content)) return { ...base, method: res.path ? "saved" : "download" };
-  return { ...base, method: "saved" };
+  // 移动端导出文件位于应用私有缓存目录，WebView 中 <a download> 不会真正保存文件；
+  // 原生分享与 Web Share 均未成功时直接报错，不再误报“已保存”并暴露沙盒路径。
+  if (res.path) throw new Error(res.nativeError || "");
+  if (triggerBlobDownload(res.filename, res.content)) return { ...base, method: "download" };
+  throw new Error("");
 }
 
 function isLocalMediaWrapper(url: URL) {

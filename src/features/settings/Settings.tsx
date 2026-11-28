@@ -508,7 +508,7 @@ export default function Settings({ onBack, initialSection }: { onBack: () => voi
                 const size = formatLogSize(res.bytes);
                 if (res.method === "share") toast(tr("已调起分享（{0}）", size), "ok");
                 else if (res.method === "reveal") toast(tr("全量日志已保存并打开位置（{0}）", size), "ok");
-                else if (res.path) toast(tr("全量日志已保存（{0}）：{1}", size, res.path), "ok");
+                else if (res.path && !isMobile) toast(tr("全量日志已保存（{0}）：{1}", size, res.path), "ok");
                 else toast(tr("全量日志已导出（{0}）", size), "ok");
               } catch (e) {
                 toast((e as Error).message || tr("分享日志失败"), "info");
