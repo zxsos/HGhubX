@@ -1000,6 +1000,8 @@ const en: Record<string, string> = {
   "测速中…": "Testing…",
   "不可用": "Unavailable",
   "暂无可用的已测站点": "No working sites tested yet",
+  "{0} 秒后跳过片尾": "Skipping outro in {0}s",
+  "立即下一集": "Next now",
 };
 
 export default en;
