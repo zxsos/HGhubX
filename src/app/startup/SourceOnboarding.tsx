@@ -217,7 +217,7 @@ export default function SourceOnboarding({
           )}
         </div>
       </div>
-      {isMobile && <TvQrSyncModal open={scanOpen} initialView="scan" onClose={() => setScanOpen(false)} onSuccess={notify} />}
+      {isMobile && <TvQrSyncModal open={scanOpen} initialView="scan" onClose={() => setScanOpen(false)} onSuccess={notify} onSubscription={(p) => { setError(""); setSubscription(p); }} />}
     </div>
   );
 }

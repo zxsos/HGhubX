@@ -468,7 +468,7 @@ export default function SourceManager({ open, onClose }: { open: boolean; onClos
       {isMobile
         ? <Sheet open={open && !scanOpen} onClose={onClose} label={tr("视频源")}>{body}</Sheet>
         : <Modal open={open && !scanOpen} onClose={onClose} label={tr("视频源")} width={520}>{body}</Modal>}
-      {isMobile && <TvQrSyncModal open={scanOpen} initialView="scan" onClose={() => setScanOpen(false)} onSuccess={() => { void load(); }} />}
+      {isMobile && <TvQrSyncModal open={scanOpen} initialView="scan" onClose={() => setScanOpen(false)} onSuccess={() => { void load(); }} onSubscription={(p) => { setError(""); setSubscription(p); }} />}
     </>
   );
 }

@@ -955,6 +955,7 @@ const en: Record<string, string> = {
   "详细日志已开启": "Detailed logs on",
   "仅基础日志": "Basic logs only",
   "订阅清单": "Subscription List",
+  "这是订阅清单，请在「视频源」中导入": "This is a subscription list. Import it from Sources.",
   "发现 {0} 个可用站点": "{0} available sources found",
   "已跳过 {0} 个非 HTTPS 站点": "{0} non-HTTPS skipped",
   "已忽略 {0} 个不兼容条目": "{0} incompatible ignored",
