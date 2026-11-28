@@ -140,7 +140,7 @@ export default function SettingsPage(){
           </div>
         </div>
         <div className="tv-pref-card">
-          <div className="tv-pref-head"><h3>跳过片尾</h3><span className="tv-pref-hint">距结尾自动切下一集（无下集时不中断）</span><span className="tv-pref-value">{playback.skipOutroSecs>0?`剩 ${playback.skipOutroSecs}秒切下集`:"关闭"}</span></div>
+          <div className="tv-pref-head"><h3>跳过片尾</h3><span className="tv-pref-hint">{playback.autoplayNext?"距结尾自动切下一集（无下集时不中断）":"需先开启上方“作品内自动续集”才会生效"}</span><span className="tv-pref-value">{playback.skipOutroSecs>0?(playback.autoplayNext?`剩 ${playback.skipOutroSecs}秒切下集`:`${playback.skipOutroSecs}秒 · 需开启自动续集`):"关闭"}</span></div>
           <div className="tv-options" data-tv-region="skip-outro-preset">
             {([0,30,60,90,120] as const).map(secs=><button key={secs} role="radio" aria-checked={playback.skipOutroSecs===secs} data-tv-focus={`skip-outro-${secs}`} onClick={()=>{try{setPlaybackPreferences({skipOutroSecs:secs});}catch(e){setMessage(String(e));}}}>{secs===0?"关":`${secs}秒`}</button>)}
             <span className="tv-pref-step-divider" aria-hidden="true" />
