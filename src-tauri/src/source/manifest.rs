@@ -111,18 +111,27 @@ pub struct SourceMediaConfig {
     pub image_decrypt: Option<ImageDecryptConfig>,
 }
 
+fn is_false(value: &bool) -> bool {
+    !*value
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(untagged)]
 pub enum CatalogSort {
     Key(String),
-    Named { key: String, name: String },
+    Named {
+        key: String,
+        name: String,
+        #[serde(default, skip_serializing_if = "is_false")]
+        default: bool,
+    },
 }
 
 impl CatalogSort {
     fn is_valid(&self) -> bool {
         match self {
             Self::Key(key) => !key.trim().is_empty() && key.chars().count() <= 32,
-            Self::Named { key, name } => {
+            Self::Named { key, name, .. } => {
                 let key = key.trim();
                 let name = name.trim();
                 !key.is_empty()
@@ -132,6 +141,14 @@ impl CatalogSort {
             }
         }
     }
+
+    fn is_default(&self) -> bool {
+        matches!(self, Self::Named { default: true, .. })
+    }
+}
+
+fn has_multiple_default_sorts(sorts: &[CatalogSort]) -> bool {
+    sorts.iter().filter(|sort| sort.is_default()).count() > 1
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -387,7 +404,10 @@ pub fn validate_package(pkg: &SourcePackage) -> Result<(), String> {
                     return Err("catalog.shortcuts.icon 无效".into());
                 }
             }
-            if sc.sorts.len() > 16 || sc.sorts.iter().any(|sort| !sort.is_valid()) {
+            if sc.sorts.len() > 16
+                || sc.sorts.iter().any(|sort| !sort.is_valid())
+                || has_multiple_default_sorts(&sc.sorts)
+            {
                 return Err("catalog.shortcuts.sorts 条目无效".into());
             }
         }
@@ -412,7 +432,10 @@ pub fn validate_package(pkg: &SourcePackage) -> Result<(), String> {
                     return Err("catalog.channels.icon 无效".into());
                 }
             }
-            if ch.sorts.len() > 16 || ch.sorts.iter().any(|sort| !sort.is_valid()) {
+            if ch.sorts.len() > 16
+                || ch.sorts.iter().any(|sort| !sort.is_valid())
+                || has_multiple_default_sorts(&ch.sorts)
+            {
                 return Err("catalog.channels.sorts 条目无效".into());
             }
         }
@@ -462,7 +485,7 @@ mod catalog_sort_tests {
             "label": "Featured",
             "sorts": [
                 "latest",
-                { "key": "hot_window", "name": "当前热播" }
+                { "key": "hot_window", "name": "当前热播", "default": true }
             ]
         }))
         .expect("catalog channel should accept both sort shapes");
@@ -472,7 +495,8 @@ mod catalog_sort_tests {
             channel.sorts[1],
             CatalogSort::Named {
                 key: "hot_window".into(),
-                name: "当前热播".into()
+                name: "当前热播".into(),
+                default: true
             }
         );
     }

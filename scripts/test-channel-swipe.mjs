@@ -36,7 +36,8 @@ try {
       icon: "clock",
       sorts: [
         { key: "latest", name: "更新更新" },
-        { key: "hot_window", name: "当前热播" },
+        { key: "hot_window", name: "当前热播", default: true },
+        { key: "random", name: "精选推荐" },
       ],
     };
     const calls = [];
@@ -116,15 +117,15 @@ try {
   const namedTabs = page.locator(".ios-subpage-header .ios-filter-pill");
   await namedTabs.first().waitFor();
   const namedLabels = (await namedTabs.allTextContents()).filter(Boolean);
-  assert.deepEqual(namedLabels, ["更新更新", "当前热播"], "tab labels and order match source sorts");
-  assert.equal(await activeTab(), "更新更新", "first source sort is selected by default");
+  assert.deepEqual(namedLabels, ["更新更新", "当前热播", "精选推荐"], "tab labels and order match source sorts");
+  assert.equal(await activeTab(), "当前热播", "sort marked default:true is selected instead of the first tab");
   const firstCalls = await page.evaluate(() => window.__sortCalls);
-  assert.ok(firstCalls.includes("latest"), "default tab sends the source key, not its label");
-  await page.getByRole("button", { name: "当前热播", exact: true }).click();
-  await page.waitForFunction(() => document.querySelector(".ios-subpage-header [aria-pressed=\"true\"]")?.textContent === "当前热播");
+  assert.ok(firstCalls.includes("hot_window"), "default tab sends the source key, not its label");
+  await page.getByRole("button", { name: "精选推荐", exact: true }).click();
+  await page.waitForFunction(() => document.querySelector(".ios-subpage-header [aria-pressed=\"true\"]")?.textContent === "精选推荐");
   const nextCalls = await page.evaluate(() => window.__sortCalls);
-  assert.ok(nextCalls.includes("hot_window"), "named tab sends its key");
-  report.checks.push("named sort labels/order come from the source; requests keep source keys");
+  assert.ok(nextCalls.includes("random"), "named tab sends its key");
+  report.checks.push("named sort labels/order come from the source; default:true selects the middle tab; requests keep source keys");
 
   await page.screenshot({ path: fileURLToPath(new URL("channel-swipe.png", output)), animations: "disabled" });
   assert.deepEqual(report.errors, []);

@@ -1,7 +1,7 @@
 import { Button } from "../../shared/ui/ios/controls";
 import { Loader } from "../../shared/ui/ios/effects";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { api, catalogSortKey, fmt, type CatalogSort } from "../../shared/api/api";
+import { api, catalogSortDefaultKey, fmt, type CatalogSort } from "../../shared/api/api";
 import type { Post, VideoCard } from "../../shared/api/types";
 import { useStore } from "../../shared/model/store";
 import { MediaCard, Masonry, RowCard } from "../../shared/ui/cards";
@@ -112,7 +112,7 @@ type ResolvedChannel = {
   Icon: typeof IFilm;
 };
 
-type SortTab = { key: string; name: string };
+type SortTab = { key: string; name: string; isDefault: boolean };
 
 /* ================= 分类总览 ================= */
 export default function Category({ wide, active }: { wide: boolean; active: boolean }) {
@@ -171,7 +171,7 @@ export default function Category({ wide, active }: { wide: boolean; active: bool
         if (requestEpoch !== lineEpochRef.current) { retryKeys.current.add(key); return; }
         if (mounted.current) setPostRows(m => ({ ...m, [key]: result?.items || [] }));
       } else if (ch?.kind === "post") {
-        const result = await api.postCategory(ch.id, 1, 8, catalogSortKey(ch.sorts?.[0]) || undefined);
+        const result = await api.postCategory(ch.id, 1, 8, catalogSortDefaultKey(ch.sorts) || undefined);
         if (requestEpoch !== lineEpochRef.current) { retryKeys.current.add(key); return; }
         if (mounted.current) setPostRows(m => ({ ...m, [key]: result?.items || [] }));
       } else if (ch?.kind === "feed" || key === "__feed__") {
@@ -179,7 +179,7 @@ export default function Category({ wide, active }: { wide: boolean; active: bool
         if (requestEpoch !== lineEpochRef.current) { retryKeys.current.add(key); return; }
         if (mounted.current) setRows(m => ({ ...m, [key]: result?.items || [] }));
       } else {
-        const result = await api.category(key, 1, 8, catalogSortKey(ch?.sorts?.[0]) || undefined);
+        const result = await api.category(key, 1, 8, catalogSortDefaultKey(ch?.sorts) || undefined);
         if (requestEpoch !== lineEpochRef.current) { retryKeys.current.add(key); return; }
         if (mounted.current) setRows(m => ({ ...m, [key]: result?.items || [] }));
       }
@@ -340,9 +340,9 @@ function sortLabel(sort: string): string {
 
 /** Named source sorts keep their API key; legacy string sorts still use the shell label. */
 function resolveSortTab(sort: CatalogSort): SortTab {
-  if (typeof sort === "string") return { key: sort, name: sortLabel(sort) };
+  if (typeof sort === "string") return { key: sort, name: sortLabel(sort), isDefault: false };
   const key = sort.key.trim();
-  return { key, name: sort.name?.trim() || sortLabel(key) };
+  return { key, name: sort.name?.trim() || sortLabel(key), isDefault: sort.default === true };
 }
 
 const METRIC_PAGE_SIZE = 100;
@@ -371,7 +371,7 @@ export function ChannelPage({ cate, name, onBack, wide, sorts }: {
   );
   const isFeedChannel = cate === "__feed__";
   const hasServerSorts = !isFeedChannel && channelSorts.length > 0;
-  const defaultSort = channelSorts[0]?.key ?? "";
+  const defaultSort = channelSorts.find((tab) => tab.isDefault)?.key ?? channelSorts[0]?.key ?? "";
   const [searching, setSearching] = useState(false);
   const [serverSort, setServerSort] = useState(defaultSort);
   const [metricSort, setMetricSort] = useState<VideoSortMetric>("default");
