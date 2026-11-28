@@ -12,7 +12,7 @@ import { Avatar, Empty, Modal } from "../../shared/ui/ui";
 import { MediaCard } from "../../shared/ui/cards";
 import { useContentPreferences } from "../../shared/model/contentPreferences";
 import { CollectionLink, CollectionLinks } from "../../shared/ui/CollectionLink";
-import { ICheck, IChevR, IClock, IHeart, ILogout, IRefresh, IScan, ISettings, IStar, IUser, IFilter } from "../../shared/ui/icons";
+import { ICheck, IChevR, IClock, IHeart, ILogout, IRefresh, IScan, ISettingsF, IStar, IUser, IFilter } from "../../shared/ui/icons";
 import { tr } from "../../shared/i18n";
 import { triggerHaptic } from "../../shared/lib/haptics";
 import { useTabSwipe } from "../../shared/ui/hooks/useTabSwipe";
@@ -678,7 +678,7 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
             </Button>
             <Button onClick={() => push({ kind: "settings" })} aria-label={tr("设置")}
               className="ios-icon-button">
-              <ISettings size={17} strokeWidth={1.7} />
+              <ISettingsF size={19} />
             </Button>
           </div>
         )}

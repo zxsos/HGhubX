@@ -53,6 +53,16 @@ try {
   const categoryNav = page.locator(".hg-tabbar .ios-mobile-nav-item").filter({ hasText: "分类" });
   await profileNav.click();
   await page.getByRole("button", { name: "我的收藏", exact: true }).waitFor();
+  const settingsButton = page.getByRole("button", { name: "设置", exact: true });
+  await settingsButton.waitFor();
+  const gear = settingsButton.locator("svg");
+  assert.equal(await gear.getAttribute("width"), "19");
+  assert.equal(await gear.getAttribute("fill"), "currentColor");
+  assert.equal(await gear.getAttribute("stroke"), "none");
+  assert.equal(await gear.locator("path").count(), 1);
+  assert.equal(await gear.locator("circle").count(), 0);
+  await settingsButton.screenshot({ path: fileURLToPath(new URL("profile-settings-icon.png", output)), animations: "disabled" });
+  report.checks.push("Profile settings uses the solid gear icon");
   const filterButton = page.locator("[data-favorite-filter-trigger]");
   await filterButton.waitFor();
   const menu = page.getByRole("menu", { name: "收藏筛选" });
