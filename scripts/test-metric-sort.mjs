@@ -85,6 +85,7 @@ try {
     await page.getByRole("menuitemradio", { name: "默认排序", exact: true }).click();
     await waitOrder(expected.默认排序);
     assert.equal((await page.locator("[data-video-sort-trigger]").innerText()).trim(), "");
+    assert.equal(await page.locator("[data-video-sort-trigger]").getAttribute("data-sort-icon"), "filter");
     assert.equal(await page.getByRole("menu").count(), 0);
   };
 
@@ -92,6 +93,7 @@ try {
   await page.goto(new URL("/tests/channel-swipe.html?cate=special", origin).href, { waitUntil: "networkidle" });
   await page.locator(".ios-page > .scroll-y").waitFor();
   await page.locator("[data-video-sort-trigger]").waitFor();
+  assert.equal(await page.locator("[data-video-sort-trigger]").getAttribute("data-sort-icon"), "filter");
   await waitOrder(expected.默认排序);
   await page.screenshot({ path: fileURLToPath(new URL("channel-default.png", output)), animations: "disabled" });
   await page.locator("[data-video-sort-trigger]").click();
@@ -125,6 +127,7 @@ try {
   // Tag results: the sorter sits on the "视频 N" heading row and only changes videos.
   await page.goto(new URL("/tests/tag-metric-sort.html?tag=悬疑", origin).href, { waitUntil: "networkidle" });
   await page.locator("[data-video-sort-trigger]").waitFor();
+  assert.equal(await page.locator("[data-video-sort-trigger]").getAttribute("data-sort-icon"), "filter");
   await waitOrder(expected.默认排序);
   assert.deepEqual(await page.locator(".ios-media-grid .ios-poster-ep").allInnerTexts(), ["全 24 集", "全 24 集", "全 24 集"]);
   await page.screenshot({ path: fileURLToPath(new URL("tag-default.png", output)), animations: "disabled" });

@@ -768,7 +768,7 @@ const en: Record<string, string> = {
   "平衡音量": "Balance volume",
   "自动压低突然变大的音效，让台词更稳；音乐和现场内容可能被轻微压缩": "Lowers sudden loud effects to keep dialogue steady; music and live audio may be slightly compressed",
   "观看状态": "Watch Status",
-  "正在加载全部收藏详情…": "Loading all favorite details…",
+  "正在加载收藏内容…": "Loading favorites…",
   "未看完": "Unwatched",
   "已看完": "Caught up",
   "连载中": "Ongoing",

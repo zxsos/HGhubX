@@ -29,6 +29,14 @@ try {
     hasTouch: true,
   });
   await context.addInitScript(installFixture, { theme: "dark", titles: ["甲", "乙", "丙", "丁", "戊", "己"] });
+  await context.addInitScript(() => {
+    const invoke = window.__TAURI_INTERNALS__.invoke;
+    window.__VIDEO_CALLS__ = [];
+    window.__TAURI_INTERNALS__.invoke = (command, args = {}) => {
+      if (command === "api_video") window.__VIDEO_CALLS__.push(args.id);
+      return invoke(command, args);
+    };
+  });
   const page = await context.newPage();
   page.on("pageerror", error => report.errors.push(error.message));
   await page.route("**/*", route => {
@@ -40,6 +48,9 @@ try {
   await page.locator(".hg-tabbar").waitFor();
 
   const profileNav = page.locator(".hg-tabbar .ios-mobile-nav-item").filter({ hasText: "我的" });
+  const searchNav = page.locator(".hg-tabbar .ios-mobile-nav-item").filter({ hasText: "搜索" });
+  const homeNav = page.locator(".hg-tabbar .ios-mobile-nav-item").filter({ hasText: "首页" });
+  const categoryNav = page.locator(".hg-tabbar .ios-mobile-nav-item").filter({ hasText: "分类" });
   await profileNav.click();
   await page.getByRole("button", { name: "我的收藏", exact: true }).waitFor();
   const filterButton = page.locator("[data-favorite-filter-trigger]");
@@ -81,6 +92,17 @@ try {
 
   await page.evaluate(() => window.dispatchEvent(new Event("hg:profile-reset")));
   await page.waitForFunction(() => document.querySelector("[data-favorite-filter-trigger]")?.getAttribute("aria-pressed") === "false");
+  await page.evaluate(() => { window.__VIDEO_CALLS__ = []; });
+  for (const nav of [homeNav, categoryNav, searchNav]) {
+    await nav.click();
+    await page.waitForTimeout(250);
+    await profileNav.click();
+    await page.waitForFunction(() => document.querySelector('[data-tab-pane="profile"]')?.getAttribute("aria-hidden") === "false");
+    await page.waitForTimeout(500);
+    assert.equal(await page.evaluate(() => window.__VIDEO_CALLS__.length), 0,
+      "switching away and back must not revalidate favorite details");
+  }
+  report.checks.push("home/category/search tab switches do not revalidate favorite details");
   report.checks.push("profile reset event is idempotent on the default page");
 
   assert.deepEqual(report.errors, []);

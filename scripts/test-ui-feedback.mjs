@@ -32,6 +32,14 @@ try {
     return route.abort();
   });
   await page.addInitScript(installFixture, { theme: "dark", titles: ["示例一", "示例二", "示例三"] });
+  await page.addInitScript(() => {
+    const invoke = window.__TAURI_INTERNALS__.invoke;
+    window.__FAVORITE_VIDEO_CALLS__ = [];
+    window.__TAURI_INTERNALS__.invoke = (command, args = {}) => {
+      if (command === "api_video") window.__FAVORITE_VIDEO_CALLS__.push(args.id);
+      return invoke(command, args);
+    };
+  });
   await page.goto(`${origin}tests/ui-feedback.html`, { waitUntil: "domcontentloaded" });
   await page.waitForFunction(() => window.uiFeedbackProbe && document.querySelector(".ios-page > .shrink-0") && document.querySelector(".ios-page > .scroll-y"));
 
@@ -192,6 +200,39 @@ try {
   await page.screenshot({ path: join(output, "toast.png") });
   report.toast.latest = latest;
   report.passed.push("toast-playback-hint-and-untagged-stack");
+
+  await page.waitForFunction(() => document.querySelectorAll(".a-toast").length === 0);
+  await page.evaluate(() => { window.__FAVORITE_VIDEO_CALLS__ = []; });
+  const pullOnce = async () => {
+    const region = page.locator("[data-favorite-refresh-region]");
+    const box = await region.boundingBox();
+    assert.ok(box, "favorite refresh region should be visible");
+    const x = box.x + box.width / 2;
+    const y = box.y + 18;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    for (let step = 1; step <= 10; step++) await page.mouse.move(x, y + step * 18);
+    await page.mouse.up();
+    await page.waitForTimeout(350);
+    await page.waitForFunction(() => !document.querySelector("[data-favorite-pull-indicator]"));
+  };
+  await pullOnce();
+  await page.waitForFunction(() => document.querySelectorAll(".a-toast").length === 1);
+  await pullOnce();
+  await pullOnce();
+  await page.waitForTimeout(200);
+  assert.equal(await toastCount(), 1, "three consecutive pulls should keep one favorite-refresh toast");
+  assert.equal(await page.evaluate(() => window.__FAVORITE_VIDEO_CALLS__.length), 18,
+    "three consecutive pulls should each revalidate all six favorites");
+  const favoriteToast = await page.evaluate(() => {
+    const list = window.uiFeedbackProbe.toasts();
+    return { count: list.length, tag: list[0]?.tag, msg: list[0]?.msg, text: document.querySelector(".a-toast")?.textContent ?? "" };
+  });
+  assert.equal(favoriteToast.count, 1);
+  assert.equal(favoriteToast.tag, "favorite-refresh");
+  report.toast.favoriteRefresh = favoriteToast;
+  report.passed.push("toast-favorite-refresh-single-slot");
+  await page.locator(".a-toast").screenshot({ path: join(output, "favorite-refresh-toast.png") });
 
   assert.deepEqual(errors, [], `页面运行时错误：${errors.join(" | ")}`);
   console.log(`PASS: ui-feedback (${report.passed.length} contracts)`);

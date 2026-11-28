@@ -89,11 +89,13 @@ try {
     await page.getByRole("menuitemradio", { name: "默认排序", exact: true }).click();
     await waitOrder(expected.默认排序);
     assert.equal((await page.locator("[data-video-sort-trigger]").innerText()).trim(), "");
+    assert.equal(await page.locator("[data-video-sort-trigger]").getAttribute("data-sort-icon"), "filter");
     assert.equal(await page.getByRole("menu").count(), 0);
   };
 
   await page.goto(new URL("/tests/user-metric-sort.html", origin).href, { waitUntil: "domcontentloaded" });
   await page.locator("[data-video-sort-trigger]").waitFor();
+  assert.equal(await page.locator("[data-video-sort-trigger]").getAttribute("data-sort-icon"), "filter");
   await waitOrder(expected.默认排序);
   assert.match(await page.locator("[data-work-status-trigger]").innerText(), /作品\s*3/u);
   await page.screenshot({ path: fileURLToPath(new URL("user-default.png", output)), animations: "disabled" });

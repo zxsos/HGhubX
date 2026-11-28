@@ -18,6 +18,8 @@ import { triggerHaptic } from "../../shared/lib/haptics";
 import { useTabSwipe } from "../../shared/ui/hooks/useTabSwipe";
 import TvQrSyncModal from "../settings/TvQrSyncModal";
 
+const FAVORITE_REFRESH_TOAST_TAG = "favorite-refresh";
+
 /* Account changes discard cached details synchronously, before another account can paint. */
 export default function Profile({ wide, active = true }: { wide: boolean; active?: boolean }) {
   const { accountScope, lineEpoch } = useStore();
@@ -143,7 +145,7 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
         }
         setPostCache((previous) => ({ ...previous, ...loaded }));
         setFailedIds(failedList);
-        toast(tr("收藏已刷新"), "ok");
+        toast(tr("收藏已刷新"), "ok", FAVORITE_REFRESH_TOAST_TAG);
       } else {
         const targets = [...favsRef.current];
         let updatedShows = 0;
@@ -174,11 +176,11 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
         setFailedIds(failedList);
         if (updatedShows > 0) {
           triggerHaptic("tap");
-          toast(tr("发现 {0} 部收藏更新，新增 {1} 集", updatedShows, addedEpisodes), "ok");
+          toast(tr("发现 {0} 部收藏更新，新增 {1} 集", updatedShows, addedEpisodes), "ok", FAVORITE_REFRESH_TOAST_TAG);
         } else if (targets.length > 0) {
-          toast(tr("收藏已刷新，暂无新集更新"), "info");
+          toast(tr("收藏已刷新，暂无新集更新"), "info", FAVORITE_REFRESH_TOAST_TAG);
         } else {
-          toast(tr("收藏已刷新"), "ok");
+          toast(tr("收藏已刷新"), "ok", FAVORITE_REFRESH_TOAST_TAG);
         }
       }
     } finally {
@@ -490,7 +492,9 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
   }, [favs, videoCache, history, favEpCounts, seedFavoriteEpisodes]);
 
   useEffect(() => {
-    if (!active) { refreshedFavorites.current.clear(); return; }
+    // Keep validated favorite ids across tab switches; returning to Profile must
+    // not revalidate every favorite. Pull-to-refresh clears this set explicitly.
+    if (!active) return;
     let alive = true;
     const targetIds = filterNeedsAllDetails ? favs : visibleIds;
     const missing = showingPosts
@@ -829,7 +833,7 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
           </div>
         )}
         {filteringHydrating && (
-          <span role="status" className="mt-1 shrink-0 block text-[12px] text-mut">{tr("正在加载全部收藏详情…")}</span>
+          <span role="status" className="mt-1 shrink-0 block text-[12px] text-mut">{tr("正在加载收藏内容…")}</span>
         )}
 
         {selectionMode && <div role="region" aria-label={tr("批量管理")} className="sticky top-0 z-20 -mx-1 mt-2 shrink-0 flex items-center gap-2 bg-bg/95 px-1 py-2 text-[13px] backdrop-blur">
