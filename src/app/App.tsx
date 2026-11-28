@@ -4,8 +4,9 @@ import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type CSSP
 import { useStore, type Page, type Tab } from "../shared/model/store";
 import { PageCoveredContext } from "../shared/model/pageVisibility";
 import { isMobile, selfTest } from "../shared/api/api";
-import { addPluginListener, invoke } from "@tauri-apps/api/core";
-import { runBack } from "../shared/lib/back";
+import { invoke } from "@tauri-apps/api/core";
+import { runBack, subscribeNativeBack, syncOhosBackIntercept, useHasBackConsumer } from "../shared/lib/back";
+import { useEdgeSwipeBack } from "../shared/ui/hooks/useEdgeSwipeBack";
 import { exitApp } from "../shared/lib/appLifecycle";
 import { exitDocumentFullscreen, getFullscreenElement } from "../shared/lib/fullscreen";
 import { initMobileHaptics, triggerHaptic } from "../shared/lib/haptics";
@@ -115,6 +116,7 @@ function TabBar({ swipe }: { swipe: TabSwipeBridge }) {
   const index = Math.max(0, items.findIndex(item => item.key === tab));
   const glassRef = useRef<HTMLDivElement>(null);
   const dropRef = useRef<HTMLDivElement>(null);
+  const glowRef = useRef<HTMLSpanElement>(null);
   const dragRef = useRef<{
     pointerId: number;
     startX: number;
@@ -123,6 +125,7 @@ function TabBar({ swipe }: { swipe: TabSwipeBridge }) {
     lastTime: number;
     vx: number;
     startIndex: number;
+    left: number;
     width: number;
     dragging: boolean;
     lastSlot: number;
@@ -131,7 +134,7 @@ function TabBar({ swipe }: { swipe: TabSwipeBridge }) {
   const suppressClickRef = useRef(false);
   const suppressTimerRef = useRef(0);
   const dragRafRef = useRef(0);
-  const pendingDragRef = useRef<{ pos: number; tabs: readonly Tab[] } | null>(null);
+  const pendingDragRef = useRef<{ pos: number; lightX: number; tabs: readonly Tab[] } | null>(null);
   const settleRafRef = useRef(0);
   const wasDraggingRef = useRef(false);
   const dropPosRef = useRef(index);
@@ -139,6 +142,13 @@ function TabBar({ swipe }: { swipe: TabSwipeBridge }) {
     active: false,
     previewIndex: index,
   });
+
+  const moveGlow = (x: number, visible: boolean) => {
+    const glow = glowRef.current;
+    if (!glow) return;
+    glow.style.transform = `translate3d(${x}px, 0, 0)`;
+    glow.style.opacity = visible ? "1" : "0";
+  };
 
   useEffect(() => () => {
     window.clearTimeout(suppressTimerRef.current);
@@ -179,6 +189,7 @@ function TabBar({ swipe }: { swipe: TabSwipeBridge }) {
     if (dropRef.current) {
       dropRef.current.style.transform = `translate3d(${pending.pos * 100}%, 0, 0)`;
     }
+    moveGlow(pending.lightX, true);
     swipe.moveDrag(pending.pos, pending.tabs);
   };
 
@@ -188,6 +199,7 @@ function TabBar({ swipe }: { swipe: TabSwipeBridge }) {
     if (!e.isPrimary || (e.pointerType === "mouse" && e.button !== 0)) return;
     const rect = glassRef.current?.getBoundingClientRect();
     if (!rect || rect.width <= 0) return;
+    moveGlow(Math.max(0, Math.min(rect.width, e.clientX - rect.left)), true);
     dragRef.current = {
       pointerId: e.pointerId,
       startX: e.clientX,
@@ -196,6 +208,7 @@ function TabBar({ swipe }: { swipe: TabSwipeBridge }) {
       lastTime: performance.now(),
       vx: 0,
       startIndex: index,
+      left: rect.left,
       width: rect.width,
       dragging: false,
       lastSlot: index,
@@ -228,7 +241,8 @@ function TabBar({ swipe }: { swipe: TabSwipeBridge }) {
     const rawPos = drag.startIndex + dx / slotWidth;
     const pos = applyTabEdgeRubberBand(rawPos, maxIndex);
     drag.lastPos = pos;
-    pendingDragRef.current = { pos, tabs: tabKeys };
+    const lightX = Math.max(0, Math.min(drag.width, e.clientX - drag.left));
+    pendingDragRef.current = { pos, lightX, tabs: tabKeys };
     if (!dragRafRef.current) {
       dragRafRef.current = window.requestAnimationFrame(flushDragFrame);
     }
@@ -279,6 +293,7 @@ function TabBar({ swipe }: { swipe: TabSwipeBridge }) {
       swipe.endDrag(fromPos, target, tabKeys);
       if (!cancelled && target !== drag.startIndex) setTab(items[target].key);
     }
+    if (glowRef.current) glowRef.current.style.opacity = "0";
     setDragState({ active: false, previewIndex: index });
   };
 
@@ -299,6 +314,7 @@ function TabBar({ swipe }: { swipe: TabSwipeBridge }) {
         onPointerUp={(e) => finishDrag(e, false)}
         onPointerCancel={(e) => finishDrag(e, true)}
         onClickCapture={onClickCapture}>
+      <span ref={glowRef} className="ios-nav-glow" aria-hidden="true" />
       <div ref={dropRef} className={`hg-drop${dragState.active ? " is-dragging" : ""}`} aria-hidden="true"><LiquidIndicator /></div>
       <div className="ios-mobile-nav-items">
         {items.map(({ key, label, Icon, Active }, i) => {
@@ -356,8 +372,8 @@ function StackPageContent({ page, onBack, wide, top, bottomInset, loginOpen }: {
   if (page.kind === "settings") return <SettingsPage onBack={onBack} wide={wide} initialSection={page.section} />;
   if (page.kind === "posts") return capabilities.posts ? <PostsPage onBack={onBack} wide={wide} /> : unsupported;
   if (page.kind === "post") return capabilities.posts ? <PostDetail id={page.id} onBack={onBack} active={top && !loginOpen} /> : unsupported;
-  if (page.kind === "topics") return capabilities.catalog.categories ? <TopicsPage onBack={onBack} wide={wide} /> : unsupported;
-  if (page.kind === "topic") return capabilities.catalog.categories ? <TopicPage slug={page.slug} name={page.name} onBack={onBack} wide={wide} /> : unsupported;
+  if (page.kind === "topics") return capabilities.catalog.topics ? <TopicsPage onBack={onBack} wide={wide} /> : unsupported;
+  if (page.kind === "topic") return capabilities.catalog.topics ? <TopicPage slug={page.slug} name={page.name} onBack={onBack} wide={wide} /> : unsupported;
   if (page.kind === "tags") return capabilities.catalog.tags ? <TagsPage onBack={onBack} wide={wide} /> : unsupported;
   if (page.kind === "tag") return capabilities.catalog.tags ? <TagPage tag={page.tag} name={page.name} onBack={onBack} wide={wide} /> : unsupported;
   if (page.kind === "authors") return capabilities.catalog.authors ? <AuthorsPage onBack={onBack} wide={wide} /> : unsupported;
@@ -368,7 +384,7 @@ function StackPageContent({ page, onBack, wide, top, bottomInset, loginOpen }: {
 
 /** Hide covered pages from the compositor while keeping React state and scroll offsets intact. */
 function LayerBox({
-  hidden, inert, ariaHidden, className, enterClass, style, children,
+  hidden, inert, ariaHidden, className, enterClass, style, swipeBack, children,
 }: {
   hidden: boolean;
   inert: boolean;
@@ -376,9 +392,11 @@ function LayerBox({
   className: string;
   enterClass?: string;
   style?: CSSProperties;
+  swipeBack?: { enabled: boolean; onBack: () => void };
   children: ReactNode;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  useEdgeSwipeBack(ref, !!swipeBack?.enabled && !hidden, swipeBack?.onBack);
   const scrollOffsetsRef = useRef<Map<HTMLElement, number>>(new Map());
   const hiddenRef = useRef(hidden);
   hiddenRef.current = hidden;
@@ -436,13 +454,13 @@ function LayerBox({
 
   const entering = !hidden && !entered && !!enterClass;
   const baseStyle: CSSProperties | undefined = entering
-    ? { ...style, boxShadow: "-18px 0 40px rgba(0,0,0,.5)" }
+    ? { ...style, borderLeft: "1px solid var(--ios-edge)" }
     : style;
   const boxStyle: CSSProperties | undefined = hidden && hasPip
     ? { ...baseStyle, visibility: "hidden", pointerEvents: "none" }
     : baseStyle;
   const boxClass = hidden
-    ? (hasPip ? `${className} pointer-events-none` : `${className} hidden pointer-events-none`)
+    ? (hasPip ? `${className} pointer-events-none` : `${className} ios-layer-hidden`)
     : `${className}${entering ? ` ${enterClass}` : ""}`;
 
   return (
@@ -540,7 +558,7 @@ function MainTabs({ wide, pageActive, covered, bottomInset, swipe }: {
     && (visited.has(key) || (pageActive && tab === key) || inSwipeView(key));
   const paneClass = (key: Tab) => {
     const isVisible = tab === key || inSwipeView(key);
-    if (!isVisible) return "absolute inset-0 hidden pointer-events-none";
+    if (!isVisible) return "absolute inset-0 ios-tab-pane-hidden";
     const bgClass = key === "home" ? "bg-black overflow-hidden" : "bg-bg overflow-hidden";
     const activeClass = key === "home" ? "" : "ios-tab-active";
     const suppressAnim = swipeVisual.suppressAnimTab === key || restoredTab === key || (wasCoveredRef.current && !covered);
@@ -562,7 +580,7 @@ function MainTabs({ wide, pageActive, covered, bottomInset, swipe }: {
       <div ref={setPaneRef("home")} data-tab-pane="home" data-visited={visited.has("home") ? "true" : undefined} className={paneClass("home")} inert={covered || tab !== "home"} aria-hidden={!pageActive || tab !== "home"}>{mounted("home") && <Home key={sourceScope} active={pageActive && tab === "home" && !swiping} bottomInset={bottomInset} />}</div>
       <div ref={setPaneRef("search")} data-tab-pane="search" data-visited={visited.has("search") ? "true" : undefined} className={paneClass("search")} inert={covered || tab !== "search"} aria-hidden={!pageActive || tab !== "search"}>{mounted("search") && <Suspense fallback={<PageLoading />}><Search key={sourceScope} active={pageActive && tab === "search" && !swiping} wide={wide} /></Suspense>}</div>
       <div ref={setPaneRef("category")} data-tab-pane="category" data-visited={visited.has("category") ? "true" : undefined} className={paneClass("category")} inert={covered || tab !== "category"} aria-hidden={!pageActive || tab !== "category"}>{mounted("category") && <Suspense fallback={<PageLoading />}><Category key={sourceScope} wide={wide} active={pageActive && tab === "category" && !swiping} /></Suspense>}</div>
-      <div ref={setPaneRef("profile")} data-tab-pane="profile" data-visited={visited.has("profile") ? "true" : undefined} className={paneClass("profile")} inert={covered || tab !== "profile"} aria-hidden={!pageActive || tab !== "profile"}>{mounted("profile") && <Suspense fallback={<PageLoading />}><Profile wide={wide} active={pageActive && tab === "profile" && !swiping} /></Suspense>}</div>
+      <div ref={setPaneRef("profile")} data-tab-pane="profile" data-visited={visited.has("profile") ? "true" : undefined} className={paneClass("profile")} inert={covered || tab !== "profile"} aria-hidden={!pageActive || tab !== "profile"}>{mounted("profile") && <Suspense fallback={<PageLoading />}><Profile key={sourceScope} wide={wide} active={pageActive && tab === "profile" && !swiping} /></Suspense>}</div>
     </LayerBox>
   );
 }
@@ -739,7 +757,8 @@ function AppBody() {
               <LayerBox key={p.key} hidden={!top} inert={!top} ariaHidden={!top || loginOpen}
                 className="absolute inset-0 bg-bg isolate"
                 enterClass={platform === "android" && p.kind === "feed" ? undefined : "a-page-in"}
-                style={{ zIndex: 30 + i }}>
+                style={{ zIndex: 30 + i }}
+                swipeBack={p.kind === "feed" ? undefined : { enabled: top && !loginOpen && !fs, onBack: pop }}>
                 <StackPage page={p} onBack={pop} wide={wide} top={top} bottomInset={stackInset} loginOpen={loginOpen} />
               </LayerBox>
             );
@@ -912,9 +931,11 @@ export default function App() {
     };
   }, [platform]);
 
-  /* —— 安卓硬件返回键 ——
-     层级：面板/弹层 → 全屏 → 登录框 → 页面栈 → 回首页 → 退出应用。
-     不注册这个监听，Tauri 会直接 webView.goBack() 或退出，表现就是「任意页面返回都回桌面」。 */
+  /* —— 安卓 / 鸿蒙硬件与系统边缘返回 ——
+     层级：面板/弹层 → 全屏 → 登录框 → 页面栈 → 回首页 → 退出/退后台。
+     不注册这个监听，Android 会直接 webView.goBack() 或退出，HarmonyOS 则被原生默认拦截吞掉。 */
+  const hasBackConsumer = useHasBackConsumer();
+  const canConsumeBack = hasBackConsumer || fs || loginOpen || stack.length > 0 || tab !== defaultTab;
   const backRef = useRef<() => void>(() => {});
   backRef.current = () => {
     if (runBack()) return;                                  // 最上层弹窗/播放器面板
@@ -923,21 +944,11 @@ export default function App() {
     if (loginOpen) { setLoginOpen(false); return; }
     if (stack.length) { pop(); return; }
     if (tab !== defaultTab) { setTab(defaultTab); return; }
-    exitApp().catch(() => {});
+    if (platform === "android") exitApp().catch(() => {});
   };
 
-  useEffect(() => {
-    if (platform !== "android") return undefined;
-    let disposed = false;
-    let handle: { unregister: () => Promise<void> } | null = null;
-    addPluginListener("app", "back-button", () => backRef.current())
-      .then((l) => { if (disposed) l.unregister().catch(() => {}); else handle = l; })
-      .catch(() => { /* 非安卓宿主忽略 */ });
-    return () => {
-      disposed = true;
-      handle?.unregister().catch(() => {});
-    };
-  }, [platform]);
+  useEffect(() => subscribeNativeBack(platform, () => backRef.current()), [platform]);
+  useEffect(() => { syncOhosBackIntercept(platform, canConsumeBack); }, [platform, canConsumeBack]);
 
   useEffect(() => {
     const prevent = (e: Event) => { if (!isSelectableText(e.target)) e.preventDefault(); };

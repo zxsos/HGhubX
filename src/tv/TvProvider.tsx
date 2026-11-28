@@ -3,7 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { api, type InstalledSourceSummary, type SourceStateSnapshot, type TvSyncEnvelope } from "../shared/api/api";
 import { useContentPreferences } from "../shared/model/contentPreferences";
 import { autoLineEnabled, initAutoLine } from "../shared/network/autoLine";
-import { initializeLibrary, listLibrary, setFavorite, saveProgress, subscribeLibrary, clearHistory } from "./library";
+import { initializeLibrary, listLibrary, setFavorite, setLibrarySource, saveProgress, subscribeLibrary, clearHistory } from "./library";
 import { contentKey, type TvContent, type TvLibraryEntry, type TvProgress } from "./model";
 import { usePlaybackPreferences } from "./preferences";
 import { runSilentSourceUpdate } from "../shared/model/sourceAutoUpdate";
@@ -160,6 +160,12 @@ export function TvProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     setCatalogSource(effectiveSource);
   }, [effectiveSource]);
+
+  useEffect(() => {
+    if (!ready || !sourceStateSynced) return;
+    setLibrarySource(activeSource?.id ?? null);
+    void reload().catch((e) => setError(String(e)));
+  }, [ready, sourceStateSynced, activeSource?.id, reload]);
 
   useEffect(() => {
     if (ready && effectiveSource && (sourceState === "unsupported" || activeSource?.capabilities.lines)) {

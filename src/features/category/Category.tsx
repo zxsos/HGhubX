@@ -224,7 +224,7 @@ export default function Category({ wide, active }: { wide: boolean; active: bool
   }, [lineEpoch, channels, showDefaultPosts, loadPreview]);
 
   const totalChannels = channels.length + (showDefaultPosts ? 1 : 0);
-  const hasShortcuts = declaredShortcuts.length > 0 || capabilities.catalog.categories || capabilities.catalog.tags || capabilities.catalog.authors;
+  const hasShortcuts = declaredShortcuts.length > 0 || capabilities.catalog.topics || capabilities.catalog.tags || capabilities.catalog.authors;
   const [scrolled, setScrolled] = useState(false);
 
   return (
@@ -246,7 +246,7 @@ export default function Category({ wide, active }: { wide: boolean; active: bool
                   onClick={() => push({ kind: "channel", cate: sc.id, name: sc.label })} />
               );
             })}
-            {capabilities.catalog.categories && (
+            {capabilities.catalog.topics && (
               <CollectionLink icon={<ILayers size={18} />} title={tr("专题")}
                 onClick={() => push({ kind: "topics" })} />
             )}

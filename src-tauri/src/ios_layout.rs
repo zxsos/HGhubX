@@ -233,3 +233,109 @@ pub(crate) fn request_orientation(landscape: bool) {
         }
     }
 }
+
+/// 原生拉起 iOS / iPadOS 系统分享面板（UIActivityViewController），绕开 WKWebView 在自定义协议
+/// `tauri://localhost` 下 `navigator.share` 受安全上下文或异步手势过期限制的问题。
+pub(crate) fn present_share_sheet(
+    app: &tauri::AppHandle,
+    path: &std::path::Path,
+) -> Result<(), String> {
+    use objc2::rc::Allocated;
+    use objc2::runtime::{AnyClass, AnyObject, Bool};
+    use std::ffi::CString;
+
+    let path_str = path.to_string_lossy().into_owned();
+    let c_path = CString::new(path_str).map_err(|_| "导出路径包含非法字符".to_string())?;
+    let window = app
+        .get_webview_window("main")
+        .ok_or_else(|| "主窗口不可用".to_string())?;
+    window
+        .with_webview(move |platform| unsafe {
+            let Some(view) = platform.inner().cast::<UIView>().as_ref() else {
+                return;
+            };
+            let Some(ui_window) = view.window() else {
+                return;
+            };
+            let Some(ns_string_cls) = AnyClass::get(c"NSString") else {
+                return;
+            };
+            let Some(ns_url_cls) = AnyClass::get(c"NSURL") else {
+                return;
+            };
+            let Some(ns_array_cls) = AnyClass::get(c"NSArray") else {
+                return;
+            };
+            let Some(activity_cls) = AnyClass::get(c"UIActivityViewController") else {
+                return;
+            };
+
+            let ns_path: Option<Retained<AnyObject>> =
+                msg_send![ns_string_cls, stringWithUTF8String: c_path.as_ptr()];
+            let Some(ns_path) = ns_path else {
+                return;
+            };
+            let file_url: Option<Retained<AnyObject>> =
+                msg_send![ns_url_cls, fileURLWithPath: &*ns_path];
+            let Some(file_url) = file_url else {
+                return;
+            };
+            let items: Option<Retained<AnyObject>> =
+                msg_send![ns_array_cls, arrayWithObject: &*file_url];
+            let Some(items) = items else {
+                return;
+            };
+
+            let allocated: Allocated<AnyObject> = msg_send![activity_cls, alloc];
+            let nil_activities: *const AnyObject = std::ptr::null();
+            let activity_vc: Option<Retained<AnyObject>> = msg_send![
+                allocated,
+                initWithActivityItems: &*items,
+                applicationActivities: nil_activities
+            ];
+            let Some(activity_vc) = activity_vc else {
+                return;
+            };
+
+            let mut top_vc: Option<Retained<AnyObject>> =
+                msg_send![&*ui_window, rootViewController];
+            for _ in 0..16 {
+                let Some(ref cur) = top_vc else {
+                    break;
+                };
+                let presented: Option<Retained<AnyObject>> =
+                    msg_send![&**cur, presentedViewController];
+                if presented.is_some() {
+                    top_vc = presented;
+                } else {
+                    break;
+                }
+            }
+            let Some(top_vc) = top_vc else {
+                return;
+            };
+
+            // iPadOS 必须配置 popoverPresentationController 的 sourceView 与 sourceRect，否则会抛异常崩溃。
+            let popover: Option<Retained<AnyObject>> =
+                msg_send![&*activity_vc, popoverPresentationController];
+            if let Some(popover) = popover {
+                let mut rect = view.bounds();
+                rect.origin.x = rect.size.width * 0.5;
+                rect.origin.y = rect.size.height * 0.5;
+                rect.size.width = 1.0;
+                rect.size.height = 1.0;
+                let _: () = msg_send![&*popover, setSourceView: view];
+                let _: () = msg_send![&*popover, setSourceRect: rect];
+                let _: () = msg_send![&*popover, setPermittedArrowDirections: 0usize];
+            }
+
+            let nil_completion: *const c_void = std::ptr::null();
+            let _: () = msg_send![
+                &*top_vc,
+                presentViewController: &*activity_vc,
+                animated: Bool::YES,
+                completion: nil_completion
+            ];
+        })
+        .map_err(|e| e.to_string())
+}

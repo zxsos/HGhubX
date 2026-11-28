@@ -1,19 +1,23 @@
 //! Plugin-driven line list and mirror discovery (zero hardcoded site origins).
 
+use once_cell::sync::Lazy;
 use serde_json::{json, Value};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::RwLock;
 
 pub(super) const MIRROR_MAX: usize = 20;
 const RECOMMENDED_MAX: usize = 20;
 
-/// Only origins actually returned by the active source's `discoverMirrors` enter this set.
-static TRUSTED_MIRRORS: RwLock<Vec<String>> = RwLock::new(Vec::new());
+/// Only origins actually returned by each source's `discoverMirrors` enter its scoped set.
+static TRUSTED_MIRRORS: Lazy<RwLock<HashMap<String, Vec<String>>>> =
+    Lazy::new(|| RwLock::new(HashMap::new()));
 
 fn remember_published(items: &[Value]) {
-    let mut known = TRUSTED_MIRRORS
+    let scope = crate::source::active_source_id();
+    let mut all = TRUSTED_MIRRORS
         .write()
         .unwrap_or_else(|error| error.into_inner());
+    let known = all.entry(scope).or_default();
     for origin in items
         .iter()
         .filter_map(|item| item.get("url").and_then(Value::as_str))
@@ -28,16 +32,20 @@ fn remember_published(items: &[Value]) {
 }
 
 pub fn is_trusted_mirror(origin: &str) -> bool {
+    let scope = crate::source::active_source_id();
     TRUSTED_MIRRORS
         .read()
-        .map(|known| known.iter().any(|value| value == origin))
+        .ok()
+        .and_then(|all| all.get(&scope).map(|known| known.iter().any(|value| value == origin)))
         .unwrap_or(false)
 }
 
 pub fn trusted_mirrors_snapshot() -> Vec<String> {
+    let scope = crate::source::active_source_id();
     TRUSTED_MIRRORS
         .read()
-        .map(|known| known.clone())
+        .ok()
+        .and_then(|all| all.get(&scope).cloned())
         .unwrap_or_default()
 }
 

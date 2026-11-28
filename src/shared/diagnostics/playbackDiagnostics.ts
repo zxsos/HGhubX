@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useRef, useSyncExternalStore, type RefObject } from "react";
 import type Hls from "hls.js";
 import type { FragBufferedData, FragLoadedData, FragLoadingData, HlsListeners } from "hls.js";
+import { N_ } from "../i18n";
 import { copyText } from "../lib/clipboard";
 
 let registeredHlsVersion: string | null = null;
@@ -13,6 +14,29 @@ type Data = Record<string, unknown>;
 type Status = { enabled: boolean; path: string | null; error: string | null };
 type Entry = { event: string; data: Data };
 type Snapshot = Status & { ready: boolean; pending: boolean };
+export type FullLogExport = {
+  filename: string;
+  path: string | null;
+  content: string;
+  bytes: number;
+  lineCount: number;
+  truncated: boolean;
+  nativeOpened: boolean;
+  nativeOutcome?: string | null;
+  nativeError?: string | null;
+};
+export type NativeExportResult = {
+  opened: boolean;
+  outcome: string;
+  detail: string | null;
+};
+export type ShareLogResult = {
+  method: "share" | "reveal" | "download" | "saved" | "cancelled";
+  filename: string;
+  path: string | null;
+  bytes: number;
+  lineCount: number;
+};
 
 // Separate transport also lets browser regressions verify diagnostics without Tauri or upstream.
 export const playbackLogApi = {
@@ -20,6 +44,8 @@ export const playbackLogApi = {
   set: (enabled: boolean) => invoke<Status>("playback_log_set", { enabled }),
   write: (entries: Entry[]) => invoke<void>("playback_log_write", { entries }),
   read: () => invoke<string>("playback_log_read"),
+  exportFull: (reveal = false, title?: string) => invoke<FullLogExport>("playback_log_export_full", { reveal, title }),
+  revealExport: (title?: string) => invoke<NativeExportResult | boolean>("playback_log_reveal_export", { title }),
 };
 let state: Snapshot = { enabled: false, path: null, error: null, ready: false, pending: false };
 const listeners = new Set<() => void>();
@@ -66,7 +92,7 @@ export function initPlaybackLog() {
 }
 
 export async function setPlaybackLog(on: boolean) {
-  if (!state.ready || state.pending) throw new Error("日志设置尚未就绪");
+  if (!state.ready || state.pending) throw new Error(N_("日志设置尚未就绪"));
   publish({ pending: true });
   try {
     await flushPlaybackLog();
@@ -79,8 +105,133 @@ export async function setPlaybackLog(on: boolean) {
 export async function copyPlaybackLog() {
   await flushPlaybackLog();
   const text = await playbackLogApi.read();
-  if (!text) throw new Error("尚无诊断日志，请开启后复现问题");
+  if (!text) throw new Error(N_("尚无诊断日志，请开启后复现问题"));
   await copyText(text);
+}
+
+export function formatLogSize(bytes: number): string {
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(bytes >= 10 * 1024 * 1024 ? 1 : 2).replace(/(\.\d*?[1-9])0+$|\.0+$/, "$1")} MB`;
+  if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${Math.max(0, bytes)} B`;
+}
+
+function triggerBlobDownload(filename: string, content: string): boolean {
+  if (typeof document === "undefined" || typeof Blob === "undefined" || typeof URL === "undefined") return false;
+  try {
+    const url = URL.createObjectURL(new Blob([content], { type: "text/plain;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    link.style.display = "none";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function tryWebShareFile(filename: string, content: string, title: string): Promise<"shared" | "cancelled" | "unsupported"> {
+  if (typeof navigator === "undefined" || typeof navigator.share !== "function") return "unsupported";
+  if (typeof File === "function") {
+    const file = new File([content], filename, { type: "text/plain;charset=utf-8" });
+    const shareData: ShareData = { files: [file], title };
+    let canShareFile = true;
+    if (typeof navigator.canShare === "function") {
+      try {
+        canShareFile = navigator.canShare(shareData);
+      } catch {
+        canShareFile = false;
+      }
+    }
+    if (canShareFile) {
+      try {
+        await navigator.share(shareData);
+        return "shared";
+      } catch (err) {
+        if ((err as DOMException)?.name === "AbortError") return "cancelled";
+      }
+    }
+  }
+  // Fallback for WebViews that support navigator.share({ text }) but not files
+  try {
+    await navigator.share({ title, text: content.length > 262144 ? content.slice(-262144) : content });
+    return "shared";
+  } catch (err) {
+    if ((err as DOMException)?.name === "AbortError") return "cancelled";
+    return "unsupported";
+  }
+}
+
+export async function sharePlaybackLog(opts: { title: string; isMobile: boolean; platform: string }): Promise<ShareLogResult> {
+  await flushPlaybackLog();
+  const isHarmony = opts.platform === "harmony";
+  const isIos = opts.platform === "ios";
+  const res = await playbackLogApi.exportFull(!opts.isMobile || isHarmony || isIos, opts.title);
+  if (!res.content) throw new Error(N_("尚无诊断日志，请开启后复现问题"));
+  const base = { filename: res.filename, path: res.path, bytes: res.bytes, lineCount: res.lineCount };
+
+  if (!opts.isMobile && !isHarmony) {
+    if (res.nativeOpened) return { ...base, method: "reveal" };
+    const webShare = await tryWebShareFile(res.filename, res.content, opts.title);
+    if (webShare === "shared") return { ...base, method: "share" };
+    if (webShare === "cancelled") return { ...base, method: "cancelled" };
+    if (res.path) return { ...base, method: "saved" };
+    if (triggerBlobDownload(res.filename, res.content)) return { ...base, method: "download" };
+    return { ...base, method: "saved" };
+  }
+
+  // iOS / iPadOS: Rust 侧直接拉起原生 UIActivityViewController（无 WKWebView 安全上下文/手势过期限制）
+  if (isIos && res.nativeOpened) {
+    return { ...base, method: "share" };
+  }
+
+  // HarmonyOS: Rust -> ShareBridgePlugin.ets 依次拉起系统分享 / 打开方式 / 原生 DocumentViewPicker 保存弹窗
+  if (isHarmony) {
+    if (res.nativeOutcome === "cancelled") return { ...base, method: "cancelled" };
+    if (res.nativeOpened) {
+      return { ...base, method: res.nativeOutcome === "saved" ? "saved" : "share" };
+    }
+    if (res.path) {
+      try {
+        const revealed = await playbackLogApi.revealExport(opts.title);
+        if (revealed === true) return { ...base, method: "share" };
+        if (revealed && typeof revealed === "object") {
+          if (revealed.outcome === "cancelled") return { ...base, method: "cancelled" };
+          if (revealed.opened) return { ...base, method: revealed.outcome === "saved" ? "saved" : "share" };
+        }
+      } catch { /* fall through */ }
+    }
+  }
+
+  // Android WebView 无 Web Share 文件支持，优先走 MainActivity.AppBridge.shareFile（FileProvider + ACTION_SEND）。
+  // 注意：Android WebView addJavascriptInterface（Gin Java Bridge）必须以 bridge 对象作为 receiver 调用，
+  // 拆出方法引用直接调用会抛 `TypeError: Illegal invocation`。
+  const androidBridge = (window as Window & { __HG_ANDROID__?: { shareFile?: (path: string, title: string) => boolean | string } }).__HG_ANDROID__;
+  let androidShareErr = "";
+  if (opts.platform === "android" && res.path && androidBridge && typeof androidBridge.shareFile === "function") {
+    try {
+      const ret = androidBridge.shareFile(res.path, opts.title);
+      if (ret === true || ret === "ok") return { ...base, method: "share" };
+      if (typeof ret === "string" && ret.startsWith("err:")) androidShareErr = ret.slice(4);
+    } catch (err) {
+      androidShareErr = err instanceof Error ? err.message : String(err);
+    }
+  }
+
+  // iOS WKWebView / 支持 Web Share 的移动端 WebView 直接拉起系统分享面板
+  const webShare = await tryWebShareFile(res.filename, res.content, opts.title);
+  if (webShare === "shared") return { ...base, method: "share" };
+  if (webShare === "cancelled") return { ...base, method: "cancelled" };
+
+  if (androidShareErr) throw new Error(androidShareErr);
+  // 移动端导出文件位于应用私有缓存目录，WebView 中 <a download> 不会真正保存文件；
+  // 原生分享与 Web Share 均未成功时直接报错，不再误报“已保存”并暴露沙盒路径。
+  if (res.path) throw new Error(res.nativeError || "");
+  if (triggerBlobDownload(res.filename, res.content)) return { ...base, method: "download" };
+  throw new Error("");
 }
 
 function isLocalMediaWrapper(url: URL) {

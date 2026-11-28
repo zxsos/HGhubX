@@ -63,6 +63,9 @@ export function InplaceSearch({ kind, postLabel = tr("帖子"), onOpenVideo, onO
     if (!root || root.closest("[inert]")) return false;
     closeRef.current();
     return true;
+  }, () => {
+    const root = rootRef.current;
+    return !!root && !root.closest("[inert]");
   }), []);
 
   return (

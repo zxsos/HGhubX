@@ -17,7 +17,7 @@ export async function applyTvSyncEnvelope(env: TvSyncEnvelope): Promise<string> 
       favs: sync.favs,
       postFavs: sync.postFavs,
       history: sync.history,
-    });
+    }, source?.id);
     if (lib.favs > 0) parts.push(`${lib.favs} 部收藏`);
     if (lib.postFavs > 0) parts.push(`${lib.postFavs} 条帖子收藏`);
     if (lib.history > 0) parts.push(`${lib.history} 条记录`);

@@ -378,6 +378,38 @@ impl SourceStore {
         Ok(self.snapshot())
     }
 
+    pub fn remove_many(&self, ids: &[String]) -> Result<(SourceStateSnapshot, usize), String> {
+        if ids.is_empty() {
+            return Err("请至少选择一个视频源".into());
+        }
+        let mut g = self.inner.write().unwrap_or_else(|e| e.into_inner());
+        let mut removed = Vec::new();
+        for id in ids {
+            if g.registry.records.remove(id.as_str()).is_some() {
+                removed.push(id.clone());
+            }
+        }
+        if removed.is_empty() {
+            return Err("视频源不存在".into());
+        }
+        if let Some(active) = g.registry.active_source_id.as_ref() {
+            if removed.iter().any(|id| id == active) {
+                g.registry.active_source_id = None;
+            }
+        }
+        for id in &removed {
+            g.packages.retain(|(k, _), _| k != id);
+            g.kv.remove(id);
+            if let Some(root) = &g.root {
+                let _ = fs::remove_dir_all(root.join(id));
+            }
+        }
+        Self::save_registry(&g)?;
+        let count = removed.len();
+        drop(g);
+        Ok((self.snapshot(), count))
+    }
+
     pub fn is_newer_than_installed(&self, id: &str, version: &str) -> bool {
         let g = self.inner.read().unwrap_or_else(|e| e.into_inner());
         match g.registry.records.get(id) {

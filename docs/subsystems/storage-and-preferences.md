@@ -50,18 +50,19 @@
 
 | 运行期键 | 旧键 | 内容 |
 | --- | --- | --- |
-| `hghubx_app_v1` | `hghub_app_v1` | 游客偏好、收藏、关注、观看记录、收藏已知集数基线（`favEpCounts`）、搜索历史、音量、`muteOnStartup`、`swipeEp`、`preferHevc`、`balanceVolume`、`fsIdleSecs`、`startupTab`、`ambientGlow` |
+| `hghubx_app_v1` | `hghub_app_v1` | 游客偏好、收藏、关注、观看记录、收藏已知集数基线（`favEpCounts`）、搜索历史、音量、`muteOnStartup`、`swipeEp`、`preferHevc`、`balanceVolume`、`fsIdleSecs`、`startupTab`、`ambientGlow`、`skipIntroSecs`、`skipOutroSecs` |
 | `hghubx_swipe_ep_v2` | `hghub_swipe_ep_v2` | 上下划切集的一次性迁移标记 |
 | `hghubx_theme` | `hghub_theme` | `light`/`dark`/`system` |
 | `hghubx_locale` | — | 界面语言偏好（`zh-CN`/`zh-TW`/`en`，默认 `zh-CN`） |
 | `hghubx_haptic_v1` | — | 移动端按键与手势震动反馈强度（`off`/`light`/`medium`/`strong`，默认 `medium`） |
 | `hghubx_home_pages_v1` | — | 首页默认流与置顶标签按源记录的已知总页数（供跨页随机采样使用；原值损坏时保留不覆盖） |
 | `hghubx_tags_cache_v1` | — | 全部标签页按 `${sourceId}:${lineEpoch}` 缓存的已过滤非空标签目录（点击刷新强制重探；原值损坏时保留不覆盖） |
+| `hghubx_source_library_v1` | — | 游客态按 `sourceId` 分桶隔离的本地喜欢、收藏、关注与观看历史（`version:1`；首次激活带旧游客数据时单次认领，不向其他源复制） |
 | `hghubx_auto_line` | `hg.autoLine` | 自动选线开关 |
 | `hghubx_usage_agreement` | — | 使用协议版本与签署时间 |
 | `hghubx_mobile_hold_guide_v1` | — | 移动端首次长按倍速教程已读标记 |
 | `hghubx_tv_display_v1` | `hghubx.tv.display.v1` | TV 端缩放、过扫描与减少动效设置 |
-| `hghubx_tv_playback_v1` | `hghubx-tv-playback-v1` | TV 端连播、倍速与编码偏好 |
+| `hghubx_tv_playback_v1` | `hghubx-tv-playback-v1` | TV 端连播、倍速、编码与跳过片头/片尾（`skipIntroSecs` / `skipOutroSecs`，`0–600` 秒）偏好 |
 | `hghubx_tv_pin_v1` | — | TV 端 4 位启动解锁 PIN 码开关与盐值摘要（不存明文密码） |
 | `CONTENT_PREFERENCES_KEY` | — | 屏蔽标签、暂停过滤、隐藏无标签内容 |
 | `ACCOUNT_KEY` | — | 按 `[origin, user.id]` 分桶的账号本地副本 |
@@ -98,7 +99,7 @@
    播放和动作 key 都使用它。`favoritesKnown` 独立于 `favs`：只有远端返回了
    `favorite_video_ids` 数组才置 true；缺字段或读取失败保持 false，UI 显示“收藏状态未知”，
    不能显示“还没有收藏”。
-6. 游客数据由 `store.tsx` 的 `saveGuest` 写入 `STORAGE_KEYS.app`；登录用户的数据写
+6. 游客数据在无源/兼容模式下由 `store.tsx` 的 `saveGuest` 写入 `STORAGE_KEYS.app`，存在激活视频源时按 `sourceId` 分桶写入 `STORAGE_KEYS.sourceLibrary`（切换视频源时递增 `generation` 并更新 `accountScope` 为 `guest:${sourceId}:${generation}`，避免跨源数字 ID 串号；首次激活存在旧游客数据时仅由该源单次认领，写入失败保留旧值）；登录用户的数据写
    `ACCOUNT_KEY`。登录/退出时 `setUser()` 清空 pending、上传计时器和同步状态，但不清空本地
    收藏/历史对象；账号同步的合并、dirty history、`clearHistory()` 和 `removeHistory()` 的远端删除见
    `accountData.ts`。登录/注册成功另写 `CREDENTIAL_KEY`；显式退出、静默重登被上游拒绝

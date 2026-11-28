@@ -68,6 +68,7 @@ try {
             return ORIGIN;
           }
           if (command === "debug_log" || command === "playback_log_write") return;
+          if (command === "media_rx_bytes") return 0;
           throw new Error(`Unexpected IPC: ${command}`);
         } },
       });

@@ -37,7 +37,7 @@ export default function BrowsePage({ onOpen, active=true }: { onOpen: (content: 
       list.push({ id: "__feed__", label: "推荐内容", mode: "feed" });
     }
     if (permissive || caps?.catalog.rankings) list.push({ id: "rank", label: "排行", mode: "rank" });
-    if (permissive || caps?.catalog.categories) list.push({ id: "topics", label: "专题", mode: "topics" });
+    if (permissive || (caps?.catalog.topics ?? caps?.catalog.categories)) list.push({ id: "topics", label: "专题", mode: "topics" });
     if (permissive || caps?.catalog.tags) list.push({ id: "tags", label: "标签", mode: "tags" });
     if ((permissive || caps?.posts) && !list.some(c => c.mode === "posts")) {
       list.push({ id: "posts", label: "帖子", mode: "posts" });
@@ -172,7 +172,7 @@ export default function BrowsePage({ onOpen, active=true }: { onOpen: (content: 
   };
   const isPostChannel = activeChannel?.mode === "posts";
   return <><header className="tv-page-heading"><h1>浏览</h1></header>
-    <div className="tv-tabs" data-tv-region="browse-channels">{channels.map(c=><button key={c.id} data-tv-focus={`channel-${c.id}`} aria-pressed={channel===c.id} onClick={()=>{setChannel(c.id);setSelection("");}}>{c.label}</button>)}</div>
+    <div className="tv-tabs-rail" data-tv-region="browse-channels">{channels.map(c=><button key={c.id} data-tv-focus={`channel-${c.id}`} aria-pressed={channel===c.id} onClick={()=>{setChannel(c.id);setSelection("");}}>{c.label}</button>)}</div>
     {selection&&<button data-tv-focus="browse-up" onClick={()=>setSelection("")}>返回{activeChannel?.mode==="tags"?"标签":"专题"}</button>}
     <TvStatus busy={busy} error={error} onRetry={()=>void retry()}/>
     {topics.length>0&&<div className="tv-grid" data-tv-region="topics" data-tv-columns="5">{topics.map(topic=><button className="tv-collection" data-tv-focus={`topic-${topic.slug}`} key={topic.slug} onClick={()=>setSelection(topic.slug)}><strong>{topic.title}</strong><small>{topic.video_count||0} 部</small></button>)}</div>}

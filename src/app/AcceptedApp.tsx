@@ -1,10 +1,11 @@
-import { lazy, Suspense, useEffect, useRef, useState, type CSSProperties } from "react";
-import { addPluginListener } from "@tauri-apps/api/core";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import App from "./App";
 import SourceOnboarding from "./startup/SourceOnboarding";
-import { api, isMobile, platform } from "../shared/api/api";
+import { api, isMobile, platform, type SubscriptionPreview, type SubscriptionSiteInput } from "../shared/api/api";
+import SubscriptionPicker from "../features/settings/SubscriptionPicker";
 import { exitApp } from "../shared/lib/appLifecycle";
-import { runBack } from "../shared/lib/back";
+import { runBack, subscribeNativeBack, syncOhosBackIntercept, useHasBackConsumer } from "../shared/lib/back";
+import { useEdgeSwipeBack } from "../shared/ui/hooks/useEdgeSwipeBack";
 import { usePendingDeepLink } from "../shared/lib/deepLink";
 import { AppProvider, useStore } from "../shared/model/store";
 import { initAutoLine } from "../shared/network/autoLine";
@@ -38,18 +39,57 @@ function DeepLinkImportPrompt({ onImported }: { onImported: () => void }) {
   const [target, clear] = usePendingDeepLink();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [subscription, setSubscription] = useState<SubscriptionPreview | null>(null);
 
   if (!target) return null;
+  const close = () => {
+    setSubscription(null);
+    setError("");
+    clear();
+  };
   const confirmImport = async () => {
     if (busy) return;
     setBusy(true);
     setError("");
     try {
-      const s = await api.sourceImport(target, true);
+      const res = await api.sourceResolveImport(target, true);
+      if (res.kind === "subscription") {
+        setSubscription(res.preview);
+        return;
+      }
       window.dispatchEvent(new CustomEvent("hg:line-changed"));
       window.dispatchEvent(new CustomEvent("hg:source-changed"));
-      toast(tr("已导入 {0} v{1}", s.name, s.version), "ok");
-      clear();
+      toast(tr("已导入 {0} v{1}", res.summary.name, res.summary.version), "ok");
+      close();
+      onImported();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e || tr("失败")));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const confirmSubscription = async (items: SubscriptionSiteInput[]) => {
+    if (busy || !items.length) return;
+    setBusy(true);
+    setError("");
+    try {
+      const res = await api.sourceImportSubscription(items, true);
+      if (!res.imported.length) {
+        // 全部失败：留在订阅清单并展示失败原因，便于调整勾选后重试。
+        setError(res.failed.length > 0
+          ? tr("{0} 个站点导入失败：{1}", res.failed.length, res.failed.map((f) => `${f.name}（${f.error}）`).join("；"))
+          : tr("失败"));
+        return;
+      }
+      window.dispatchEvent(new CustomEvent("hg:line-changed"));
+      window.dispatchEvent(new CustomEvent("hg:source-changed"));
+      toast(
+        res.failed.length > 0
+          ? tr("已导入 {0} 个视频源（{1} 个失败）", res.imported.length, res.failed.length)
+          : tr("已导入 {0} 个视频源", res.imported.length),
+        res.failed.length > 0 ? "info" : "ok",
+      );
+      close();
       onImported();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e || tr("失败")));
@@ -59,19 +99,33 @@ function DeepLinkImportPrompt({ onImported }: { onImported: () => void }) {
   };
 
   return (
-    <Modal open onClose={() => { if (!busy) clear(); }} label={tr("导入视频源")} width={420}>
+    <Modal open onClose={() => { if (!busy) close(); }} label={tr("导入视频源")} width={subscription ? 480 : 420}>
       <div className="p-4 space-y-3">
-        <div className="text-[15px] font-bold text-on">{tr("导入视频源")}</div>
-        <div className="p-2.5 rounded-(--r-sm) bg-s3 text-[12px] text-on font-mono break-all max-h-28 overflow-y-auto">
-          {target}
-        </div>
-        {error && <p role="alert" className="text-[12px] text-danger break-words">{error}</p>}
-        <div className="flex gap-2">
-          <Button disabled={busy} onClick={clear} className="flex-1 h-9 rounded-(--r-ctl) bg-s3 text-[13px] text-on pressable">{tr("取消")}</Button>
-          <Button disabled={busy} onClick={() => void confirmImport()} className="flex-1 h-9 rounded-(--r-ctl) brand-grad text-[13px] font-semibold text-on-primary pressable disabled:opacity-50">
-            {busy ? tr("导入中…") : tr("导入")}
-          </Button>
-        </div>
+        {subscription ? (
+          <>
+            {error && <p role="alert" className="text-[12px] text-danger break-words">{error}</p>}
+            <SubscriptionPicker
+              preview={subscription}
+              busy={busy}
+              onCancel={() => { setSubscription(null); setError(""); }}
+              onConfirm={confirmSubscription}
+            />
+          </>
+        ) : (
+          <>
+            <div className="text-[15px] font-bold text-on">{tr("导入视频源")}</div>
+            <div className="p-2.5 rounded-(--r-sm) bg-s3 text-[12px] text-on font-mono break-all max-h-28 overflow-y-auto">
+              {target}
+            </div>
+            {error && <p role="alert" className="text-[12px] text-danger break-words">{error}</p>}
+            <div className="flex gap-2">
+              <Button disabled={busy} onClick={close} className="flex-1 h-9 rounded-(--r-ctl) bg-s3 text-[13px] text-on pressable">{tr("取消")}</Button>
+              <Button disabled={busy} onClick={() => void confirmImport()} className="flex-1 h-9 rounded-(--r-ctl) brand-grad text-[13px] font-semibold text-on-primary pressable disabled:opacity-50">
+                {busy ? tr("导入中…") : tr("导入")}
+              </Button>
+            </div>
+          </>
+        )}
       </div>
     </Modal>
   );
@@ -102,12 +156,19 @@ function SourceGate() {
     }
   }, [readyForApp, sourceState, activeSource?.capabilities.lines]);
 
+  const hasBackConsumer = useHasBackConsumer();
+  const settingsLayerRef = useRef<HTMLDivElement>(null);
+  const closePreSourceSettings = useCallback(() => {
+    setSettingsOpen(false);
+    refreshSourceState();
+  }, [refreshSourceState]);
+  useEdgeSwipeBack(settingsLayerRef, isMobile && !readyForApp && settingsOpen, closePreSourceSettings);
+
   const preSourceBackRef = useRef<() => void>(() => {});
   preSourceBackRef.current = () => {
     if (runBack()) return;
     if (settingsOpen) {
-      setSettingsOpen(false);
-      refreshSourceState();
+      closePreSourceSettings();
       return;
     }
     if (platform === "android") {
@@ -126,34 +187,39 @@ function SourceGate() {
       if (e.key === "Escape") preSourceBackRef.current();
     };
     window.addEventListener("keydown", onKey);
-    let disposed = false;
-    let handle: { unregister: () => Promise<void> } | null = null;
-    if (platform === "android") {
-      addPluginListener("app", "back-button", () => preSourceBackRef.current())
-        .then((l) => { if (disposed) l.unregister().catch(() => {}); else handle = l; })
-        .catch(() => {});
-    }
+    const unsubNative = subscribeNativeBack(platform, () => preSourceBackRef.current());
     return () => {
-      disposed = true;
       window.removeEventListener("keydown", onKey);
-      handle?.unregister().catch(() => {});
+      unsubNative();
     };
   }, [sourceState, readyForApp]);
+
+  useEffect(() => {
+    if (sourceState === null || readyForApp) return;
+    syncOhosBackIntercept(platform, hasBackConsumer || settingsOpen);
+  }, [sourceState, readyForApp, hasBackConsumer, settingsOpen]);
 
   if (sourceState === null) return null;
   if (sourceState !== "unsupported" && !sourceState.activeSourceId) {
     return (
       <div className={`fixed inset-0 bg-bg plat-${platform}`} style={preSourceShellStyle()}>
-        {settingsOpen ? (
-          <Suspense fallback={null}>
-            <Settings wide={wide} onBack={() => { setSettingsOpen(false); refreshSourceState(); }} />
-          </Suspense>
-        ) : (
+        <div
+          className={`absolute inset-0 ${settingsOpen ? "ios-layer-hidden" : ""}`}
+          aria-hidden={settingsOpen || undefined}
+          inert={settingsOpen || undefined}
+        >
           <SourceOnboarding
             state={sourceState}
             onChanged={refreshSourceState}
             onOpenSettings={() => setSettingsOpen(true)}
           />
+        </div>
+        {settingsOpen && (
+          <div ref={settingsLayerRef} className="absolute inset-0 bg-bg z-10">
+            <Suspense fallback={null}>
+              <Settings wide={wide} onBack={closePreSourceSettings} />
+            </Suspense>
+          </div>
         )}
         <DeepLinkImportPrompt onImported={refreshSourceState} />
         <ToastHost />

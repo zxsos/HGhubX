@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api, fmtTime } from "../shared/api/api";
 import VideoSurface, { type VideoHandle } from "../features/playback/VideoSurface";
+import { formatNetSpeed, useMediaSpeed } from "../features/playback/BufferingIndicator";
 import { preheatHlsStart, rememberAttemptedKey, shouldPreheatNext } from "../features/playback/nextEpisodePreheat";
 import { useContentPreferences } from "../shared/model/contentPreferences";
 import type { Detail } from "../shared/api/types";
@@ -20,6 +21,8 @@ type Props = {
   rate?: number;
   quality?: Quality;
   autoNext?: boolean;
+  skipIntroSecs?: number;
+  skipOutroSecs?: number;
   onFavorite: (content: TvContent) => void | Promise<void>;
   onProgress: (progress: TvProgress) => void | Promise<void>;
   onBack: () => void;
@@ -32,7 +35,7 @@ type Prepared = { request: string; content: TvContent; parts: TvPart[]; streams:
 type Clock = { key: string; content: TvContent; part: string; seconds: number; duration: number; ready: boolean };
 const finiteSeconds = (value: number | undefined) => Number.isFinite(value) ? Math.max(0, value || 0) : 0;
 
-export default function PlayerPage({ content, sourceKey, part: initialPart, resumeSeconds = 0, favorite, rate: initialRate = 1, quality: initialQuality = "main", autoNext = true, onFavorite, onProgress, onBack, onMetadata, onPartChange, onPreferencesChange }: Props) {
+export default function PlayerPage({ content, sourceKey, part: initialPart, resumeSeconds = 0, favorite, rate: initialRate = 1, quality: initialQuality = "main", autoNext = true, skipIntroSecs = 0, skipOutroSecs = 0, onFavorite, onProgress, onBack, onMetadata, onPartChange, onPreferencesChange }: Props) {
   const preferences = useContentPreferences();
   const key = `${content.kind}:${content.id}`;
   const [part, setPart] = useState(initialPart);
@@ -41,6 +44,7 @@ export default function PlayerPage({ content, sourceKey, part: initialPart, resu
   const [attempt, setAttempt] = useState(0);
   const [error, setError] = useState("");
   const [fallbackNotice, setFallbackNotice] = useState("");
+  const [outroCountdown, setOutroCountdown] = useState<number | null>(null);
   const [saveError, setSaveError] = useState("");
   const [preferenceError, setPreferenceError] = useState("");
   const [playing, setPlaying] = useState(false);
@@ -62,6 +66,8 @@ export default function PlayerPage({ content, sourceKey, part: initialPart, resu
   const transportEpoch = useRef(0);
   const endedSession = useRef("");
   const restoredSession = useRef("");
+  const outroSkippedSession = useRef("");
+  const pendingNotice = useRef("");
   const pendingRestore = useRef(finiteSeconds(resumeSeconds));
   const clock = useRef<Clock>({ key, content, part: initialPart, seconds: finiteSeconds(resumeSeconds), duration: 0, ready: false });
   const lastSaved = useRef(0);
@@ -74,6 +80,7 @@ export default function PlayerPage({ content, sourceKey, part: initialPart, resu
   const loaded = sourceReady && prepared?.request === request ? prepared : null;
   const item = denied?.request === request ? denied.content : loaded?.content ?? { ...content, title: "正在读取当前来源…", cover: "", description: undefined };
   const blocked = preferences.blockReason(item.tags);
+  const { bytesPerSec: tvSpeedBps } = useMediaSpeed(waiting && !error && !blocked);
   const mediaSrc = loaded ? (quality === "hevc" ? loaded.streams.hevc || loaded.streams.main : loaded.streams.main) : "";
   const session = loaded ? `${request}:${loaded.serial}:${quality}` : "";
   const latest = useRef({ request, session, blocked, onProgress, onMetadata, onBack, onPartChange, onPreferencesChange });
@@ -106,8 +113,8 @@ export default function PlayerPage({ content, sourceKey, part: initialPart, resu
     };
     const pagehide = () => persistRef.current();
     const sourceChanged = () => {
-      cancelPreheat(); persistRef.current(); transportEpoch.current++; setPrepared(null); setDenied(null);
-      setFallbackNotice(""); setPlaying(false); setWaiting(true); setModal(null); setSeek(null); setControls(true);
+      cancelPreheat(); persistRef.current(); transportEpoch.current++; pendingNotice.current = ""; setPrepared(null); setDenied(null);
+      setFallbackNotice(""); setOutroCountdown(null); setPlaying(false); setWaiting(true); setModal(null); setSeek(null); setControls(true);
     };
     document.addEventListener("visibilitychange", visibility);
     window.addEventListener("pagehide", pagehide);
@@ -128,7 +135,7 @@ export default function PlayerPage({ content, sourceKey, part: initialPart, resu
     let alive = true;
     const transport = transportEpoch.current;
     const current = () => alive && mounted.current && latest.current.request === request && transport === transportEpoch.current;
-    setError(""); setFallbackNotice(""); setWaiting(true); setPlaying(false); setSeek(null); setModal(null); setControls(true);
+    setError(""); setFallbackNotice(pendingNotice.current); pendingNotice.current = ""; setOutroCountdown(null); setWaiting(true); setPlaying(false); setSeek(null); setModal(null); setControls(true);
     persistRef.current();
     if (clock.current.key !== key || clock.current.part !== part) {
       clock.current = { key, content, part, seconds: 0, duration: 0, ready: false };
@@ -136,6 +143,7 @@ export default function PlayerPage({ content, sourceKey, part: initialPart, resu
     }
     pendingRestore.current = clock.current.seconds;
     restoredSession.current = "";
+    outroSkippedSession.current = "";
     if (!sourceReady) return;
     if (preferences.blockReason(content.tags)) { setWaiting(false); return; }
     void (async () => {
@@ -234,15 +242,21 @@ export default function PlayerPage({ content, sourceKey, part: initialPart, resu
   const commitSeek = () => {
     if (seek === null) return;
     try {
-      video.current?.seek(seek, "tv_remote"); clock.current.seconds = seek; setTime(seek); setSeek(null); persist(); interact();
+      video.current?.seek(seek, "tv_remote");
+      if (skipOutroSecs > 0 && duration > 0) {
+        if (seek >= duration - skipOutroSecs) outroSkippedSession.current = session;
+        else if (seek < duration - skipOutroSecs - 1 && outroSkippedSession.current === session) outroSkippedSession.current = "";
+      }
+      clock.current.seconds = seek; setTime(seek); setSeek(null); persist(); interact();
     } catch { setError("跳转未完成，请重试"); }
   };
   const retryPlayback = () => { persist(); setAttempt(value => value + 1); interact(); };
   const replay = () => {
     clock.current.seconds = 0; pendingRestore.current = 0; wanted.current = true;
+    outroSkippedSession.current = ""; setOutroCountdown(null);
     setTime(0); setAttempt(value => value + 1); setModal(null); interact();
   };
-  const onEnded = (token: string) => {
+  const onEnded = (token: string, notice = "") => {
     if (!currentSession(token) || endedSession.current === token || document.hidden || !wanted.current) return;
     const element = video.current?.el();
     // VideoSurface also emits near-end from timeupdate. A paused seek/background
@@ -253,7 +267,7 @@ export default function PlayerPage({ content, sourceKey, part: initialPart, resu
     persist(); setPlaying(false); setWaiting(false); interact();
     const index = loaded!.parts.findIndex(candidate => candidate.id === part);
     const next = loaded!.parts[index + 1];
-    if (next && autoNext) changePart(next.id);
+    if (next && autoNext) { pendingNotice.current = notice; changePart(next.id); }
     else { wanted.current = false; setModal("ended"); }
   };
   const restore = (token: string, value: number) => {
@@ -261,10 +275,17 @@ export default function PlayerPage({ content, sourceKey, part: initialPart, resu
     clock.current.duration = value; clock.current.ready = true; setDuration(value);
     if (restoredSession.current === token) return;
     try {
-      const target = pendingRestore.current >= Math.max(1, value - 3)
+      const hasNextPart = loaded ? loaded.parts.findIndex(candidate => candidate.id === part) < loaded.parts.length - 1 : false;
+      const resumeTarget = pendingRestore.current >= Math.max(1, value - 3)
         ? 0
         : Math.min(pendingRestore.current, Math.max(0, value - .15));
-      if (target > 0) video.current?.seek(target, "tv_resume");
+      const minDurForIntro = skipIntroSecs + (hasNextPart && autoNext ? skipOutroSecs : 0) + 15;
+      const shouldSkipIntro = resumeTarget <= 0 && content.kind === "video" && skipIntroSecs > 0 && value > minDurForIntro;
+      const target = shouldSkipIntro ? Math.min(skipIntroSecs, Math.max(0, value - .15)) : resumeTarget;
+      if (target > 0) {
+        video.current?.seek(target, shouldSkipIntro ? "tv_skip_intro" : "tv_resume");
+        if (shouldSkipIntro) setFallbackNotice(`已跳过片头（${skipIntroSecs}秒）`);
+      }
       clock.current.seconds = target; setTime(target); restoredSession.current = token; setWaiting(false);
       if (!wanted.current) video.current?.pause();
     } catch { /* Loaded-data/time callbacks may retry while the media is still attaching. */ }
@@ -279,8 +300,8 @@ export default function PlayerPage({ content, sourceKey, part: initialPart, resu
   };
   const changeQuality = (next: Quality) => {
     if (next === quality || next === "hevc" && !loaded?.streams.hevc) return;
-    persist(); pendingRestore.current = clock.current.seconds; restoredSession.current = "";
-    setError(""); setFallbackNotice(""); setPlaying(false); setWaiting(true); setQuality(next);
+    persist(); pendingRestore.current = clock.current.seconds; restoredSession.current = ""; pendingNotice.current = "";
+    setError(""); setFallbackNotice(""); setOutroCountdown(null); setPlaying(false); setWaiting(true); setQuality(next);
     persistPreferences({ rate, quality: next });
   };
   const changeRate = (next: number) => {
@@ -294,9 +315,22 @@ export default function PlayerPage({ content, sourceKey, part: initialPart, resu
     finally { if (mounted.current) setFavoritePending(false); }
   };
 
+  useEffect(() => {
+    if (outroCountdown === null) return;
+    if (!playing || waiting || error || blocked || !foreground || modal) { setOutroCountdown(null); return; }
+    if (outroCountdown <= 0) {
+      setOutroCountdown(null);
+      onEnded(session, "已跳过片尾，即将播放下一集");
+      return;
+    }
+    const timer = window.setTimeout(() => setOutroCountdown(prev => (prev === null ? null : prev - 1)), 1000);
+    return () => window.clearTimeout(timer);
+  }, [outroCountdown, playing, waiting, error, blocked, foreground, modal, session]);
+
   useRemoteScope({ id: `player:${key}`, priority: 60, onKey: remote => {
     if (remote === "back") {
-      if (seek !== null) { setSeek(null); interact(); }
+      if (outroCountdown !== null && !modal) { setOutroCountdown(null); interact(); }
+      else if (seek !== null) { setSeek(null); interact(); }
       else if (modal) setModal(null);
       else if (controls && !blocked && !error) setControls(false);
       else exit();
@@ -337,6 +371,17 @@ export default function PlayerPage({ content, sourceKey, part: initialPart, resu
         if (restoredSession.current !== session) { restore(session, video.current?.el()?.duration || 0); return; }
         clock.current.seconds = finiteSeconds(value); clock.current.ready = true; setTime(value);
         if (Date.now() - lastSaved.current >= 5000) persist();
+        if (
+          playing && !waiting && !error && !blocked && foreground && content.kind === "video" && loaded
+          && autoNext && nextExists && skipOutroSecs > 0
+          && clock.current.duration > skipIntroSecs + skipOutroSecs + 15
+          && value >= clock.current.duration - skipOutroSecs
+          && outroSkippedSession.current !== session && endedSession.current !== session
+        ) {
+          outroSkippedSession.current = session;
+          setOutroCountdown(5);
+          return;
+        }
         if (playing && !waiting && !error && !blocked && foreground && content.kind === "video" && loaded && shouldPreheatNext(value, clock.current.duration)) {
           const nextPart = loaded.parts[loaded.parts.findIndex(candidate => candidate.id === part) + 1];
           const cached = nextPart ? prefetched.current.get(`${sourceKey}:${key}:${preferences.revision}:${nextPart.id}`) : undefined;
@@ -354,7 +399,7 @@ export default function PlayerPage({ content, sourceKey, part: initialPart, resu
         }
       }}
       onPlaying={() => { if (currentSession(session)) { setPlaying(true); setWaiting(false); setError(""); } }}
-      onPause={() => { if (currentSession(session)) { setPlaying(false); setControls(true); persist(); } }}
+      onPause={() => { if (currentSession(session)) { setOutroCountdown(null); setPlaying(false); setControls(true); persist(); } }}
       onWaiting={() => { if (currentSession(session)) { setWaiting(true); setControls(true); } }}
       onEnded={() => onEnded(session)}
       onError={message => {
@@ -370,11 +415,34 @@ export default function PlayerPage({ content, sourceKey, part: initialPart, resu
       }}
       onClick={showControls} />}
     {blocked ? <div className="tv-player-message" role="status"><h1>内容已屏蔽</h1><p>{blocked}</p><div data-tv-region="player-blocked"><button data-tv-focus="player:blocked-back" onClick={exit}>返回详情</button></div></div> : <>
-      {fallbackNotice && !error && <div className="tv-player-notice" role="status">{fallbackNotice}</div>}
-      {waiting && !error && <div className="tv-player-loading" role="status">正在加载…</div>}
+      {fallbackNotice && !error && outroCountdown === null && <div className="tv-player-notice" role="status">{fallbackNotice}</div>}
+      {outroCountdown !== null && outroCountdown > 0 && !error && (
+        <div className="tv-player-outro-bar" role="status" data-tv-region="player-outro-skip">
+          <span>{outroCountdown} 秒后跳过片尾 · 按返回取消</span>
+          <button data-tv-focus="player:outro-cancel" onClick={() => { setOutroCountdown(null); interact(); }}>取消</button>
+          <button data-tv-focus="player:outro-next" onClick={() => { setOutroCountdown(null); onEnded(session, "已跳过片尾，即将播放下一集"); }}>立即下一集</button>
+        </div>
+      )}
+      {waiting && !error && (
+        <div className="tv-player-loading" role="status">
+          {tvSpeedBps !== null ? `正在加载 · ${formatNetSpeed(tvSpeedBps)}` : "正在加载…"}
+        </div>
+      )}
       {error && <div className="tv-player-message" role="alert"><h2>播放暂时中断</h2><p>{error}</p><div data-tv-region="player-error"><button data-tv-focus="player:retry" onClick={retryPlayback}>重试当前{content.kind === "post" ? "分段" : "剧集"}</button><button data-tv-focus="player:error-back" onClick={exit}>返回详情</button></div></div>}
       <div className="tv-player-controls" hidden={!controls}>
-        <div className="tv-player-heading"><h1>{item.title}</h1><span>{partLabel}</span></div>
+        <div className="tv-player-heading">
+          <h1>{item.title}</h1>
+          <span>{partLabel}</span>
+          {content.kind === "video" && (skipIntroSecs > 0 || (autoNext && nextExists && skipOutroSecs > 0)) && (
+            <span className="tv-player-skip-pill">
+              {skipIntroSecs > 0 && autoNext && nextExists && skipOutroSecs > 0
+                ? `跳过 ${skipIntroSecs}s/${skipOutroSecs}s`
+                : skipIntroSecs > 0
+                  ? `跳过片头 ${skipIntroSecs}s`
+                  : `跳过片尾 ${skipOutroSecs}s`}
+            </span>
+          )}
+        </div>
         {seek !== null && <p className="tv-player-seek-hint" role="status">跳转预览 {fmtTime(seek)} · 确认跳转 · 返回取消</p>}
         {saveError && <p role="alert">{saveError}</p>}
         {preferenceError && <p role="alert">{preferenceError}</p>}

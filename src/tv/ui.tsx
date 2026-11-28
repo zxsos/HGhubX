@@ -14,7 +14,7 @@ export function TvCard({ content, onOpen, placeholder = false }: { content: TvCo
     <strong>{blocked ? "已屏蔽的内容" : content.title}</strong><small>{blocked ? "记录已保留" : content.kind === "post" ? "帖子" : content.episodeCount ? `${content.episodeCount} 集` : "查看详情"}</small>
   </button>;
 }
-export function TvModal({ id, title, onClose, children }: { id: string; title: string; onClose: () => void; children: ReactNode }) {
+export function TvModal({ id, title, onClose, hideClose = false, compact = false, children }: { id: string; title: string; onClose: () => void; hideClose?: boolean; compact?: boolean; children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     const trigger = document.activeElement as HTMLElement;
@@ -26,8 +26,8 @@ export function TvModal({ id, title, onClose, children }: { id: string; title: s
     return () => { requestAnimationFrame(() => { if (trigger?.isConnected) focusElement(trigger); }); };
   }, []);
   useRemoteScope({ id, priority: 100, onKey: key => { if (key === "back") { onClose(); return true; } } });
-  return <div className="tv-modal-backdrop"><div ref={ref} data-tv-modal={id} className="tv-modal" role="dialog" aria-modal="true" aria-labelledby={`${id}-title`}>
-    <header data-tv-region={`${id}-header`}><h2 id={`${id}-title`}>{title}</h2><button data-tv-focus={`${id}-close`} onClick={onClose}>关闭</button></header>{children}
+  return <div className="tv-modal-backdrop"><div ref={ref} data-tv-modal={id} className={compact ? "tv-modal tv-modal-compact" : "tv-modal"} role="dialog" aria-modal="true" aria-labelledby={`${id}-title`}>
+    <header data-tv-region={`${id}-header`}><h2 id={`${id}-title`}>{title}</h2>{!hideClose && <button data-tv-focus={`${id}-close`} onClick={onClose}>关闭</button>}</header>{children}
   </div></div>;
 }
 export function TvStatus({ busy, error, onRetry, empty }: { busy?: boolean; error?: string; onRetry?: () => void; empty?: string }) {

@@ -20,7 +20,7 @@
 - Feed 播放内核：[`src/features/playback/VideoSurface.tsx`](../../src/features/playback/VideoSurface.tsx)
   的 `VideoSurface`、`VideoHandle.seek`、`reportSize`、`handleVideoError`。
 - 内嵌播放器：[`src/features/playback/Player.tsx`](../../src/features/playback/Player.tsx)
-  的 `Player`，以及 `PlayerControls.tsx`、`PlaybackLock.tsx`、`PlaybackProgress.tsx`。
+  的 `Player`，以及 `PlayerControls.tsx`、`PlaybackLock.tsx`、`PlaybackProgress.tsx`、`BufferingIndicator.tsx`（仅在缓冲态按 500ms 采样 `media_rx_bytes` 展示实时网速，持续 0 速 2.5s 后置琥珀色提示停滞，TV 端 [`src/tv/PlayerPage.tsx`](../../src/tv/PlayerPage.tsx) 复用 `useMediaSpeed`/`formatNetSpeed`）。
 - 恢复与时钟：[`hlsRecovery.ts`](../../src/features/playback/hlsRecovery.ts) 的
   `createHlsRecovery`；[`playbackClock.ts`](../../src/features/playback/playbackClock.ts)
   的 `createPlaybackClock`；[`usePlaybackActivity.ts`](../../src/features/playback/usePlaybackActivity.ts)、
@@ -53,7 +53,7 @@
    `http://127.0.0.1:17650`，由 GStreamer 直接取 HLS。
 3. hls.js 使用 `autoStartLoad: false`，在 `MANIFEST_PARSED` 后按
    `startPosition`/`resume` 调 `startLoad`。`FRAG_BUFFERED` 清空恢复计数和错误；
-   `ERROR` 只把 fatal network/media 交给 `createHlsRecovery`。
+   `ERROR` 只把 fatal network/media 交给 `createHlsRecovery`；上游媒体返回终止型 `403`/`404`/`410`/`451` 时，本地代理（`media/mod.rs`）原样透传状态码，其中明确拒绝访问的 `403`/`451` 由 `createHlsRecovery` 立即快速失败并通过 `hlsErrorMessage` 给出地区/防盗链提示，`404`/`410` 仍按有上限 4 次恢复并在最终失败后提示资源失效。
 4. `usePlaybackActivity` 在页面失活或应用切至后台（`document.hidden`）时同步暂停并 `stopLoad()`
    （处于画中画 `pictureInPictureElement` 时保持播放，退出画中画且页面仍失活/后台时再暂停），
    并驱动 `hlsRecovery.activityChanged()` 取消后台重试计时；后台挂起不读取已被系统原生暂停的
@@ -122,11 +122,12 @@
   全程无需松手或停顿。长按期间顶部显示无 `backdrop-filter` 的只读倍速胶囊指示当前倍速与 7 档轨道
   （慢放/加速两态平滑过渡色标与箭头方向）。长按加速/减速只临时改变倍速，松手恢复原速度；不提供拖动到顶部胶囊
   的持久锁定，持久倍速统一通过全屏倍速按钮或「更多」里的倍速选项设置。全屏 overlay 的 touch-action
-  固定为 none，避免原生 pan-y 把视觉横滑取消掉。
+  固定为 none，避免原生 pan-y 把视觉横滑取消掉。移动端/平板横屏全屏仅在播放页活跃期间由竖屏真实旋转至横屏时自动触发（横屏旋回竖屏自动退出；过滤输入法导致的纯高度收缩）；横屏冷启动、从其他页面切回首页或点开视频时仅同步视口方向基线而不默认进全屏，退出全屏时也仅在进入时曾主动旋转竖屏的情况下才恢复竖屏方向（`useFeedViewport.ts` / `useFsOrientation.ts`）。首次播放的长按倍速引导层（`MobileHoldGuide`）通过 `max-width: none` 全幅铺满宽屏/平板视口，仅在高度 `<= 520px` 时启用紧凑横排底部布局。
 - 媒体错误：hls fatal 与原生 `mediaErrorMessage` 均经 `formatErrorWithCode` 输出统一媒体代号
   （`MEDIA_NET`/`MEDIA_DECODE`/`MEDIA_UNSUPPORTED`/`MEDIA_ERR`），诊断细节写入 `window.__hlsErr` 与日志；
   手动重试走同一个 `useProxyPlaybackRecovery` 路径。
 - 移动端「平衡音量」（`balanceVolume.ts`，`hghubx_app_v1.balanceVolume`，默认 `false`）：仅在支持 MSE + Web Audio 的移动端环境展示入口并启用；首次显式手势解锁 `AudioContext` 后挂接输入侧原始 RMS 分析、扣除 `video.volume` 偏移的慢速 AGC 与峰值限幅器；跨源无 CORS / 原生非 `blob:` 源不挂接 `MediaElementAudioSourceNode`（标记 `unsupported`），页面失活或暂停时停止采样定时器并在无在播元素时挂起 `AudioContext`。
+- 自定义「跳过片头 / 跳过片尾」（仅在设置页 [`SkipIntroOutroSetting.tsx`](../../src/features/settings/SkipIntroOutroSetting.tsx) 与 TV 端 [`src/tv/SettingsPage.tsx`](../../src/tv/SettingsPage.tsx) 调整，分别持久化于 `hghubx_app_v1` 与 `hghubx_tv_playback_v1` 的 `skipIntroSecs` / `skipOutroSecs`，范围 `0–600` 秒、默认 `0`）：标准版 `Feed` 通过 `VideoSurface` 的 `skipTiming`（单集/末集 `"intro"`，有下一集 `"both"`）驱动，TV 端由 [`src/tv/PlayerPage.tsx`](../../src/tv/PlayerPage.tsx) 驱动；历史续播、代理/切页恢复或用户手动拖动优先于自动跳过，且仅在总时长至少比跳过区间多 15 秒时触发；无下一集时片尾跳过不提前中断播放（TV 端片尾跳过还需同时开启「作品内自动续集」`autoplayNext`）；到达片尾窗口时先展示 5 秒可取消倒计时提示（支持「取消」或「立即下一集」，TV 端按返回键也可直接取消；暂停、拖动或失活时自动取消倒计时），取消后本集不再重复触发。
 
 ## 约束与失败行为
 
