@@ -74,13 +74,20 @@ function DeepLinkImportPrompt({ onImported }: { onImported: () => void }) {
     setError("");
     try {
       const res = await api.sourceImportSubscription(items, true);
+      if (!res.imported.length) {
+        // 全部失败：留在订阅清单并展示失败原因，便于调整勾选后重试。
+        setError(res.failed.length > 0
+          ? tr("{0} 个站点导入失败：{1}", res.failed.length, res.failed.map((f) => `${f.name}（${f.error}）`).join("；"))
+          : tr("失败"));
+        return;
+      }
       window.dispatchEvent(new CustomEvent("hg:line-changed"));
       window.dispatchEvent(new CustomEvent("hg:source-changed"));
       toast(
         res.failed.length > 0
           ? tr("已导入 {0} 个视频源（{1} 个失败）", res.imported.length, res.failed.length)
           : tr("已导入 {0} 个视频源", res.imported.length),
-        "ok",
+        res.failed.length > 0 ? "info" : "ok",
       );
       close();
       onImported();
