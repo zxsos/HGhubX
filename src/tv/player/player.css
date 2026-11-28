@@ -9,6 +9,7 @@
 .tv-detail-copy { flex: 1; min-width: 0; }
 .tv-detail-meta { font-size: 0.9444rem; color: var(--tv-muted); }
 .tv-detail-description { margin: 0.6667rem 0; max-width: 34.4444rem; line-height: 1.6; font-size: 1rem; color: #cfd4da; white-space: pre-line; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+.tv-detail-synopsis { white-space: pre-line; overflow-wrap: anywhere; line-height: 1.6; color: #cfd4da; }
 .tv-detail-tags { display: flex; flex-wrap: wrap; gap: 0.4444rem; margin: 0.7778rem 0; }
 .tv-detail-tags span { font-size: 0.8889rem; line-height: 1.3333rem; border-radius: 999px; padding: 0.1111rem 0.6rem; background: rgba(255, 255, 255, .08); color: #cfd4da; }
 .tv-detail-actions { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 0.95rem; }
