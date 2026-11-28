@@ -570,7 +570,10 @@ export function ChannelPage({ cate, name, onBack, wide, sorts }: {
             <h1 className="text-[17px] font-bold text-on leading-tight truncate">{name}</h1>
             <div role="status" className="text-[12px] text-mut leading-tight mt-0.5">{replacing ? (!hasServerSorts ? (loading ? tr("加载中…") : tr("加载失败")) : (loading && metricSort !== "default" ? tr("正在加载全部结果以排序…") : (loading ? tr("正在更新筛选结果…") : tr("筛选更新失败")))) : tr("已加载 {0} 部 · {1}/{2} 页", sortedItems.length, page, Math.max(pages, 1))}</div>
           </div>
-          {capabilities.search && (
+          {!hasServerSorts && !isFeedChannel && (
+            <VideoSortMenu value={metricSort} direction={metricDirection} onChange={changeMetricSort} />
+          )}
+          {capabilities.search && (hasServerSorts || isFeedChannel) && (
             <Button onClick={() => setSearching(true)} aria-label={tr("搜索")} className="ios-nav-btn"><ISearch size={18} /></Button>
           )}
         </div>
@@ -580,11 +583,6 @@ export function ChannelPage({ cate, name, onBack, wide, sorts }: {
               <Button aria-pressed={serverSort === s} key={s} onClick={() => changeServerSort(s)}
                 className="ios-filter-pill">{sortLabel(s)}</Button>
             ))}
-            <VideoSortMenu className="ml-auto" value={metricSort} direction={metricDirection} onChange={changeMetricSort} />
-          </div>
-        )}
-        {!hasServerSorts && !isFeedChannel && (
-          <div className="ios-subpage-inner ios-channel-tabs pb-3 flex flex-wrap items-center gap-1.5">
             <VideoSortMenu className="ml-auto" value={metricSort} direction={metricDirection} onChange={changeMetricSort} />
           </div>
         )}
