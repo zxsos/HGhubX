@@ -366,19 +366,32 @@ export type LineTryMain = {
   probe: { ok: boolean; base: string; tier: string; ms: number; status: number | null };
 };
 
+export type CatalogSort = string | { key: string; name?: string; default?: boolean };
+
+/** API key sent to the source; named sorts keep a stable key separate from the tab label. */
+export const catalogSortKey = (sort?: CatalogSort): string =>
+  typeof sort === "string" ? sort : sort?.key ?? "";
+
+/** Default API key: the first sort flagged `default: true`, otherwise the first sort. */
+export const catalogSortDefaultKey = (sorts?: readonly CatalogSort[]): string => {
+  const list = sorts ?? [];
+  const selected = list.find((sort) => typeof sort !== "string" && sort.default === true);
+  return catalogSortKey(selected ?? list[0]);
+};
+
 export type CatalogChannel = {
   id: string;
   label: string;
   kind?: string;
   icon?: string;
-  sorts?: string[];
+  sorts?: CatalogSort[];
 };
 
 export type CatalogShortcut = {
   id: string;
   label: string;
   icon?: string;
-  sorts?: string[];
+  sorts?: CatalogSort[];
 };
 
 export type SourceCatalogConfig = {

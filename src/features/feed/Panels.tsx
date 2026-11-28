@@ -127,6 +127,17 @@ export function CommentsPanel({ videoId, ep, total, kind = "video", onClose, onT
     }
   }, [videoId, ep, kind, scope]);
 
+  const loadNext = useCallback(() => {
+    if (!alive.current || loadBusy.current || loading || error || page < 1 || page >= pages) return;
+    void load(page + 1);
+  }, [error, load, loading, page, pages]);
+
+  const checkNearBottom = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    if (el.scrollHeight - el.scrollTop - el.clientHeight <= 120) loadNext();
+  }, [loadNext]);
+
   useEffect(() => {
     alive.current = true;
     setItems([]); setPage(0); setPages(1); setLoadedTotal(null); setText(""); setSending(false); sendBusy.current = false;
@@ -134,6 +145,10 @@ export function CommentsPanel({ videoId, ep, total, kind = "video", onClose, onT
     void load(1);
     return () => { alive.current = false; loadSequence.current++; sendSequence.current++; loadBusy.current = false; };
   }, [load]);
+
+  useEffect(() => {
+    if (!loading && !error) checkNearBottom();
+  }, [checkNearBottom, error, items.length, loading, page]);
 
   const send = async () => {
     if (kind === "post") return;
@@ -166,9 +181,9 @@ export function CommentsPanel({ videoId, ep, total, kind = "video", onClose, onT
         </Button>
       </div>
 
-      <div ref={scrollRef} className="flex-1 min-h-0 scroll-y px-4" aria-busy={loading}>
+      <div ref={scrollRef} className="flex-1 min-h-0 scroll-y px-4" aria-busy={loading} onScroll={checkNearBottom} data-testid="comments-scroll">
         {items.length ? items.map((c, idx) => (
-          <div key={c.id ?? `comment-${idx}`} className="flex gap-2.5 py-3 border-b border-[var(--ios-edge)] last:border-0">
+          <div key={c.id ?? `comment-${idx}`} className="flex gap-2.5 py-3 border-b border-[var(--ios-edge)] last:border-0" data-testid="comment-item">
             <Avatar size={32} name={c.nickname} hue={Number.isFinite(c.user_id) ? (c.user_id * 37) % 360 : 210} />
             <div className="flex-1 min-w-0">
               <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
@@ -193,13 +208,11 @@ export function CommentsPanel({ videoId, ep, total, kind = "video", onClose, onT
             )}
           </div>
         )}
-        {items.length > 0 && (
+        {items.length > 0 && (loading || error || page >= pages) && (
           <div className="flex justify-center py-4">
-            {loading ? <Loader className="w-5 h-5 spinner" />
+            {loading ? <Loader className="w-5 h-5 spinner" label={tr("正在加载更多评论")} />
               : error ? <div role="status" className="flex flex-wrap items-center justify-center gap-2 text-[12px] text-mut"><span>{tr("评论加载失败：{0}", error)}</span><Button className="px-3 text-primary" onClick={() => void load(retryPage)}>{tr("重试")}</Button></div>
-              : page < pages ? (
-                <Button onClick={() => load(page + 1)} className="px-4 h-8 rounded-(--r-ctl) bg-s3 text-[12px] text-on/80 pressable">{tr("查看更多")}</Button>
-              ) : <span className="text-[12px] text-mut">{tr("— 到底啦 —")}</span>}
+              : <span className="text-[12px] text-mut">{tr("— 到底啦 —")}</span>}
           </div>
         )}
       </div>

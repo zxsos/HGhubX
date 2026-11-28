@@ -25,6 +25,7 @@ const loadFeed = () => import("./Feed");
 const Feed = lazy(loadFeed);
 
 const PINNED_FETCH_CONCURRENCY = 4;
+const HOME_REFRESH_TOAST_TAG = "home-refresh";
 
 type PinnedDeckState = {
   decks: Map<string, number[]>;
@@ -281,7 +282,7 @@ export default function Home({ active, bottomInset }: { active: boolean; bottomI
       });
       if (reset && options?.manual && ordered.length > 0) {
         setRefreshCycle((cycle) => cycle + 1);
-        toast(tr("已换一批推荐"), "info");
+        toast(tr("已换一批推荐"), "info", HOME_REFRESH_TOAST_TAG);
       }
       failStreak.current = 0;
       retryAt.current = 0;
@@ -300,7 +301,9 @@ export default function Home({ active, bottomInset }: { active: boolean; bottomI
       if (!stale) {
         if (!options?.manual || !itemsRef.current.length) setError(message);
         if (!reset) retryAt.current = Date.now() + 5000;
-        if (options?.manual || failStreak.current++ === 0) toast(message, "info");
+        if (options?.manual || failStreak.current++ === 0) {
+          toast(message, "info", options?.manual ? HOME_REFRESH_TOAST_TAG : undefined);
+        }
       }
       /* 请求在旧线路或旧置顶集合上发出：等 finally 里按新作用域补拉一次 */
       if (stale && (requestPinnedKey !== pinnedKeyRef.current || !itemsRef.current.length)) {

@@ -43,6 +43,13 @@ try {
   await searchNav.click();
   const input = page.getByRole("textbox", { name: "搜索视频、帖子、题材…" });
   await input.waitFor();
+  const historyHeading = page.getByRole("heading", { name: "搜索历史", exact: true });
+  await historyHeading.waitFor();
+  assert.equal(await historyHeading.locator("svg").count(), 1, "search history heading has its own icon");
+  assert.equal(await historyHeading.locator("svg").getAttribute("width"), "15", "history icon matches the section heading size");
+  assert.match(await historyHeading.locator("svg").getAttribute("class") ?? "", /text-primary/, "history icon uses the section accent color");
+  await page.screenshot({ path: fileURLToPath(new URL("search-history-heading.png", output)), animations: "disabled" });
+  report.checks.push("search history heading uses the same red 15px icon as the other search sections");
   assert.equal(await searchNav.getAttribute("aria-current"), "page");
   report.checks.push("bottom nav opens the Search tab");
 

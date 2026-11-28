@@ -216,8 +216,21 @@ try {
     await page.getByRole("heading", { name: "我的", exact: true }).waitFor({ state: "hidden" });
     await page.evaluate(() => { window.__FAVORITE_EPISODE_COUNT__ = 13; });
     await nav.getByRole("button", { name: "我的", exact: true }).click();
+    await card.getByText("更新至 12 集", { exact: true }).waitFor();
+    report.checks.push("returning to cached favorites keeps the cached episode count");
+
+    const region = page.locator("[data-favorite-refresh-region]");
+    const box = await region.boundingBox();
+    assert.ok(box, "favorite refresh region should be visible");
+    const x = box.x + box.width / 2;
+    const y = box.y + 18;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    for (let step = 1; step <= 10; step++) await page.mouse.move(x, y + step * 18);
+    await page.mouse.up();
+    await page.waitForFunction(() => !document.querySelector("[data-favorite-pull-indicator]"));
     await card.getByText("更新至 13 集", { exact: true }).waitFor();
-    report.checks.push("returning to cached favorites shows a newly added episode");
+    report.checks.push("pull-to-refresh picks up the newly added episode");
     await context.close();
   }
 

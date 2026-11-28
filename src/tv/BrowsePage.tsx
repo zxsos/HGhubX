@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { api } from "../shared/api/api";
+import { api, catalogSortDefaultKey } from "../shared/api/api";
 import type { TagGroup, TopicCard } from "../shared/api/types";
 import { useContentPreferences } from "../shared/model/contentPreferences";
 import { type TvContent, contentKey } from "./model";
@@ -28,9 +28,9 @@ export default function BrowsePage({ onOpen, active=true }: { onOpen: (content: 
     if (activeDeclared?.length) {
       for (const ch of activeDeclared) {
         if (ch.kind === "post") {
-          list.push({ id: ch.id, label: ch.label, mode: "posts", sort: ch.sorts?.[0] });
+          list.push({ id: ch.id, label: ch.label, mode: "posts", sort: catalogSortDefaultKey(ch.sorts) || undefined });
         } else {
-          list.push({ id: ch.id, label: ch.label, mode: "category", sort: ch.sorts?.[0] });
+          list.push({ id: ch.id, label: ch.label, mode: "category", sort: catalogSortDefaultKey(ch.sorts) || undefined });
         }
       }
     } else if (permissive || caps?.home) {

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { Button } from "./ios/controls";
-import { ICheck, ISort, ISortAsc, ISortDesc } from "./icons";
+import { ICheck, IFilter, ISortAsc, ISortDesc } from "./icons";
 import { tr } from "../i18n";
 import { registerOverlayBack } from "../lib/back";
 import { videoSortLabel, VIDEO_SORT_METRICS, type VideoSortDirection, type VideoSortMetric } from "../model/videoSort";
@@ -114,13 +114,14 @@ export function VideoSortMenu({ value, direction, onChange, className = "" }: {
         aria-label={active ? tr("排序：{0}", label) : tr("排序")}
         aria-haspopup="menu" aria-expanded={open} aria-controls={open ? menuId : undefined}
         data-video-sort-trigger
+        data-sort-icon={active ? "direction" : "filter"}
         data-sort-direction={active ? direction : undefined}
         onClick={onTriggerClick} onKeyDown={onTriggerKeyDown}
         className={`ios-filter-pill ios-sort-pill ${active ? "is-labeled is-active" : "is-icon"}`}>
         {active && <span className="ios-filter-active-label">{label}</span>}
         {active
           ? <DirectionIcon size={15} strokeWidth={1.9} />
-          : <ISort size={16} strokeWidth={1.9} />}
+          : <IFilter size={19} strokeWidth={1.8} />}
       </Button>
       {open && (
         <div ref={menuRef} id={menuId} role="menu" aria-label={tr("排序方式")} className="ios-sort-menu"

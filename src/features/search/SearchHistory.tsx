@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { Button } from "../../shared/ui/ios/controls";
-import { IClose } from "../../shared/ui/icons";
+import { IClose, IHistory } from "../../shared/ui/icons";
 import { tr } from "../../shared/i18n";
 
 const HOLD_MS = 480;
@@ -86,7 +86,7 @@ export function SearchHistory({ items, onPick, onRemove, onClear, className = ""
   return (
     <section ref={sectionRef} role="region" aria-label={tr("搜索历史")} className={className}>
       <div className="flex items-center justify-between gap-2">
-        <h2 className="text-[14px] font-semibold text-on/90">{tr("搜索历史")}</h2>
+        <h2 className="flex items-center gap-1.5 text-[14px] font-semibold text-on/90"><IHistory size={15} className="text-primary" />{tr("搜索历史")}</h2>
         {editing ? (
           <div className="ios-history-actions">
             <Button onClick={clearAll} className="ios-history-action">{tr("清空")}</Button>

@@ -29,6 +29,31 @@ try {
     hasTouch: true,
   });
   await context.addInitScript(installFixture, { theme: "dark", titles: ["城市与晚风", "重逢在夏日以后", "星河旅人"] });
+  await context.addInitScript(() => {
+    const namedChannel = {
+      id: "named",
+      label: "命名排序",
+      icon: "clock",
+      sorts: [
+        { key: "latest", name: "更新更新" },
+        { key: "hot_window", name: "当前热播", default: true },
+        { key: "random", name: "精选推荐" },
+      ],
+    };
+    const calls = [];
+    window.__sortCalls = calls;
+    const original = window.__TAURI_INTERNALS__.invoke;
+    window.__TAURI_INTERNALS__.invoke = async (command, args = {}) => {
+      if (command === "api_category") calls.push(args.sort);
+      if (command === "source_state") {
+        const state = await original(command, args);
+        const channels = state.sources[0].catalog.channels;
+        if (!channels.some(channel => channel.id === namedChannel.id)) channels.push(namedChannel);
+        return state;
+      }
+      return original(command, args);
+    };
+  });
   const page = await context.newPage();
   page.on("pageerror", error => report.errors.push(error.message));
   await page.route("**/*", route => {
@@ -86,6 +111,21 @@ try {
     assert.equal(await activeTab(), tabs[1], `${cate}: vertical swipe does not switch tabs`);
     report.checks.push(`${cate}: swipe tabs forward/back without wrap; vertical scroll is ignored`);
   }
+
+  await page.goto(new URL("/tests/channel-swipe.html?cate=named", origin).href, { waitUntil: "networkidle" });
+  await page.locator(".ios-page > .scroll-y").waitFor();
+  const namedTabs = page.locator(".ios-subpage-header .ios-filter-pill");
+  await namedTabs.first().waitFor();
+  const namedLabels = (await namedTabs.allTextContents()).filter(Boolean);
+  assert.deepEqual(namedLabels, ["更新更新", "当前热播", "精选推荐"], "tab labels and order match source sorts");
+  assert.equal(await activeTab(), "当前热播", "sort marked default:true is selected instead of the first tab");
+  const firstCalls = await page.evaluate(() => window.__sortCalls);
+  assert.ok(firstCalls.includes("hot_window"), "default tab sends the source key, not its label");
+  await page.getByRole("button", { name: "精选推荐", exact: true }).click();
+  await page.waitForFunction(() => document.querySelector(".ios-subpage-header [aria-pressed=\"true\"]")?.textContent === "精选推荐");
+  const nextCalls = await page.evaluate(() => window.__sortCalls);
+  assert.ok(nextCalls.includes("random"), "named tab sends its key");
+  report.checks.push("named sort labels/order come from the source; default:true selects the middle tab; requests keep source keys");
 
   await page.screenshot({ path: fileURLToPath(new URL("channel-swipe.png", output)), animations: "disabled" });
   assert.deepEqual(report.errors, []);

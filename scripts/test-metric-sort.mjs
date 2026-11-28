@@ -85,6 +85,7 @@ try {
     await page.getByRole("menuitemradio", { name: "默认排序", exact: true }).click();
     await waitOrder(expected.默认排序);
     assert.equal((await page.locator("[data-video-sort-trigger]").innerText()).trim(), "");
+    assert.equal(await page.locator("[data-video-sort-trigger]").getAttribute("data-sort-icon"), "filter");
     assert.equal(await page.getByRole("menu").count(), 0);
   };
 
@@ -92,6 +93,12 @@ try {
   await page.goto(new URL("/tests/channel-swipe.html?cate=special", origin).href, { waitUntil: "networkidle" });
   await page.locator(".ios-page > .scroll-y").waitFor();
   await page.locator("[data-video-sort-trigger]").waitFor();
+  assert.equal(await page.locator("[data-video-sort-trigger]").getAttribute("data-sort-icon"), "filter");
+  assert.equal(await page.locator(".ios-subpage-bar").getByRole("button", { name: "搜索" }).count(), 1,
+    "special channel: server-sort pages keep their header search action");
+  assert.equal(await page.locator(".ios-subpage-bar [data-video-sort-trigger]").count(), 0,
+    "special channel: the sorter stays on the server-sort tab row");
+  assert.equal(await page.locator(".ios-channel-tabs [data-video-sort-trigger]").count(), 1);
   await waitOrder(expected.默认排序);
   await page.screenshot({ path: fileURLToPath(new URL("channel-default.png", output)), animations: "disabled" });
   await page.locator("[data-video-sort-trigger]").click();
@@ -122,9 +129,32 @@ try {
   await resetSort();
   report.checks.push("special channel: all four metrics reorder globally; active pill is labeled; default menu item resets the order");
 
+  // Shortcut pages have no server sort tabs: the sorter should occupy the header's
+  // trailing action slot, and the search icon must be gone from that header.
+  for (const [cate, name] of [["latest", "最近上新"], ["featured-pick", "热门推荐"]]) {
+    await page.goto(new URL(`/tests/channel-swipe.html?cate=${cate}&name=${encodeURIComponent(name)}`, origin).href, { waitUntil: "networkidle" });
+    await page.locator("[data-video-sort-trigger]").waitFor();
+    const header = page.locator(".ios-subpage-bar");
+    assert.equal(await header.locator("[data-video-sort-trigger]").count(), 1,
+      `${name}: sort icon should sit in the header action slot`);
+    assert.equal(await header.getByRole("button", { name: "搜索" }).count(), 0,
+      `${name}: header search icon should be removed`);
+    assert.equal(await page.locator(".ios-channel-tabs [data-video-sort-trigger]").count(), 0,
+      `${name}: no separate sort row should remain below the header`);
+    await page.screenshot({ path: fileURLToPath(new URL(`shortcut-${cate}.png`, output)), animations: "disabled" });
+    if (cate === "latest") {
+      await page.locator("[data-video-sort-trigger]").click();
+      await page.getByRole("menuitemradio", { name: "点赞数", exact: true }).click();
+      await waitOrder(expected.点赞数);
+      assert.match(await page.locator("[data-video-sort-trigger]").innerText(), /点赞数/);
+    }
+  }
+  report.checks.push("shortcut pages: sorter occupies the old search slot and the search icon is removed");
+
   // Tag results: the sorter sits on the "视频 N" heading row and only changes videos.
   await page.goto(new URL("/tests/tag-metric-sort.html?tag=悬疑", origin).href, { waitUntil: "networkidle" });
   await page.locator("[data-video-sort-trigger]").waitFor();
+  assert.equal(await page.locator("[data-video-sort-trigger]").getAttribute("data-sort-icon"), "filter");
   await waitOrder(expected.默认排序);
   assert.deepEqual(await page.locator(".ios-media-grid .ios-poster-ep").allInnerTexts(), ["全 24 集", "全 24 集", "全 24 集"]);
   await page.screenshot({ path: fileURLToPath(new URL("tag-default.png", output)), animations: "disabled" });

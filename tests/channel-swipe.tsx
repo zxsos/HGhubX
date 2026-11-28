@@ -3,8 +3,9 @@ import { AppProvider } from "../src/shared/model/store";
 import { ChannelPage, CHANNELS } from "../src/features/category/Category";
 import "../src/index.css";
 
-const cate = new URLSearchParams(location.search).get("cate") || "featured";
-const name = CHANNELS.find(channel => channel.cate === cate)?.name || cate;
+const params = new URLSearchParams(location.search);
+const cate = params.get("cate") || "featured";
+const name = params.get("name") || CHANNELS.find(channel => channel.cate === cate)?.name || cate;
 
 createRoot(document.querySelector("#root")!).render(
   <AppProvider>

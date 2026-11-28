@@ -1,7 +1,7 @@
 import { Button } from "../../shared/ui/ios/controls";
 import { Loader } from "../../shared/ui/ios/effects";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { api, fmt } from "../../shared/api/api";
+import { api, catalogSortDefaultKey, fmt, type CatalogSort } from "../../shared/api/api";
 import type { Post, VideoCard } from "../../shared/api/types";
 import { useStore } from "../../shared/model/store";
 import { MediaCard, Masonry, RowCard } from "../../shared/ui/cards";
@@ -108,9 +108,11 @@ type ResolvedChannel = {
   id: string;
   label: string;
   kind: "video" | "post" | "feed";
-  sorts?: readonly string[];
+  sorts?: readonly CatalogSort[];
   Icon: typeof IFilm;
 };
+
+type SortTab = { key: string; name: string; isDefault: boolean };
 
 /* ================= 分类总览 ================= */
 export default function Category({ wide, active }: { wide: boolean; active: boolean }) {
@@ -169,7 +171,7 @@ export default function Category({ wide, active }: { wide: boolean; active: bool
         if (requestEpoch !== lineEpochRef.current) { retryKeys.current.add(key); return; }
         if (mounted.current) setPostRows(m => ({ ...m, [key]: result?.items || [] }));
       } else if (ch?.kind === "post") {
-        const result = await api.postCategory(ch.id, 1, 8, ch.sorts?.[0]);
+        const result = await api.postCategory(ch.id, 1, 8, catalogSortDefaultKey(ch.sorts) || undefined);
         if (requestEpoch !== lineEpochRef.current) { retryKeys.current.add(key); return; }
         if (mounted.current) setPostRows(m => ({ ...m, [key]: result?.items || [] }));
       } else if (ch?.kind === "feed" || key === "__feed__") {
@@ -177,7 +179,7 @@ export default function Category({ wide, active }: { wide: boolean; active: bool
         if (requestEpoch !== lineEpochRef.current) { retryKeys.current.add(key); return; }
         if (mounted.current) setRows(m => ({ ...m, [key]: result?.items || [] }));
       } else {
-        const result = await api.category(key, 1, 8, ch?.sorts?.[0]);
+        const result = await api.category(key, 1, 8, catalogSortDefaultKey(ch?.sorts) || undefined);
         if (requestEpoch !== lineEpochRef.current) { retryKeys.current.add(key); return; }
         if (mounted.current) setRows(m => ({ ...m, [key]: result?.items || [] }));
       }
@@ -336,11 +338,18 @@ function sortLabel(sort: string): string {
   return sort;
 }
 
+/** Named source sorts keep their API key; legacy string sorts still use the shell label. */
+function resolveSortTab(sort: CatalogSort): SortTab {
+  if (typeof sort === "string") return { key: sort, name: sortLabel(sort), isDefault: false };
+  const key = sort.key.trim();
+  return { key, name: sort.name?.trim() || sortLabel(key), isDefault: sort.default === true };
+}
+
 const METRIC_PAGE_SIZE = 100;
 const METRIC_MAX_PAGES = 30;
 
 export function ChannelPage({ cate, name, onBack, wide, sorts }: {
-  cate: string; name: string; onBack: () => void; wide: boolean; sorts?: readonly string[];
+  cate: string; name: string; onBack: () => void; wide: boolean; sorts?: readonly CatalogSort[];
 }) {
   const { push, lineEpoch, activeSource, capabilities } = useStore();
   const { preferences, blockReason } = useContentPreferences();
@@ -355,13 +364,14 @@ export function ChannelPage({ cate, name, onBack, wide, sorts }: {
       activeSource?.catalog?.shortcuts?.find((c) => c.id === cate),
     [activeSource, cate],
   );
-  const channelSorts = useMemo(
-    () => (sorts?.length ? [...sorts] : channelMeta?.sorts?.length ? [...channelMeta.sorts] : []),
+  const channelSorts = useMemo<SortTab[]>(
+    () => (sorts?.length ? [...sorts] : channelMeta?.sorts?.length ? [...channelMeta.sorts] : [])
+      .map(resolveSortTab).filter((tab) => tab.key),
     [sorts, channelMeta],
   );
   const isFeedChannel = cate === "__feed__";
   const hasServerSorts = !isFeedChannel && channelSorts.length > 0;
-  const defaultSort = channelSorts[0] ?? "";
+  const defaultSort = channelSorts.find((tab) => tab.isDefault)?.key ?? channelSorts[0]?.key ?? "";
   const [searching, setSearching] = useState(false);
   const [serverSort, setServerSort] = useState(defaultSort);
   const [metricSort, setMetricSort] = useState<VideoSortMetric>("default");
@@ -519,7 +529,7 @@ export function ChannelPage({ cate, name, onBack, wide, sorts }: {
     }
   };
 
-  const channelTabIndex = channelSorts.indexOf(serverSort);
+  const channelTabIndex = channelSorts.findIndex((tab) => tab.key === serverSort);
   const channelTabSwipe = useTabSwipe<HTMLDivElement>({
     rootRef: scrollContainer,
     tabIndex: hasServerSorts ? Math.max(0, channelTabIndex) : 0,
@@ -527,7 +537,7 @@ export function ChannelPage({ cate, name, onBack, wide, sorts }: {
     onTabChange: (index) => {
       if (!hasServerSorts) return;
       const next = channelSorts[index];
-      if (next) changeServerSort(next);
+      if (next) changeServerSort(next.key);
     },
   });
 
@@ -570,21 +580,19 @@ export function ChannelPage({ cate, name, onBack, wide, sorts }: {
             <h1 className="text-[17px] font-bold text-on leading-tight truncate">{name}</h1>
             <div role="status" className="text-[12px] text-mut leading-tight mt-0.5">{replacing ? (!hasServerSorts ? (loading ? tr("加载中…") : tr("加载失败")) : (loading && metricSort !== "default" ? tr("正在加载全部结果以排序…") : (loading ? tr("正在更新筛选结果…") : tr("筛选更新失败")))) : tr("已加载 {0} 部 · {1}/{2} 页", sortedItems.length, page, Math.max(pages, 1))}</div>
           </div>
-          {capabilities.search && (
+          {!hasServerSorts && !isFeedChannel && (
+            <VideoSortMenu value={metricSort} direction={metricDirection} onChange={changeMetricSort} />
+          )}
+          {capabilities.search && (hasServerSorts || isFeedChannel) && (
             <Button onClick={() => setSearching(true)} aria-label={tr("搜索")} className="ios-nav-btn"><ISearch size={18} /></Button>
           )}
         </div>
         {hasServerSorts && (
           <div className="ios-subpage-inner ios-channel-tabs pb-3 flex flex-wrap items-center gap-1.5">
-            {channelSorts.map((s) => (
-              <Button aria-pressed={serverSort === s} key={s} onClick={() => changeServerSort(s)}
-                className="ios-filter-pill">{sortLabel(s)}</Button>
+            {channelSorts.map((tab) => (
+              <Button aria-pressed={serverSort === tab.key} key={tab.key} onClick={() => changeServerSort(tab.key)}
+                className="ios-filter-pill">{tab.name}</Button>
             ))}
-            <VideoSortMenu className="ml-auto" value={metricSort} direction={metricDirection} onChange={changeMetricSort} />
-          </div>
-        )}
-        {!hasServerSorts && !isFeedChannel && (
-          <div className="ios-subpage-inner ios-channel-tabs pb-3 flex flex-wrap items-center gap-1.5">
             <VideoSortMenu className="ml-auto" value={metricSort} direction={metricDirection} onChange={changeMetricSort} />
           </div>
         )}

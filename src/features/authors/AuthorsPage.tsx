@@ -4,8 +4,9 @@ import { useStore } from "../../shared/model/store";
 import { Button, Surface } from "../../shared/ui/ios/controls";
 import { Loader } from "../../shared/ui/ios/effects";
 import { Empty } from "../../shared/ui/ui";
-import { IBack, IHeart, IRefresh, IUserF } from "../../shared/ui/icons";
+import { IBack, IHeart, IRefresh, ISearch, IUserF } from "../../shared/ui/icons";
 import { tr } from "../../shared/i18n";
+import { InplaceSearch } from "../search/InplaceSearch";
 import { AuthorChip } from "./AuthorChip";
 import { useAuthorFollow } from "./useAuthorFollow";
 import { asAuthor, loadAuthors, MAX_FOLLOWED_AUTHORS, subscribeAuthors, type AuthorDirectory, type AuthorItem } from "./authorDirectory";
@@ -19,6 +20,7 @@ export function AuthorsPage({ onBack, wide }: { onBack: () => void; wide: boolea
   const [followedAuthors, setFollowedAuthors] = useState<AuthorItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [searching, setSearching] = useState(false);
   const canAuthors = sourceStateStatus !== "ready" || capabilities.catalog.authors;
   const cacheKey = `${activeSource?.id ?? "default"}:${lineEpoch}`;
 
@@ -92,6 +94,9 @@ export function AuthorsPage({ onBack, wide }: { onBack: () => void; wide: boolea
           <h1 className="text-[17px] font-bold text-on leading-tight">{tr("作者")}</h1>
           <div className="text-[12px] text-mut leading-tight mt-0.5 tabular-nums">{!canAuthors || !supported ? tr("当前视频源不支持作者目录") : loading && !authors ? tr("加载中…") : tr("{0} 位作者 · {1} 位已关注", total, follows.length)}</div>
         </div>
+        {capabilities.search && (
+          <Button aria-label={tr("搜索")} onClick={() => setSearching(true)} className="ios-nav-btn"><ISearch size={18} /></Button>
+        )}
         {canAuthors && supported && (
           <Button aria-label={tr("刷新作者")} disabled={loading} aria-busy={loading} onClick={() => void load(true)} className="ios-nav-btn">{loading ? <Loader className="w-4 h-4" /> : <IRefresh size={18} />}</Button>
         )}
@@ -131,5 +136,12 @@ export function AuthorsPage({ onBack, wide }: { onBack: () => void; wide: boolea
       )}
       {wide && <div className="h-2" />}
     </div>
+    {searching && capabilities.search && (
+      <InplaceSearch kind="video" wide={wide} onClose={() => setSearching(false)}
+        onOpenVideo={(v, list, kw) => push({
+          kind: "feed", videoIds: list.map((x) => x.id), index: list.findIndex((x) => x.id === v.id),
+          title: kw ? tr("搜索 · {0}", kw) : tr("搜索 · 作者"),
+        })} />
+    )}
   </div>;
 }

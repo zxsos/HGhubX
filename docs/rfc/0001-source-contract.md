@@ -50,7 +50,7 @@
         { "id": "latest", "label": "最新上线", "icon": "clock" }
       ],
       "channels": [
-        { "id": "featured", "label": "精选频道", "icon": "film", "sorts": ["latest", "hot_window", "random"] }
+        { "id": "featured", "label": "精选频道", "icon": "film", "sorts": ["latest", { "key": "hot_window", "name": "当前热播", "default": true }, "random"] }
       ]
     },
     "links": {
@@ -76,6 +76,7 @@
 - **篡改零容忍**：只要带签名但验签失败，无论是否开启「允许自签/测试源」，一律拒绝导入。
 - 纯壳客户端内置 `TRUSTED_KEYS` 为空（不预置官方或站方签名公钥），默认配置 `allow_untrusted = true`，允许自由导入未签名与自签社区源并展示指纹标识；若包内附带 Ed25519 `signature`，仍强制校验签名完整性。
 - 说明：`catalog.authors`、`media.imageDecrypt`、`catalog.shortcuts`、`catalog.channels`（含可选 `icon`）与 `links.videoIdPathPattern` 均为可选字段，向后兼容最小 `schemaVersion: 1` 插件包。
+- 排序项：`sorts` 的每一项可以是字符串 key，也可以是 `{ "key": "...", "name": "...", "default": true }`。使用对象时，tab 显示 `name`，请求仍发送 `key`；tab 顺序与 `sorts` 数组一致。默认选中带 `default: true` 的项；没有标记时选中第一项。每个频道最多一个 `default: true`。旧的字符串形式继续兼容。
 
 ## 4. Rust Host 原语（v0.1）
 
