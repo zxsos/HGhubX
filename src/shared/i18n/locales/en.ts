@@ -1000,6 +1000,23 @@ const en: Record<string, string> = {
   "测速中…": "Testing…",
   "不可用": "Unavailable",
   "暂无可用的已测站点": "No working sites tested yet",
+  "仅支持 HTTPS": "HTTPS only",
+  "地址无效": "Invalid URL",
+  "返回格式无效": "Invalid response",
+  "暂无片源": "No streams",
+  "清单格式无效": "Invalid manifest",
+  "片源非 HTTPS": "Stream not HTTPS",
+  "无直链片源": "No direct stream",
+  "超时": "Timeout",
+  "DNS 失败": "DNS failed",
+  "响应过大": "Response too large",
+  "不可达": "Unreachable",
+  "片源超时": "Stream timeout",
+  "片源DNS 失败": "Stream DNS failed",
+  "片源响应过大": "Stream too large",
+  "片源不可达": "Stream unreachable",
+  "片源受限 ({0})": "Stream restricted ({0})",
+  "片源异常 ({0})": "Stream error ({0})",
 };
 
 export default en;
