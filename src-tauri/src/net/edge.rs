@@ -113,7 +113,7 @@ pub async fn fetch_bytes_with_url(url: &str) -> Result<(String, Option<String>, 
             let mut status = None;
             let mut headers_ms = None;
             let result = async {
-                let resp = get_with_dns(
+                let mut resp = get_with_dns(
                     &url,
                     Duration::from_secs(20),
                     None,
@@ -132,7 +132,12 @@ pub async fn fetch_bytes_with_url(url: &str) -> Result<(String, Option<String>, 
                     .get(reqwest::header::CONTENT_TYPE)
                     .and_then(|v| v.to_str().ok())
                     .map(|s| s.to_string());
-                let bytes = resp.bytes().await.map_err(|e| err_text(&e))?.to_vec();
+                let cap = resp.content_length().and_then(|n| usize::try_from(n).ok()).map_or(0, |n| n.min(8 * 1024 * 1024));
+                let mut bytes = Vec::with_capacity(cap);
+                while let Some(chunk) = resp.chunk().await.map_err(|e| err_text(&e))? {
+                    crate::media_stats::record_rx(chunk.len() as u64);
+                    bytes.extend_from_slice(&chunk);
+                }
                 Ok((final_url, ctype, bytes))
             }
             .await;

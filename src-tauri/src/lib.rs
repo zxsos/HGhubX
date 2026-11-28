@@ -18,6 +18,7 @@ mod macos_titlebar;
 mod media;
 mod media_dns;
 mod media_prefetch;
+mod media_stats;
 mod net;
 mod net_diag;
 mod network_policy;
@@ -331,6 +332,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             api::platform::app_boot,
             media_http_origin,
+            media_stats::media_rx_bytes,
             set_back_intercept,
             playback_log::playback_log_status,
             playback_log::playback_log_set,

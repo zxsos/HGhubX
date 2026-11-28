@@ -1,10 +1,9 @@
 import type { Dispatch, MutableRefObject, PointerEvent as ReactPointerEvent, SetStateAction } from "react";
 import { Button } from "../../shared/ui/ios/controls";
-import { Loader } from "../../shared/ui/ios/effects";
 import { fmt, fmtTime } from "../../shared/api/api";
 import type { Post } from "../../shared/api/types";
 import { useStore, type Toast } from "../../shared/model/store";
-import { PlaybackProgress, playbackLockRightInset, type PlaybackClock } from "../playback";
+import { BufferingIndicator, PlaybackProgress, playbackLockRightInset, type PlaybackClock } from "../playback";
 import {
   IBack, IChevR, IChevronDown, IChevronUp, IComment, IExpand, IFileText,
   IHeart, IHeartF, IList, ILockF, IMore, IPlayF, IStar, IStarF, IVertSwap, IVol, IVolMute,
@@ -361,7 +360,9 @@ export default function FeedItemChrome({
         </div>
       )}
       {isActive && !playbackDisabled && waiting && !err && !paused && (
-        <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none"><Loader className="w-9 h-9 spinner" /></div>
+        <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
+          <BufferingIndicator />
+        </div>
       )}
       {isActive && err && (
         <div className="absolute inset-0 z-20 flex items-center justify-center pb-[18%] pointer-events-none">

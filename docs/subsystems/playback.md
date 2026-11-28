@@ -20,7 +20,7 @@
 - Feed 播放内核：[`src/features/playback/VideoSurface.tsx`](../../src/features/playback/VideoSurface.tsx)
   的 `VideoSurface`、`VideoHandle.seek`、`reportSize`、`handleVideoError`。
 - 内嵌播放器：[`src/features/playback/Player.tsx`](../../src/features/playback/Player.tsx)
-  的 `Player`，以及 `PlayerControls.tsx`、`PlaybackLock.tsx`、`PlaybackProgress.tsx`。
+  的 `Player`，以及 `PlayerControls.tsx`、`PlaybackLock.tsx`、`PlaybackProgress.tsx`、`BufferingIndicator.tsx`（仅在缓冲态按 500ms 采样 `media_rx_bytes` 展示实时网速，持续 0 速 2.5s 后置琥珀色提示停滞，TV 端 [`src/tv/PlayerPage.tsx`](../../src/tv/PlayerPage.tsx) 复用 `useMediaSpeed`/`formatNetSpeed`）。
 - 恢复与时钟：[`hlsRecovery.ts`](../../src/features/playback/hlsRecovery.ts) 的
   `createHlsRecovery`；[`playbackClock.ts`](../../src/features/playback/playbackClock.ts)
   的 `createPlaybackClock`；[`usePlaybackActivity.ts`](../../src/features/playback/usePlaybackActivity.ts)、

@@ -80,6 +80,7 @@ export function installFixture({ theme, titles, metrics = [], metricPages = 1, m
         }],
       };
       if (command === "playback_log_status") return { enabled: false, path: null, error: null };
+      if (command === "media_rx_bytes") return 0;
       if (command === "cache_stats") return { usedBytes: 0, memoryBytes: 0, diskBytes: 0, limitBytes: 134217728, limitMb: 128, unlimited: false, imageCount: 0, segmentCount: 0, playlistCount: 0 };
       if (command === "cache_set_limit") return { usedBytes: 0, memoryBytes: 0, diskBytes: 0, limitBytes: args.limitMb === 0 ? 0 : (args.limitMb || 128) * 1024 * 1024, limitMb: args.limitMb ?? 128, unlimited: args.limitMb === 0, imageCount: 0, segmentCount: 0, playlistCount: 0 };
       if (command === "cache_clear") return { webCache: true, platform: "linux", freedBytes: 0, remainingBytes: 0 };

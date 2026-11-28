@@ -11,6 +11,7 @@ export { createPlaybackClock } from "./playbackClock";
 export type { PlaybackClock } from "./playbackClock";
 export { mediaErrorMessage } from "./mediaErrors";
 export { connectNativeMedia, playbackSource } from "./mediaTransport";
+export { BufferingIndicator, formatNetSpeed, useMediaSpeed } from "./BufferingIndicator";
 export { useInlinePlayerFullscreen } from "./useInlinePlayerFullscreen";
 export { usePlaybackActivity } from "./usePlaybackActivity";
 export { useProxyPlaybackRecovery } from "./useProxyPlaybackRecovery";

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api, fmtTime } from "../shared/api/api";
 import VideoSurface, { type VideoHandle } from "../features/playback/VideoSurface";
+import { formatNetSpeed, useMediaSpeed } from "../features/playback/BufferingIndicator";
 import { preheatHlsStart, rememberAttemptedKey, shouldPreheatNext } from "../features/playback/nextEpisodePreheat";
 import { useContentPreferences } from "../shared/model/contentPreferences";
 import type { Detail } from "../shared/api/types";
@@ -77,6 +78,7 @@ export default function PlayerPage({ content, sourceKey, part: initialPart, resu
   const loaded = sourceReady && prepared?.request === request ? prepared : null;
   const item = denied?.request === request ? denied.content : loaded?.content ?? { ...content, title: "正在读取当前来源…", cover: "", description: undefined };
   const blocked = preferences.blockReason(item.tags);
+  const { bytesPerSec: tvSpeedBps } = useMediaSpeed(waiting && !error && !blocked);
   const mediaSrc = loaded ? (quality === "hevc" ? loaded.streams.hevc || loaded.streams.main : loaded.streams.main) : "";
   const session = loaded ? `${request}:${loaded.serial}:${quality}` : "";
   const latest = useRef({ request, session, blocked, onProgress, onMetadata, onBack, onPartChange, onPreferencesChange });
@@ -400,7 +402,11 @@ export default function PlayerPage({ content, sourceKey, part: initialPart, resu
       onClick={showControls} />}
     {blocked ? <div className="tv-player-message" role="status"><h1>内容已屏蔽</h1><p>{blocked}</p><div data-tv-region="player-blocked"><button data-tv-focus="player:blocked-back" onClick={exit}>返回详情</button></div></div> : <>
       {fallbackNotice && !error && <div className="tv-player-notice" role="status">{fallbackNotice}</div>}
-      {waiting && !error && <div className="tv-player-loading" role="status">正在加载…</div>}
+      {waiting && !error && (
+        <div className="tv-player-loading" role="status">
+          {tvSpeedBps !== null ? `正在加载 · ${formatNetSpeed(tvSpeedBps)}` : "正在加载…"}
+        </div>
+      )}
       {error && <div className="tv-player-message" role="alert"><h2>播放暂时中断</h2><p>{error}</p><div data-tv-region="player-error"><button data-tv-focus="player:retry" onClick={retryPlayback}>重试当前{content.kind === "post" ? "分段" : "剧集"}</button><button data-tv-focus="player:error-back" onClick={exit}>返回详情</button></div></div>}
       <div className="tv-player-controls" hidden={!controls}>
         <div className="tv-player-heading">
