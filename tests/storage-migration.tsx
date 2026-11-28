@@ -11,7 +11,7 @@ function Probe() {
     likes: store.likes, favs: store.favs, history: store.history, follows: store.follows,
     searchHist: store.searchHist, volume: store.volume, muted: store.muted,
     muteOnStartup: store.muteOnStartup, swipeEp: store.swipeEp,
-    preferHevc: store.preferHevc, balanceVolume: store.balanceVolume, fsIdleSecs: store.fsIdleSecs, startupTab: store.startupTab, ambientGlow: store.ambientGlow, enhanceMode: store.enhanceMode, enhanceStrength: store.enhanceStrength, theme: store.theme,
+    preferHevc: store.preferHevc, balanceVolume: store.balanceVolume, fsIdleSecs: store.fsIdleSecs, startupTab: store.startupTab, ambientGlow: store.ambientGlow, enhanceMode: store.enhanceMode, enhanceStrength: store.enhanceStrength, skipIntroSecs: store.skipIntroSecs, skipOutroSecs: store.skipOutroSecs, theme: store.theme,
   })}</pre>;
 }
 

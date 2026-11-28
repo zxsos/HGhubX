@@ -1,8 +1,8 @@
 import { Button, Input } from "../../shared/ui/ios/controls";
-import { Loader } from "../../shared/ui/ios/effects";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { fmtTime } from "../../shared/api/api";
+import { BufferingIndicator } from "./BufferingIndicator";
 import { useSeekInput } from "./useSeekInput";
 import PlaybackLock from "./PlaybackLock";
 import VideoSurface, { type VideoHandle } from "./VideoSurface";
@@ -147,7 +147,7 @@ export default function Player({
 
           {showWaiting && !errMsg && (
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-              <Loader className="w-9 h-9 spinner" />
+              <BufferingIndicator />
             </div>
           )}
 

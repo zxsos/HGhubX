@@ -1,10 +1,9 @@
 import type { Dispatch, MutableRefObject, PointerEvent as ReactPointerEvent, SetStateAction } from "react";
 import { Button } from "../../shared/ui/ios/controls";
-import { Loader } from "../../shared/ui/ios/effects";
 import { fmt, fmtTime } from "../../shared/api/api";
 import type { Post } from "../../shared/api/types";
 import { useStore, type Toast } from "../../shared/model/store";
-import { PlaybackProgress, playbackLockRightInset, type PlaybackClock } from "../playback";
+import { BufferingIndicator, PlaybackProgress, playbackLockRightInset, type PlaybackClock } from "../playback";
 import {
   IBack, IChevR, IChevronDown, IChevronUp, IComment, IExpand, IFileText,
   IHeart, IHeartF, IList, ILockF, IMore, IPlayF, IStar, IStarF, IVertSwap, IVol, IVolMute,
@@ -233,8 +232,8 @@ export default function FeedItemChrome({
       {/* 桌面：左下信息 */}
       {!fs && !clean && isDesktop && (
         <div className="desktop-video-meta">
-          <div className="flex items-center gap-2">
-            {!!meta.author && <span className="text-[16px] font-bold text-white tsh truncate">@{meta.author}</span>}
+          <div className="flex items-center gap-2 min-w-0">
+            {!!meta.author && <span className="min-w-0 text-[16px] font-bold text-white tsh truncate">@{meta.author}</span>}
             {episodes.length > 0 && (
               <span className="shrink-0 px-1.5 py-px rounded-md text-[12px] font-bold text-white"
                 style={{ background: "rgba(255,255,255,.16)" }}>{tr("第 {0}/{1} 集", curEp, episodes.length)}</span>
@@ -268,7 +267,7 @@ export default function FeedItemChrome({
           {!clean && (
             <div className={`mobile-video-meta-copy relative pb-1 flex items-center gap-2 transition-opacity duration-150 ${scrubbing ? "opacity-35" : ""}`}>
               <div className="flex-1 min-w-0">
-                {!!meta.author && <div className="mobile-video-author">@{meta.author}</div>}
+                {!!meta.author && <div className="mobile-video-author truncate">@{meta.author}</div>}
                 <p className="text-[15px] font-semibold leading-snug hg-ink-2 hg-ov-shadow-strong clamp-2">{meta.title}</p>
                 {kind === "video" && <div className="mobile-video-episode">{tr("第{0}集", curEp)}</div>}
                 <CurrentVideoTags tags={meta.tags} onOpen={openTag} onBlock={tag => openTagMenu([tag])} />
@@ -361,7 +360,9 @@ export default function FeedItemChrome({
         </div>
       )}
       {isActive && !playbackDisabled && waiting && !err && !paused && (
-        <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none"><Loader className="w-9 h-9 spinner" /></div>
+        <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
+          <BufferingIndicator />
+        </div>
       )}
       {isActive && err && (
         <div className="absolute inset-0 z-20 flex items-center justify-center pb-[18%] pointer-events-none">

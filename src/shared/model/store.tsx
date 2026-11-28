@@ -120,6 +120,10 @@ type Persist = GuestData & {
   enhanceMode: EnhanceMode;
   /** Strength preset used when the picture-enhancement switch is on. */
   enhanceStrength: EnhanceStrength;
+  /** Seconds to skip at video start (0 = off, max 600). */
+  skipIntroSecs: number;
+  /** Seconds before episode end to auto-advance to next episode (0 = off, max 600). */
+  skipOutroSecs: number;
 };
 
 const LS = STORAGE_KEYS.app;
@@ -127,7 +131,13 @@ const DEFAULTS: Persist = {
   likes: [], favs: [], history: [], follows: [],
   muted: true, muteOnStartup: true, volume: 0.7, searchHist: [], swipeEp: true, preferHevc: true,
   balanceVolume: false, fsIdleSecs: 3, startupTab: "home", ambientGlow: true, enhanceMode: "off", enhanceStrength: "standard",
+  skipIntroSecs: 0, skipOutroSecs: 0,
 };
+
+function clampSkipSecs(raw: unknown): number {
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? Math.min(600, Math.round(n)) : 0;
+}
 
 function normalizeEnhanceMode(raw: unknown): EnhanceMode | null {
   // The four experimental modes are collapsed into the single production
@@ -185,7 +195,9 @@ function loadPersist(): Persist {
     const balanceVolume = p.balanceVolume === true;
     const enhanceMode = normalizeEnhanceMode(p.enhanceMode) ?? "off";
     const enhanceStrength = normalizeEnhanceStrength(p.enhanceStrength) ?? "standard";
-    return { ...p, swipeEp, muteOnStartup, muted: muteOnStartup || p.muted === true, balanceVolume, fsIdleSecs, startupTab, ambientGlow, enhanceMode, enhanceStrength, history: normalizeHistory(p.history) };
+    const skipIntroSecs = clampSkipSecs(p.skipIntroSecs);
+    const skipOutroSecs = clampSkipSecs(p.skipOutroSecs);
+    return { ...p, swipeEp, muteOnStartup, muted: muteOnStartup || p.muted === true, balanceVolume, fsIdleSecs, startupTab, ambientGlow, enhanceMode, enhanceStrength, skipIntroSecs, skipOutroSecs, history: normalizeHistory(p.history) };
   } catch {
     return DEFAULTS;
   }
@@ -271,6 +283,8 @@ type Store = {
   ambientGlow: boolean; setAmbientGlow: (on: boolean) => void;
   enhanceMode: EnhanceMode; setEnhanceMode: (mode: EnhanceMode) => void;
   enhanceStrength: EnhanceStrength; setEnhanceStrength: (strength: EnhanceStrength) => void;
+  skipIntroSecs: number; setSkipIntroSecs: (secs: number) => void;
+  skipOutroSecs: number; setSkipOutroSecs: (secs: number) => void;
   /** Test-only override for the super-resolution canvas size. */
   srTestScale: SuperResolutionTestScale; setSrTestScale: (scale: SuperResolutionTestScale) => void;
   /** Test-only gain for the FSRCNNX detail composite. */
@@ -299,7 +313,7 @@ type Store = {
 export type ResolvedSourceCapabilities = {
   home: boolean;
   search: boolean;
-  catalog: { categories: boolean; tags: boolean; rankings: boolean; authors: boolean };
+  catalog: { categories: boolean; topics: boolean; tags: boolean; rankings: boolean; authors: boolean };
   detail: { episodes: boolean; related: boolean; comments: boolean };
   playback: { hls: boolean; mp4: boolean; subtitles: boolean };
   posts: boolean;
@@ -310,7 +324,7 @@ export type ResolvedSourceCapabilities = {
 const ALL_CAPABILITIES: ResolvedSourceCapabilities = {
   home: true,
   search: true,
-  catalog: { categories: true, tags: true, rankings: true, authors: true },
+  catalog: { categories: true, topics: true, tags: true, rankings: true, authors: true },
   detail: { episodes: true, related: true, comments: true },
   playback: { hls: true, mp4: true, subtitles: true },
   posts: true,
@@ -321,7 +335,7 @@ const ALL_CAPABILITIES: ResolvedSourceCapabilities = {
 const NO_CAPABILITIES: ResolvedSourceCapabilities = {
   home: false,
   search: false,
-  catalog: { categories: false, tags: false, rankings: false, authors: false },
+  catalog: { categories: false, topics: false, tags: false, rankings: false, authors: false },
   detail: { episodes: false, related: false, comments: false },
   playback: { hls: false, mp4: false, subtitles: false },
   posts: false,
@@ -582,6 +596,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       search: !!c.search,
       catalog: {
         categories: !!c.catalog?.categories,
+        topics: c.catalog?.topics ?? !!c.catalog?.categories,
         tags: !!c.catalog?.tags,
         rankings: !!c.catalog?.rankings,
         authors: !!c.catalog?.authors,
@@ -602,14 +617,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     };
   }, [sourceState, activeSource]);
 
-  const prevSourceIdRef = useRef<string | null>(null);
+  const prevSourceIdRef = useRef<string | null | undefined>(undefined);
+  const readBootRef = useRef<() => void>(() => {});
+  useLayoutEffect(() => {
+    accountRef.current.setGuestSource(activeSource?.id ?? null);
+  }, [activeSource?.id]);
   useEffect(() => {
+    if (sourceState === null) return;
     const nextId = activeSource?.id ?? null;
-    if (prevSourceIdRef.current !== null && prevSourceIdRef.current !== nextId) {
+    if (prevSourceIdRef.current !== undefined && prevSourceIdRef.current !== nextId) {
       setStack([]);
+      // Run app_boot AFTER useLayoutEffect has updated guestSourceId & generation,
+      // so setGuestSource cannot invalidate restoreSession when switching back to a logged-in source.
+      readBootRef.current();
     }
     prevSourceIdRef.current = nextId;
-  }, [activeSource?.id]);
+  }, [sourceState, activeSource?.id]);
 
   useEffect(() => {
     const media = matchMedia("(prefers-color-scheme: dark)");
@@ -661,18 +684,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         setCliRelaxed(!!r.cli_relaxed);
       }).catch(() => { /* 离线也能用 */ });
     };
+    readBootRef.current = readBoot;
     readBoot();
     // 切线/代理变化后由 boot 决定会话：可信线路间后端保留登录（rebase），
     // 不再先 setUser(null) 闪退；不可信/自定义切线后端已清会话，boot 返回 null 正常登出。
+    // 切源后的 boot 由上方 activeSource?.id effect 在 setGuestSource 完成后触发，避免 generation 竞态丢会话。
     const changed = () => { readBoot(); };
     window.addEventListener("hg:line-changed", changed);
     window.addEventListener("hg:proxy-changed", changed);
-    window.addEventListener("hg:source-changed", changed);
     return () => {
       active = false;
+      readBootRef.current = () => {};
       window.removeEventListener("hg:line-changed", changed);
       window.removeEventListener("hg:proxy-changed", changed);
-      window.removeEventListener("hg:source-changed", changed);
     };
   }, []);
 
@@ -727,9 +751,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const bump = () => setLineEpoch((n) => n + 1);
     window.addEventListener("hg:line-changed", bump);
     window.addEventListener("hg:proxy-changed", bump);
+    window.addEventListener("hg:source-changed", bump);
     return () => {
       window.removeEventListener("hg:line-changed", bump);
       window.removeEventListener("hg:proxy-changed", bump);
+      window.removeEventListener("hg:source-changed", bump);
     };
   }, []);
 
@@ -851,6 +877,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const setEnhanceStrength = useCallback((strength: EnhanceStrength) => {
     setP((s) => ({ ...s, enhanceStrength: normalizeEnhanceStrength(strength) ?? "standard" }));
   }, []);
+  const setSkipIntroSecs = useCallback((secs: number) => {
+    setP((s) => ({ ...s, skipIntroSecs: clampSkipSecs(secs) }));
+  }, []);
+  const setSkipOutroSecs = useCallback((secs: number) => {
+    setP((s) => ({ ...s, skipOutroSecs: clampSkipSecs(secs) }));
+  }, []);
   const setVolume = useCallback((v: number) => {
     const volume = Math.max(0, Math.min(1, v));
     if (volume > 0) lastVolumeRef.current = volume;
@@ -880,6 +912,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     ambientGlow: p.ambientGlow, setAmbientGlow,
     enhanceMode: p.enhanceMode, setEnhanceMode,
     enhanceStrength: p.enhanceStrength, setEnhanceStrength,
+    skipIntroSecs: p.skipIntroSecs, setSkipIntroSecs,
+    skipOutroSecs: p.skipOutroSecs, setSkipOutroSecs,
     srTestScale, setSrTestScale,
     srTestDetailGain, setSrTestDetailGain,
     srTestPortraitContrast, setSrTestPortraitContrast,
@@ -892,7 +926,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     sourceState, sourceStateStatus, activeSource, capabilities, refreshSourceState,
   }), [theme, themePreference, setTheme, tab, setTab, stack, push, openRootPage, pop, user, loginOpen, logout,
     p, account,
-    setMuted, setMuteOnStartup, setSwipeEp, setPreferHevc, setBalanceVolume, setFsIdleSecs, setStartupTab, setAmbientGlow, setEnhanceMode, setEnhanceStrength, srTestScale, srTestDetailGain, srTestPortraitContrast, srTestDeblock, srTestGrain, srTestFaceMask, setVolume, addSearch, removeSearch, clearSearchHist, strictSecurity, strictSecurityReady, securityPending, cliRelaxed, setStrictSecurity,
+    setMuted, setMuteOnStartup, setSwipeEp, setPreferHevc, setBalanceVolume, setFsIdleSecs, setStartupTab, setAmbientGlow, setEnhanceMode, setEnhanceStrength, setSkipIntroSecs, setSkipOutroSecs, srTestScale, srTestDetailGain, srTestPortraitContrast, srTestDeblock, srTestGrain, srTestFaceMask, setVolume, addSearch, removeSearch, clearSearchHist, strictSecurity, strictSecurityReady, securityPending, cliRelaxed, setStrictSecurity,
     toast, lineEpoch, sourceState, sourceStateStatus, activeSource, capabilities, refreshSourceState, theater, setTheater, fs, setFs, clean, setClean, locked, setLocked]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

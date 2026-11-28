@@ -258,9 +258,16 @@ export const api = {
   sourceState: () => call<SourceStateSnapshot>("source_state"),
   sourceImport: (input: string, activate = false) =>
     call<InstalledSourceSummary>("source_import", { input, activate }),
+  sourceResolveImport: (input: string, activate = false) =>
+    call<SourceResolveResult>("source_resolve_import", { input, activate }),
+  sourceImportSubscription: (items: SubscriptionSiteInput[], activateFirst = true) =>
+    call<SubscriptionImportOutcome>("source_import_subscription", { items, activateFirst }),
+  sourceProbeSubscription: (items: SubscriptionSiteInput[]) =>
+    call<SubscriptionProbeResult[]>("source_probe_subscription", { items }),
   sourceActivate: (id: string | null) => call<SourceStateSnapshot>("source_activate", { id }),
   sourceRollback: (id: string) => call<InstalledSourceSummary>("source_rollback", { id }),
   sourceRemove: (id: string) => call<SourceStateSnapshot>("source_remove", { id }),
+  sourceRemoveMany: (ids: string[]) => call<SourceStateSnapshot>("source_remove_many", { ids }),
   sourceSetAllowUntrusted: (allow: boolean) =>
     call<SourceStateSnapshot>("source_set_allow_untrusted", { allow }),
   sourceExportShareCode: (id: string) => call<string>("source_export_share_code", { id }),
@@ -393,7 +400,7 @@ export type SourceLinksConfig = {
 export type SourceCapabilities = {
   home: boolean;
   search: boolean;
-  catalog: { categories: boolean; tags: boolean; rankings: boolean; authors?: boolean };
+  catalog: { categories: boolean; topics?: boolean; tags: boolean; rankings: boolean; authors?: boolean };
   detail: { episodes: boolean; related: boolean; comments: boolean };
   playback: { hls: boolean; mp4: boolean; subtitles: boolean };
   posts: boolean;
@@ -440,6 +447,53 @@ export type SourceTestOutcome = {
   itemCount: number;
   sampleTitle?: string | null;
   error?: string | null;
+};
+
+export type SubscriptionSitePreview = {
+  id: string;
+  key: string;
+  name: string;
+  api: string;
+  origin: string;
+  installed: boolean;
+};
+
+export type SubscriptionPreview = {
+  format: string;
+  totalCount: number;
+  skippedHttpCount: number;
+  skippedUnsupportedCount: number;
+  items: SubscriptionSitePreview[];
+};
+
+export type SourceResolveResult =
+  | { kind: "imported"; summary: InstalledSourceSummary }
+  | { kind: "subscription"; preview: SubscriptionPreview };
+
+export type SubscriptionSiteInput = {
+  id?: string;
+  name: string;
+  api: string;
+};
+
+export type SubscriptionProbeResult = {
+  id: string;
+  ok: boolean;
+  ms: number;
+  playable: boolean;
+  reason: string | null;
+};
+
+export type SubscriptionImportFailure = {
+  name: string;
+  api: string;
+  error: string;
+};
+
+export type SubscriptionImportOutcome = {
+  imported: InstalledSourceSummary[];
+  failed: SubscriptionImportFailure[];
+  activeSourceId: string | null;
 };
 
 export type LanPushSession = {

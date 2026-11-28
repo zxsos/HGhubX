@@ -46,8 +46,8 @@
 
 1. 启动时 `bind_base(app_data_dir)` 读取 `line.json`。格式是 `{v:2, base, custom}`；
    `persisted_line()` 只接受纯 HTTPS origin，旧 `{base}` 格式恢复地址但不恢复自定义线路的登录
-   授权。`source::bind` 或切换视频源（`source_activate` / `source_import` / `source_rollback` /
-   `source_remove`）时调用 `sync_base_for_source()` 对齐默认线路，并由 `refresh_media_scope()` 让媒体缓存看到新的线路代次。
+   授权。`source::bind` 或切换视频源（`source_activate` / `source_import` / `source_resolve_import` /
+   `source_import_subscription` / `source_rollback` / `source_remove` / `source_remove_many`）时调用 `sync_base_for_source()` 对齐默认线路，并由 `refresh_media_scope()` 让媒体缓存看到新的线路代次。
 2. 固定线路列表 `fixed()` 动态读取当前激活视频源的 `manifest.network.origins`；没有导入源或
    `origins` 为空（例如纯离线源）时返回空列表，`auto_pick()` 直接返回 `reason="no-source"`。
    `line_state` 返回 `base`、`default`、`custom` 和 `fixed`；`line_mirrors` 调用 `lines::mirrors()`，

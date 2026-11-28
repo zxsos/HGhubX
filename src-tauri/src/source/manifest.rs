@@ -45,6 +45,8 @@ pub struct SourceNetwork {
 pub struct CatalogCapabilities {
     #[serde(default)]
     pub categories: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub topics: Option<bool>,
     #[serde(default)]
     pub tags: bool,
     #[serde(default)]

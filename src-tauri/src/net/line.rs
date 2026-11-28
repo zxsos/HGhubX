@@ -16,12 +16,25 @@ pub fn base() -> String {
     }
 }
 
-/// 切换/激活视频源时同步当前线路基址（不影响显式自定义线路，若源无 origin 则清空）。
+/// 切换/激活视频源时同步当前线路基址：若 `line.json` 里已保存的线路属于新激活源的可信固定线路或已验证镜像，
+/// 优先恢复该可用线路（切回原源时免去重撞不可达主域名或与会话 origin 失配）；否则回退为新源默认 origin。
 pub fn sync_base_for_source(origin: &str) {
+    let restored = BASE_FILE
+        .read()
+        .ok()
+        .and_then(|f| f.as_ref().and_then(|p| std::fs::read_to_string(p).ok()))
+        .and_then(|text| persisted_line(&text))
+        .filter(|cfg| {
+            !cfg.base.is_empty()
+                && (crate::lines::is_fixed(&cfg.base) || crate::lines::is_trusted_mirror(&cfg.base))
+        });
+    let next = restored.unwrap_or_else(|| LineConfig {
+        base: normalize_base(origin).unwrap_or_default(),
+        custom: false,
+    });
     if let Ok(mut current) = BASE.write() {
-        let next = normalize_base(origin).unwrap_or_default();
-        if current.base != next {
-            *current = LineConfig { base: next, custom: false };
+        if current.base != next.base || current.custom != next.custom {
+            *current = next;
             drop(current);
             refresh_media_scope();
         }

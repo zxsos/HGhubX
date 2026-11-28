@@ -5,14 +5,20 @@ use super::manifest::{
 };
 use super::runtime::{host_http_request, invoke_source};
 use super::store::{InstalledSourceSummary, SourceStateSnapshot};
+use super::subscription::{
+    build_maccms_package, parse_subscription, probe_maccms_channels, probe_maccms_site,
+    SubscriptionPreview, SubscriptionProbeResult, SubscriptionSiteInput, MAX_SUBSCRIPTION_ITEMS,
+};
 use super::verify::verify_package;
 use super::store_arc;
 use once_cell::sync::Lazy;
 use serde::Serialize;
 use serde_json::{json, Value};
-use std::collections::HashMap;
-use std::sync::Mutex;
+use std::collections::{HashMap, HashSet};
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
+use tokio::sync::Semaphore;
+use tokio::task::JoinSet;
 
 static PENDING_DEEP_LINK: Lazy<Mutex<Option<String>>> = Lazy::new(|| Mutex::new(None));
 
@@ -137,6 +143,9 @@ pub(crate) async fn import_source_raw(
     activate: bool,
 ) -> Result<InstalledSourceSummary, String> {
     let raw = resolve_raw_input(input).await?;
+    if parse_subscription(&raw, &HashSet::new())?.is_some() {
+        return Err("这是订阅清单，暂不支持在此直接导入；请在手机/电脑端「视频源管理」中导入订阅后，再推送或同步到电视".into());
+    }
     let pkg = decode_package_input(&raw)?;
     validate_package(&pkg)?;
     let store = store_arc();
@@ -158,9 +167,210 @@ pub async fn source_state() -> Result<SourceStateSnapshot, String> {
     Ok(store_arc().snapshot())
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum SourceResolveResult {
+    Imported { summary: InstalledSourceSummary },
+    Subscription { preview: SubscriptionPreview },
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SubscriptionImportFailure {
+    pub name: String,
+    pub api: String,
+    pub error: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SubscriptionImportOutcome {
+    pub imported: Vec<InstalledSourceSummary>,
+    pub failed: Vec<SubscriptionImportFailure>,
+    pub active_source_id: Option<String>,
+}
+
 #[tauri::command]
 pub async fn source_import(input: String, activate: Option<bool>) -> Result<InstalledSourceSummary, String> {
     import_source_raw(&input, activate.unwrap_or(false)).await
+}
+
+#[tauri::command]
+pub async fn source_resolve_import(
+    input: String,
+    activate: Option<bool>,
+) -> Result<SourceResolveResult, String> {
+    let raw = resolve_raw_input(&input).await?;
+    let installed_ids: HashSet<String> = store_arc()
+        .snapshot()
+        .sources
+        .into_iter()
+        .map(|s| s.id)
+        .collect();
+    if let Some(preview) = parse_subscription(&raw, &installed_ids)? {
+        return Ok(SourceResolveResult::Subscription { preview });
+    }
+    let pkg = decode_package_input(&raw)?;
+    validate_package(&pkg)?;
+    let store = store_arc();
+    let sig_info = verify_package(&pkg, store.allow_untrusted())?;
+    invoke_source(store.clone(), pkg.clone(), "init", json!({}), Some(6)).await?;
+    let should_activate = activate.unwrap_or(false);
+    let summary = store.install(pkg, sig_info, should_activate)?;
+    if should_activate {
+        let _ = store.activate(Some(summary.id.clone()));
+        sync_active_source_side_effects();
+        return Ok(SourceResolveResult::Imported {
+            summary: InstalledSourceSummary { active: true, ..summary },
+        });
+    }
+    sync_active_source_side_effects();
+    Ok(SourceResolveResult::Imported { summary })
+}
+
+#[tauri::command]
+pub async fn source_probe_subscription(
+    items: Vec<SubscriptionSiteInput>,
+) -> Result<Vec<SubscriptionProbeResult>, String> {
+    if items.is_empty() {
+        return Ok(Vec::new());
+    }
+    if items.len() > MAX_SUBSCRIPTION_ITEMS {
+        return Err(format!("单次最多检测 {MAX_SUBSCRIPTION_ITEMS} 个站点"));
+    }
+    let sem = Arc::new(Semaphore::new(6));
+    let mut join_set = JoinSet::new();
+    for (idx, site) in items.into_iter().enumerate() {
+        let permit_sem = Arc::clone(&sem);
+        let id = site.id.unwrap_or_else(|| site.api.clone());
+        let api = site.api;
+        join_set.spawn(async move {
+            let _permit = permit_sem.acquire_owned().await.ok();
+            (idx, probe_maccms_site(id, &api).await)
+        });
+    }
+    let mut out = Vec::new();
+    while let Some(res) = join_set.join_next().await {
+        if let Ok(entry) = res {
+            out.push(entry);
+        }
+    }
+    out.sort_by_key(|(idx, _)| *idx);
+    Ok(out.into_iter().map(|(_, r)| r).collect())
+}
+
+#[tauri::command]
+pub async fn source_import_subscription(
+    items: Vec<SubscriptionSiteInput>,
+    activate_first: Option<bool>,
+) -> Result<SubscriptionImportOutcome, String> {
+    if items.is_empty() {
+        return Err("请至少选择一个站点".into());
+    }
+    if items.len() > MAX_SUBSCRIPTION_ITEMS {
+        return Err(format!("单次最多导入 {MAX_SUBSCRIPTION_ITEMS} 个站点"));
+    }
+
+    // Probe each selected site's MacCMS categories concurrently (bounded) so category shelves
+    // appear immediately; timeouts fall back cleanly to `catalog: None`.
+    let sem = Arc::new(Semaphore::new(4));
+    let mut join_set = JoinSet::new();
+    for (idx, site) in items.into_iter().enumerate() {
+        let permit_sem = Arc::clone(&sem);
+        join_set.spawn(async move {
+            let _permit = permit_sem.acquire_owned().await.ok();
+            let catalog = match crate::network_policy::parse_target(site.api.trim()) {
+                Ok(parsed) if parsed.scheme() == "https" => {
+                    let origin = parsed.origin().ascii_serialization();
+                    probe_maccms_channels(site.api.trim(), &origin).await
+                }
+                _ => None,
+            };
+            (idx, site, catalog)
+        });
+    }
+
+    let mut probed = Vec::new();
+    while let Some(res) = join_set.join_next().await {
+        if let Ok(entry) = res {
+            probed.push(entry);
+        }
+    }
+    probed.sort_by_key(|(idx, _, _)| *idx);
+
+    let store = store_arc();
+    let allow_untrusted = store.allow_untrusted();
+    let mut imported = Vec::new();
+    let mut failed = Vec::new();
+    let should_activate_first = activate_first.unwrap_or(true);
+    let mut activated_id: Option<String> = None;
+
+    for (_, site, catalog) in probed {
+        let pkg = match build_maccms_package(&site, catalog) {
+            Ok(p) => p,
+            Err(error) => {
+                failed.push(SubscriptionImportFailure {
+                    name: site.name,
+                    api: site.api,
+                    error,
+                });
+                continue;
+            }
+        };
+        let sig_info = match verify_package(&pkg, allow_untrusted) {
+            Ok(s) => s,
+            Err(error) => {
+                failed.push(SubscriptionImportFailure {
+                    name: site.name,
+                    api: site.api,
+                    error,
+                });
+                continue;
+            }
+        };
+        if let Err(error) = invoke_source(store.clone(), pkg.clone(), "init", json!({}), Some(6)).await {
+            failed.push(SubscriptionImportFailure {
+                name: site.name,
+                api: site.api,
+                error,
+            });
+            continue;
+        }
+        let activate_this = should_activate_first && activated_id.is_none();
+        match store.install(pkg, sig_info, activate_this) {
+            Ok(mut summary) => {
+                if activate_this {
+                    let _ = store.activate(Some(summary.id.clone()));
+                    summary.active = true;
+                    activated_id = Some(summary.id.clone());
+                }
+                imported.push(summary);
+            }
+            Err(error) => {
+                failed.push(SubscriptionImportFailure {
+                    name: site.name,
+                    api: site.api,
+                    error,
+                });
+            }
+        }
+    }
+
+    if imported.is_empty() {
+        let first_err = failed
+            .first()
+            .map(|f| f.error.clone())
+            .unwrap_or_else(|| "导入失败".into());
+        return Err(first_err);
+    }
+
+    sync_active_source_side_effects();
+    let active_source_id = store.snapshot().active_source_id;
+    Ok(SubscriptionImportOutcome {
+        imported,
+        failed,
+        active_source_id,
+    })
 }
 
 fn sync_active_source_side_effects() {
@@ -186,6 +396,13 @@ pub async fn source_rollback(id: String) -> Result<InstalledSourceSummary, Strin
 #[tauri::command]
 pub async fn source_remove(id: String) -> Result<SourceStateSnapshot, String> {
     let snap = store_arc().remove(&id)?;
+    sync_active_source_side_effects();
+    Ok(snap)
+}
+
+#[tauri::command]
+pub async fn source_remove_many(ids: Vec<String>) -> Result<SourceStateSnapshot, String> {
+    let (snap, _) = store_arc().remove_many(&ids)?;
     sync_active_source_side_effects();
     Ok(snap)
 }
@@ -334,6 +551,13 @@ pub(crate) fn active_origins() -> Vec<String> {
 
 pub(crate) fn active_default_origin() -> String {
     active_origins().into_iter().next().unwrap_or_default()
+}
+
+pub(crate) fn active_source_id() -> String {
+    store_arc()
+        .active_package()
+        .map(|p| p.manifest.id)
+        .unwrap_or_default()
 }
 
 pub(crate) fn active_image_decrypt() -> Option<([u8; 16], [u8; 16])> {

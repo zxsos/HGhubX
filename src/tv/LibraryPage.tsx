@@ -31,7 +31,7 @@ export default function LibraryPage({onOpen,active=true}:{onOpen:(content:TvCont
   return <><header className="tv-page-heading"><h1>我的片库</h1></header>
     <div className="tv-tabs" data-tv-region="library-tabs"><button data-tv-focus="favorites" aria-pressed={tab==="favorites"} onClick={()=>setTab("favorites")}>本地收藏</button><button data-tv-focus="history" aria-pressed={tab==="history"} onClick={()=>setTab("history")}>观看历史与续播</button>{tab==="history"&&items.length>0&&<button data-tv-focus="clear-history" onClick={()=>setConfirm(true)}>清空历史</button>}</div>
     <div className="tv-grid" data-tv-region="library-grid" data-tv-columns="5">{items.map(item=><div key={item.key}><LibraryCard content={item.content} onOpen={onOpen} active={active}/>{item.progress&&<small>{formatLibraryProgress(item.content,item.progress.part,item.progress.seconds,item.progress.duration,tab==="favorites")}</small>}</div>)}</div>
-    {!items.length&&<p className="tv-status">{tab==="favorites"?"还没有收藏，进入详情即可收藏作品。":"观看后会在这里保存进度。"}</p>}
-    {confirm&&<TvModal id="clear-history" title="清空本机观看历史？" onClose={()=>setConfirm(false)}><p>收藏将保留，已迁移的旧历史不会重新导入。</p>{error&&<p role="alert">{error}</p>}<button data-tv-focus="confirm-clear-history" onClick={()=>void clearHistory().then(()=>setConfirm(false)).catch(e=>setError(String(e)))}>确认清空</button></TvModal>}
+    {!items.length&&<p className="tv-status">{tab==="favorites"?"当前视频源还没有收藏，进入详情即可收藏作品。":"当前视频源观看后会在这里保存进度。"}</p>}
+    {confirm&&<TvModal id="clear-history" title="清空当前视频源的观看历史？" onClose={()=>setConfirm(false)}><p>仅清空当前视频源的观看历史，收藏与其他视频源记录均会保留。</p>{error&&<p role="alert">{error}</p>}<button data-tv-focus="confirm-clear-history" onClick={()=>void clearHistory().then(()=>setConfirm(false)).catch(e=>setError(String(e)))}>确认清空</button></TvModal>}
   </>;
 }

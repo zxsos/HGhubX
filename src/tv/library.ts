@@ -3,12 +3,75 @@ import { contentKey, metadataOnly, needsLibraryMetadata, type PendingMigrationId
 
 const DATABASE = "hghubx-tv-library-v1";
 const MIGRATION_KEY = "legacy-library-v1";
+const LEGACY_SOURCE_CLAIM_KEY = "legacy-source-claim-v1";
+const SOURCE_KEY_PREFIX = "src:";
 // Read-only legacy keys: importing storage.ts/accountData.ts would run or bundle
 // ordinary-edition migration/account behavior in the TV entry point.
 const GUEST_KEYS = ["hghubx_app_v1", "hghub_app_v1"];
 const ACCOUNT_KEY = "hghubx_accounts_v1";
 const listeners = new Set<() => void>();
 let opening: Promise<IDBDatabase> | undefined;
+let activeSourceId: string | null = null;
+
+export function setLibrarySource(sourceId: string | null): void {
+  const next = sourceId?.trim() || null;
+  if (activeSourceId === next) return;
+  activeSourceId = next;
+}
+
+function resolveSourceId(override?: string | null): string | null {
+  if (override !== undefined) return override?.trim() || null;
+  return activeSourceId;
+}
+
+function storageKey(sourceId: string | null, itemKey: string): string {
+  return sourceId ? `${SOURCE_KEY_PREFIX}${sourceId}::${itemKey}` : itemKey;
+}
+
+function extractItemKey(rawKey: string, sourceId: string | null): string | null {
+  if (!sourceId) return rawKey.startsWith(SOURCE_KEY_PREFIX) ? null : rawKey;
+  const prefix = `${SOURCE_KEY_PREFIX}${sourceId}::`;
+  return rawKey.startsWith(prefix) ? rawKey.slice(prefix.length) : null;
+}
+
+async function claimLegacyUnscopedRows(db: IDBDatabase, sourceId: string): Promise<void> {
+  const transaction = db.transaction(["library", "meta"], "readwrite");
+  const completed = done(transaction);
+  const meta = transaction.objectStore("meta");
+  const store = transaction.objectStore("library");
+  let failure: unknown;
+  const check = meta.get(LEGACY_SOURCE_CLAIM_KEY);
+  check.onsuccess = () => {
+    if (check.result?.claimed === true) return;
+    const allReq = store.getAll();
+    allReq.onsuccess = () => {
+      try {
+        const rows = (allReq.result as TvLibraryEntry[]) || [];
+        const byKey = new Map(rows.map(row => [row.key, row]));
+        for (const row of rows) {
+          if (row.key.startsWith(SOURCE_KEY_PREFIX)) continue;
+          const targetKey = storageKey(sourceId, row.key);
+          const existing = byKey.get(targetKey);
+          const progress = existing?.progress && (!row.progress || existing.progress.updatedAt >= row.progress.updatedAt)
+            ? existing.progress
+            : row.progress;
+          store.put({
+            key: targetKey,
+            content: existing?.content ?? row.content,
+            favorite: row.favorite || existing?.favorite === true,
+            ...(progress ? { progress: { ...progress, key: row.key } } : {}),
+          });
+          store.delete(row.key);
+        }
+        meta.put({ claimed: true, sourceId, claimedAt: Date.now() }, LEGACY_SOURCE_CLAIM_KEY);
+      } catch (error) {
+        failure = error;
+        transaction.abort();
+      }
+    };
+  };
+  try { await completed; } catch (error) { throw failure ?? error; }
+}
 
 export function subscribeLibrary(listener: () => void): () => void {
   listeners.add(listener);
@@ -149,27 +212,51 @@ export async function initializeLibrary(identity?: PendingMigrationIdentity | nu
   }
 }
 
-export async function listLibrary(): Promise<TvLibraryEntry[]> {
+export async function listLibrary(sourceIdOverride?: string | null): Promise<TvLibraryEntry[]> {
+  const sid = resolveSourceId(sourceIdOverride);
   const db = await database();
+  if (sid) await claimLegacyUnscopedRows(db, sid);
   const transaction = db.transaction("library", "readonly");
   const completed = done(transaction);
   const request = transaction.objectStore("library").getAll();
   await completed;
-  return (request.result as TvLibraryEntry[]).filter(row => row.favorite || row.progress)
+  const normalized: TvLibraryEntry[] = [];
+  for (const row of request.result as TvLibraryEntry[]) {
+    const itemKey = extractItemKey(row.key, sid);
+    if (!itemKey || (!row.favorite && !row.progress)) continue;
+    normalized.push({
+      ...row,
+      key: itemKey,
+      ...(row.progress ? { progress: { ...row.progress, key: itemKey } } : {}),
+    });
+  }
+  return normalized
     .sort((a, b) => (b.progress?.updatedAt ?? 0) - (a.progress?.updatedAt ?? 0) || a.key.localeCompare(b.key));
 }
 
-async function update(content: TvContent, mutate: (current: TvLibraryEntry) => TvLibraryEntry): Promise<void> {
-  const clean = metadataOnly(content), key = contentKey(clean);
-  const db = await database(), transaction = db.transaction("library", "readwrite");
+async function update(content: TvContent, mutate: (current: TvLibraryEntry) => TvLibraryEntry, sourceIdOverride?: string | null): Promise<void> {
+  const sid = resolveSourceId(sourceIdOverride);
+  const clean = metadataOnly(content), itemKey = contentKey(clean), key = storageKey(sid, itemKey);
+  const db = await database();
+  if (sid) await claimLegacyUnscopedRows(db, sid);
+  const transaction = db.transaction("library", "readwrite");
   const completed = done(transaction), store = transaction.objectStore("library");
   let failure: unknown;
   const request = store.get(key);
   request.onsuccess = () => {
     try {
       const previous = request.result as TvLibraryEntry | undefined;
-      const current = { ...(previous ?? { key, favorite: false }), content: clean };
-      store.put(mutate(current));
+      const current: TvLibraryEntry = {
+        ...(previous ?? { key: itemKey, favorite: false }),
+        key: itemKey,
+        content: clean,
+      };
+      const next = mutate(current);
+      store.put({
+        ...next,
+        key,
+        ...(next.progress ? { progress: { ...next.progress, key: itemKey } } : {}),
+      });
     } catch (error) { failure = error; transaction.abort(); }
   };
   try { await completed; } catch (error) { throw failure ?? error; }
@@ -184,18 +271,19 @@ export const saveContent = (content: TvContent): Promise<void> => update(content
  * history/favorites, overwrite newer details, or rewind a playback position.
  */
 export async function hydrateLibraryContent(content: TvContent, isCurrent: () => boolean): Promise<boolean> {
+  const sid = activeSourceId;
   if (!isCurrent()) return false;
-  const clean = metadataOnly({ ...content, metadataState: "ready" }), key = contentKey(clean);
+  const clean = metadataOnly({ ...content, metadataState: "ready" }), itemKey = contentKey(clean), key = storageKey(sid, itemKey);
   const db = await database();
-  if (!isCurrent()) return false;
+  if (!isCurrent() || activeSourceId !== sid) return false;
   const transaction = db.transaction("library", "readwrite"), completed = done(transaction);
   const store = transaction.objectStore("library"), request = store.get(key);
   let saved = false;
   request.onsuccess = () => {
     const existing = request.result as TvLibraryEntry | undefined;
-    if (!isCurrent() || !existing || (!existing.favorite && !existing.progress) || !needsLibraryMetadata(existing.content)) return;
-    store.put({ ...existing, content: clean,
-      ...(existing.progress ? { progress: { ...existing.progress, content: clean } } : {}) });
+    if (!isCurrent() || activeSourceId !== sid || !existing || (!existing.favorite && !existing.progress) || !needsLibraryMetadata(existing.content)) return;
+    store.put({ ...existing, key, content: clean,
+      ...(existing.progress ? { progress: { ...existing.progress, key: itemKey, content: clean } } : {}) });
     saved = true;
   };
   await completed;
@@ -213,15 +301,20 @@ export function saveProgress(content: TvContent, progress: TvProgress): Promise<
   return update(content, current => current.progress && current.progress.updatedAt > clean.updatedAt ? current : { ...current, progress: clean });
 }
 
-export async function clearHistory(): Promise<void> {
-  const db = await database(), transaction = db.transaction("library", "readwrite");
+export async function clearHistory(sourceIdOverride?: string | null): Promise<void> {
+  const sid = resolveSourceId(sourceIdOverride);
+  const db = await database();
+  if (sid) await claimLegacyUnscopedRows(db, sid);
+  const transaction = db.transaction("library", "readwrite");
   const completed = done(transaction), cursor = transaction.objectStore("library").openCursor();
   cursor.onsuccess = () => {
     const item = cursor.result;
     if (!item) return;
     const row = item.value as TvLibraryEntry;
-    if (row.favorite) item.update({ key: row.key, content: row.content, favorite: true });
-    else item.delete();
+    if (extractItemKey(row.key, sid) !== null) {
+      if (row.favorite) item.update({ key: row.key, content: row.content, favorite: true });
+      else item.delete();
+    }
     item.continue();
   };
   await completed;
@@ -232,17 +325,19 @@ export async function mergeSyncedLibrary(input: {
   favs?: readonly number[];
   postFavs?: readonly number[];
   history?: readonly { id: number; ep: number; t: number; dur: number; at: number }[];
-}): Promise<{ favs: number; postFavs: number; history: number }> {
-  const rows = new Map<string, { content: TvContent; favorite: boolean; progress?: TvProgress }>();
+}, sourceIdOverride?: string | null): Promise<{ favs: number; postFavs: number; history: number }> {
+  const sid = resolveSourceId(sourceIdOverride);
+  const rows = new Map<string, { itemKey: string; content: TvContent; favorite: boolean; progress?: TvProgress }>();
   const ensure = (kind: "video" | "post", id: number) => {
     const content = legacyContent(kind, id);
-    const key = contentKey(content);
+    const itemKey = contentKey(content);
+    const key = storageKey(sid, itemKey);
     let row = rows.get(key);
     if (!row) {
-      row = { content, favorite: false };
+      row = { itemKey, content, favorite: false };
       rows.set(key, row);
     }
-    return { key, row };
+    return { key, itemKey, row };
   };
 
   let favs = 0;
@@ -262,9 +357,9 @@ export async function mergeSyncedLibrary(input: {
     if (!validId(h.id) || !Number.isSafeInteger(h.ep) || h.ep < 1 ||
       !Number.isFinite(h.t) || h.t < 0 || !Number.isFinite(h.dur) || h.dur < 0 ||
       !Number.isFinite(h.at) || h.at < 0) continue;
-    const { key, row } = ensure("video", h.id);
+    const { itemKey, row } = ensure("video", h.id);
     const progress: TvProgress = {
-      key,
+      key: itemKey,
       content: metadataOnly(row.content),
       part: String(h.ep),
       seconds: h.t,
@@ -280,6 +375,7 @@ export async function mergeSyncedLibrary(input: {
   if (!rows.size) return { favs: 0, postFavs: 0, history: 0 };
 
   const db = await database();
+  if (sid) await claimLegacyUnscopedRows(db, sid);
   const transaction = db.transaction("library", "readwrite");
   const completed = done(transaction);
   const store = transaction.objectStore("library");
@@ -293,9 +389,9 @@ export async function mergeSyncedLibrary(input: {
         const favorite = incoming.favorite || old?.favorite === true;
         let progress = old?.progress;
         if (incoming.progress && (!progress || incoming.progress.updatedAt > progress.updatedAt)) {
-          progress = { ...incoming.progress, content: metadataOnly(content) };
+          progress = { ...incoming.progress, key: incoming.itemKey, content: metadataOnly(content) };
         } else if (progress) {
-          progress = { ...progress, content: metadataOnly(content) };
+          progress = { ...progress, key: incoming.itemKey, content: metadataOnly(content) };
         }
         store.put({ key, content, favorite, ...(progress ? { progress } : {}) });
       } catch (error) {

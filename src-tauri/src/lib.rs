@@ -18,6 +18,7 @@ mod macos_titlebar;
 mod media;
 mod media_dns;
 mod media_prefetch;
+mod media_stats;
 mod net;
 mod net_diag;
 mod network_policy;
@@ -42,6 +43,21 @@ async fn media_http_origin() -> Result<String, String> {
     {
         Err("原生媒体 HTTP 通道仅适用于 iOS".into())
     }
+}
+
+#[cfg(target_env = "ohos")]
+static OHOS_BACK_INTERCEPT: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(true);
+
+/// 鸿蒙系统边缘返回拦截开关：前端存在子页/弹层/全屏/非首页时拦截并派发 `hg:ohos-back`，
+/// 位于首页根层级且无覆层时置 false，交回鸿蒙系统执行默认退后台。
+#[tauri::command]
+fn set_back_intercept(enabled: bool) -> Result<(), String> {
+    #[cfg(target_env = "ohos")]
+    OHOS_BACK_INTERCEPT.store(enabled, std::sync::atomic::Ordering::Relaxed);
+    #[cfg(not(target_env = "ohos"))]
+    let _ = enabled;
+    Ok(())
 }
 
 fn allowed_dev_host(host: &str) -> bool {
@@ -205,6 +221,26 @@ pub fn run() {
             // macOS 主窗口在此创建：先按系统红绿灯尺寸算出居中位置（见 macos_titlebar.rs）
             #[cfg(target_os = "macos")]
             macos_titlebar::create_main_window(app)?;
+            // 鸿蒙 MainPage.onBackPress 默认回退 true 会吞掉系统边缘返回手势；
+            // 在此桥接至前端 `hg:ohos-back`，并按 `OHOS_BACK_INTERCEPT` 决定是否交回系统退后台。
+            #[cfg(target_env = "ohos")]
+            {
+                use tauri::Emitter;
+                if let Some(ohos_app) = tauri::ohos::APP
+                    .lock()
+                    .ok()
+                    .and_then(|guard| guard.clone())
+                {
+                    let back_handle = app.handle().clone();
+                    ohos_app.on_back_press_intercept(move || {
+                        if !OHOS_BACK_INTERCEPT.load(std::sync::atomic::Ordering::Relaxed) {
+                            return false;
+                        }
+                        let _ = back_handle.emit("hg:ohos-back", ());
+                        true
+                    });
+                }
+            }
             Ok(())
         })
         .plugin(
@@ -296,10 +332,14 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             api::platform::app_boot,
             media_http_origin,
+            media_stats::media_rx_bytes,
+            set_back_intercept,
             playback_log::playback_log_status,
             playback_log::playback_log_set,
             playback_log::playback_log_write,
             playback_log::playback_log_read,
+            playback_log::playback_log_export_full,
+            playback_log::playback_log_reveal_export,
             api::platform::security_set,
             api::platform::debug_log,
             api::platform::net_diag,
@@ -367,9 +407,13 @@ pub fn run() {
             api::interact::api_follow,
             source::commands::source_state,
             source::commands::source_import,
+            source::commands::source_resolve_import,
+            source::commands::source_import_subscription,
+            source::commands::source_probe_subscription,
             source::commands::source_activate,
             source::commands::source_rollback,
             source::commands::source_remove,
+            source::commands::source_remove_many,
             source::commands::source_set_allow_untrusted,
             source::commands::source_export_share_code,
             source::commands::source_check_update,

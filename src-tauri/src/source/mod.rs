@@ -6,6 +6,7 @@ pub(crate) mod manifest;
 pub(crate) mod peer_store;
 pub(crate) mod runtime;
 pub(crate) mod store;
+pub(crate) mod subscription;
 pub(crate) mod verify;
 
 use once_cell::sync::Lazy;
@@ -36,7 +37,7 @@ pub fn bind(app_data_dir: &Path) {
 
 #[allow(unused_imports)]
 pub(crate) use commands::{
-    active_default_origin, active_image_decrypt, active_origins, invoke_active,
+    active_default_origin, active_image_decrypt, active_origins, active_source_id, invoke_active,
 };
 
 #[cfg(test)]
@@ -89,6 +90,7 @@ mod tests {
                     search: true,
                     catalog: CatalogCapabilities {
                         categories: false,
+                        topics: None,
                         tags: true,
                         rankings: false,
                         authors: false,

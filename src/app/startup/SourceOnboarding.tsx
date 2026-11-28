@@ -1,11 +1,15 @@
 import { useRef, useState } from "react";
-import { api, isMobile, type SourceStateSnapshot } from "../../shared/api/api";
+import {
+  api, isMobile,
+  type SourceStateSnapshot, type SubscriptionPreview, type SubscriptionSiteInput,
+} from "../../shared/api/api";
 import { useStore } from "../../shared/model/store";
 import { Button, Surface, TextArea } from "../../shared/ui/ios/controls";
 import { ILink, IScan, ISettings, Logo } from "../../shared/ui/icons";
 import { tr } from "../../shared/i18n";
 import { pasteText } from "../../shared/lib/clipboard";
 import { buildDemoOfflinePackageJson } from "../../shared/lib/demoSource";
+import SubscriptionPicker from "../../features/settings/SubscriptionPicker";
 import TvQrSyncModal from "../../features/settings/TvQrSyncModal";
 
 export default function SourceOnboarding({
@@ -22,6 +26,7 @@ export default function SourceOnboarding({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [scanOpen, setScanOpen] = useState(false);
+  const [subscription, setSubscription] = useState<SubscriptionPreview | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const notify = () => {
@@ -36,9 +41,42 @@ export default function SourceOnboarding({
     setBusy(true);
     setError("");
     try {
-      const summary = await api.sourceImport(raw, true);
+      const res = await api.sourceResolveImport(raw, true);
+      if (res.kind === "subscription") {
+        setSubscription(res.preview);
+        return;
+      }
       setDraft("");
-      toast(tr("已导入 {0} v{1}", summary.name, summary.version), "ok");
+      toast(tr("已导入 {0} v{1}", res.summary.name, res.summary.version), "ok");
+      notify();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e || tr("失败")));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const confirmSubscription = async (items: SubscriptionSiteInput[]) => {
+    if (busy || !items.length) return;
+    setBusy(true);
+    setError("");
+    try {
+      const res = await api.sourceImportSubscription(items, true);
+      if (!res.imported.length) {
+        // 全部失败：留在订阅清单并展示失败原因，便于调整勾选后重试。
+        setError(res.failed.length > 0
+          ? tr("{0} 个站点导入失败：{1}", res.failed.length, res.failed.map((f) => `${f.name}（${f.error}）`).join("；"))
+          : tr("失败"));
+        return;
+      }
+      setSubscription(null);
+      setDraft("");
+      toast(
+        res.failed.length > 0
+          ? tr("已导入 {0} 个视频源（{1} 个失败）", res.imported.length, res.failed.length)
+          : tr("已导入 {0} 个视频源", res.imported.length),
+        res.failed.length > 0 ? "info" : "ok",
+      );
       notify();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e || tr("失败")));
@@ -120,26 +158,40 @@ export default function SourceOnboarding({
           </div>
 
           <Surface className="rounded-(--r-lg) bg-s2 p-4 space-y-3">
-            <div className="flex items-center justify-end gap-2">
-              {isMobile && <Button onClick={() => setScanOpen(true)} className="h-7 px-2.5 rounded-(--r-sm) bg-s3 text-[12px] text-on pressable inline-flex items-center gap-1"><IScan size={12} /> {tr("扫码")}</Button>}
-              <Button onClick={pasteClipboard} className="h-7 px-2.5 rounded-(--r-sm) bg-s3 text-[12px] text-on pressable">{tr("粘贴")}</Button>
-              <Button onClick={() => fileRef.current?.click()} className="h-7 px-2.5 rounded-(--r-sm) bg-s3 text-[12px] text-on pressable">{tr("文件")}</Button>
-              <input ref={fileRef} type="file" accept=".json,.hgsrc,.txt" className="hidden" onChange={(e) => void onFilePick(e.target.files?.[0])} />
-            </div>
-            <TextArea
-              aria-label={tr("导入视频源")}
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              className="w-full h-24 p-3 rounded-(--r-sm) bg-s3 text-[12px] text-on font-mono resize-none"
-            />
-            {error && <p role="alert" className="text-[12px] text-danger break-words">{error}</p>}
-            <Button
-              disabled={busy || !draft.trim()}
-              onClick={() => void doImport()}
-              className="w-full h-10 rounded-(--r-ctl) brand-grad text-[14px] font-semibold text-on-primary pressable disabled:opacity-50"
-            >
-              {busy ? tr("导入中…") : tr("导入")}
-            </Button>
+            {subscription ? (
+              <>
+                {error && <p role="alert" className="text-[12px] text-danger break-words">{error}</p>}
+                <SubscriptionPicker
+                  preview={subscription}
+                  busy={busy}
+                  onCancel={() => { setSubscription(null); setError(""); }}
+                  onConfirm={confirmSubscription}
+                />
+              </>
+            ) : (
+              <>
+                <div className="flex items-center justify-end gap-2">
+                  {isMobile && <Button onClick={() => setScanOpen(true)} className="h-7 px-2.5 rounded-(--r-sm) bg-s3 text-[12px] text-on pressable inline-flex items-center gap-1"><IScan size={12} /> {tr("扫码")}</Button>}
+                  <Button onClick={pasteClipboard} className="h-7 px-2.5 rounded-(--r-sm) bg-s3 text-[12px] text-on pressable">{tr("粘贴")}</Button>
+                  <Button onClick={() => fileRef.current?.click()} className="h-7 px-2.5 rounded-(--r-sm) bg-s3 text-[12px] text-on pressable">{tr("文件")}</Button>
+                  <input ref={fileRef} type="file" accept=".json,.hgsrc,.txt" className="hidden" onChange={(e) => void onFilePick(e.target.files?.[0])} />
+                </div>
+                <TextArea
+                  aria-label={tr("导入视频源")}
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  className="w-full h-24 p-3 rounded-(--r-sm) bg-s3 text-[12px] text-on font-mono resize-none"
+                />
+                {error && <p role="alert" className="text-[12px] text-danger break-words">{error}</p>}
+                <Button
+                  disabled={busy || !draft.trim()}
+                  onClick={() => void doImport()}
+                  className="w-full h-10 rounded-(--r-ctl) brand-grad text-[14px] font-semibold text-on-primary pressable disabled:opacity-50"
+                >
+                  {busy ? tr("导入中…") : tr("导入")}
+                </Button>
+              </>
+            )}
           </Surface>
 
           <Surface className="rounded-(--r-md) bg-s2 p-3.5 flex items-center justify-between gap-3">
@@ -172,7 +224,7 @@ export default function SourceOnboarding({
           )}
         </div>
       </div>
-      {isMobile && <TvQrSyncModal open={scanOpen} initialView="scan" onClose={() => setScanOpen(false)} onSuccess={notify} />}
+      {isMobile && <TvQrSyncModal open={scanOpen} initialView="scan" onClose={() => setScanOpen(false)} onSuccess={notify} onSubscription={(p) => { setError(""); setSubscription(p); }} />}
     </div>
   );
 }

@@ -50,14 +50,14 @@ export default function VideoDetailsPanel({ meta, videoId, episodeCount, related
       {(meta.author || (capabilities.catalog.authors && meta.authorId > 0)) && (
         <Surface className="video-details-author">
           {capabilities.catalog.authors && meta.authorId > 0 ? (
-            <Button onClick={onAuthor} className="video-details-author-link">
+            <Button onClick={onAuthor} className="video-details-author-link" title={meta.author}>
               <Avatar size={36} name={meta.author} hue={220} />
-              <span className="min-w-0"><span className="block text-[14px] font-semibold truncate">{meta.author}</span><span className="text-[12px] text-mut">{tr("作者主页")}</span></span>
+              <span className="flex-1 min-w-0"><span className="block text-[14px] font-semibold truncate">{meta.author}</span><span className="text-[12px] text-mut">{tr("作者主页")}</span></span>
             </Button>
           ) : (
-            <div className="video-details-author-link">
+            <div className="video-details-author-link" title={meta.author}>
               <Avatar size={36} name={meta.author} hue={220} />
-              <span className="min-w-0"><span className="block text-[14px] font-semibold truncate">{meta.author}</span></span>
+              <span className="flex-1 min-w-0"><span className="block text-[14px] font-semibold leading-snug line-clamp-2 break-words">{meta.author}</span></span>
             </div>
           )}
           {capabilities.catalog.authors && meta.authorId > 0 && <Button onClick={onFollow} disabled={followPending} aria-busy={followPending} aria-pressed={following}

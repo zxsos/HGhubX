@@ -1,10 +1,10 @@
 import { useContext, useEffect, useLayoutEffect, useImperativeHandle, useRef, forwardRef, useState, type MutableRefObject } from "react";
+import { createPortal } from "react-dom";
 import Hls from "hls.js";
 import { isMobile, platform } from "../../shared/api/api";
-import { formatErrorWithCode } from "../../shared/api/errorFormat";
 import { PageCoveredContext } from "../../shared/model/pageVisibility";
 import { connectNativeMedia, playbackSource } from "./mediaTransport";
-import { mediaErrorMessage } from "./mediaErrors";
+import { hlsErrorMessage, mediaErrorMessage } from "./mediaErrors";
 import { mediaHost, mediaResource, observeHls, registerHlsVersion, usePlayerDiagnostics } from "../../shared/diagnostics/playbackDiagnostics";
 import { usePlaybackActivity } from "./usePlaybackActivity";
 import { useProxyPlaybackRecovery } from "./useProxyPlaybackRecovery";
@@ -15,6 +15,8 @@ import { PICTURE_ENHANCE_PROFILES } from "./pictureEnhanceProfiles";
 import { useStore } from "../../shared/model/store";
 import { setBalanceVolume } from "./balanceVolume";
 import { tr } from "../../shared/i18n";
+
+const OUTRO_COUNTDOWN_SECS = 5;
 
 if (Hls.version) registerHlsVersion(Hls.version);
 
@@ -54,6 +56,8 @@ type Props = {
   ambientGlow?: boolean;
   /** App-level volume leveling; the Settings toggle wires it into the Web Audio chain. */
   balanceVolume?: boolean;
+  /** Settings-driven skip mode: `"intro"` for single/final episodes, `"both"` when a next episode exists. */
+  skipTiming?: "intro" | "both";
   onTime?: (t: number) => void;
   onDuration?: (d: number) => void;
   onSize?: (w: number, h: number, measurementKey: string) => boolean | void;
@@ -71,7 +75,7 @@ type Props = {
 
 /** 只负责「播」：hls.js + video 元素，控制条由外层渲染。 */
 const VideoSurface = forwardRef<VideoHandle, Props>(function VideoSurface(
-  { src, poster, autoPlay = true, active = true, fadeIn = true, videoElementRef, measurementKey = src, diagnosticContext = {}, muted = false, loop = false, fit = "contain", volume = 1, rate = 1, ambientGlow = false, balanceVolume = false,
+  { src, poster, autoPlay = true, active = true, fadeIn = true, videoElementRef, measurementKey = src, diagnosticContext = {}, muted = false, loop = false, fit = "contain", volume = 1, rate = 1, ambientGlow = false, balanceVolume = false, skipTiming,
     onTime, onDuration, onSize, onPlay, onPlaying, onPause, onWaiting, onSeeked, onEnded, onError, onClearError, onClick, className = "" },
   ref,
 ) {
@@ -81,10 +85,15 @@ const VideoSurface = forwardRef<VideoHandle, Props>(function VideoSurface(
   const hlsRef = useRef<Hls | null>(null);
   const recoveryRef = useRef<HlsRecovery | null>(null);
   const nearEndFiredRef = useRef(false);
+  const introHandledSrcRef = useRef("");
+  const outroHandledSrcRef = useRef("");
+  const resumingSrcRef = useRef(false);
   const reportedSizeRef = useRef({ key: "", w: 0, h: 0 });
   const measurementRef = useRef({ key: measurementKey, onSize });
   measurementRef.current = { key: measurementKey, onSize };
   const [ready, setReady] = useState(false);
+  const [outroCountdown, setOutroCountdown] = useState<number | null>(null);
+  const hostRef = useRef<HTMLDivElement>(null);
   const pageCovered = useContext(PageCoveredContext);
   const [inPip, setInPip] = useState(false);
   const [idleSuspended, setIdleSuspended] = useState(false);
@@ -98,6 +107,8 @@ const VideoSurface = forwardRef<VideoHandle, Props>(function VideoSurface(
   suspendedRef.current = suspended;
 
   const store = useStore();
+  const skipPrefsRef = useRef<{ intro: number; outro: number; mode?: "intro" | "both" }>({ intro: 0, outro: 0, mode: skipTiming });
+  skipPrefsRef.current = { intro: store?.skipIntroSecs ?? 0, outro: store?.skipOutroSecs ?? 0, mode: skipTiming };
   const enhanceMode = store?.enhanceMode ?? "off";
   const enhanceStrength = store?.enhanceStrength ?? "standard";
   const srTestScale = store?.srTestScale ?? "auto";
@@ -189,6 +200,14 @@ const VideoSurface = forwardRef<VideoHandle, Props>(function VideoSurface(
       const dur = v.duration && Number.isFinite(v.duration) ? v.duration : 0;
       const target = dur > 0 ? Math.max(0, Math.min(dur - 0.15, t)) : Math.max(0, t);
       if (dur > 0 && target <= dur - 0.3) nearEndFiredRef.current = false;
+      // Explicit seeks (history resume or manual scrub) take priority over automatic intro skip;
+      // scrubbing into the outro window also lets the user watch the ending uninterrupted.
+      introHandledSrcRef.current = latestSource.current;
+      const outro = skipPrefsRef.current.outro;
+      if (dur > 0 && outro > 0) {
+        if (target >= dur - outro) outroHandledSrcRef.current = latestSource.current;
+        else if (target < dur - outro - 1 && outroHandledSrcRef.current === latestSource.current) outroHandledSrcRef.current = "";
+      }
       requestSeek(target, source);
       if (hlsRef.current) { try { hlsRef.current.startLoad(target); } catch { /* ignore */ } }
       const resume = !v.paused;
@@ -219,7 +238,11 @@ const VideoSurface = forwardRef<VideoHandle, Props>(function VideoSurface(
     setReady(false);
     reportedSizeRef.current = { key: "", w: 0, h: 0 };
     nearEndFiredRef.current = false;
+    introHandledSrcRef.current = "";
+    outroHandledSrcRef.current = "";
+    setOutroCountdown(null);
     const resume = proxyRecovery.resume();
+    resumingSrcRef.current = Boolean(resume && resume.time > 0);
     const onVideoResize = () => reportSize(video);
     video.addEventListener("resize", onVideoResize);
     if (hlsRef.current) { hlsRef.current.destroy(); hlsRef.current = null; }
@@ -274,11 +297,7 @@ const VideoSurface = forwardRef<VideoHandle, Props>(function VideoSurface(
         onFatal: data => {
           const detail = `${data.type}/${data.details}/${data.response?.code ?? ""}/${String(data.reason ?? "").slice(0, 80)}`;
           (window as unknown as { __hlsErr?: string }).__hlsErr = detail;
-          const readable = data.type === Hls.ErrorTypes.NETWORK_ERROR
-            ? formatErrorWithCode(tr("视频网络加载失败，请检查线路或重试"), "MEDIA_NET")
-            : data.type === Hls.ErrorTypes.MEDIA_ERROR
-              ? formatErrorWithCode(tr("视频解码异常，请重试"), "MEDIA_DECODE")
-              : formatErrorWithCode(tr("视频暂时无法播放，请重试"), "MEDIA_ERR");
+          const readable = hlsErrorMessage(data.type, data.response?.code);
           onError?.(readable);
           if (data.type !== Hls.ErrorTypes.NETWORK_ERROR && data.type !== Hls.ErrorTypes.MEDIA_ERROR) {
             hls.destroy(); hlsRef.current = null;
@@ -348,10 +367,55 @@ const VideoSurface = forwardRef<VideoHandle, Props>(function VideoSurface(
     onError?.(mediaErrorMessage(videoRef.current?.error ?? null));
   };
 
+  const maybeSkipIntro = (v: HTMLVideoElement) => {
+    const { intro, outro, mode } = skipPrefsRef.current;
+    if (!mode || intro <= 0) return;
+    if (resumingSrcRef.current || introHandledSrcRef.current === latestSource.current) return;
+    const d = v.duration;
+    if (!d || !Number.isFinite(d)) return;
+    const minDur = intro + (mode === "both" ? outro : 0) + 15;
+    introHandledSrcRef.current = latestSource.current;
+    if (d <= minDur || v.currentTime >= intro - 0.5) return;
+    const target = Math.min(d - 0.15, intro);
+    if (hlsRef.current) { try { hlsRef.current.startLoad(target); } catch { /* ignore */ } }
+    try {
+      v.currentTime = target;
+      onTime?.(target);
+      trace("skip.intro", { target });
+      store?.toast(tr("已跳过片头（{0}秒）", intro), "info", "playback-skip");
+    } catch { /* ignore */ }
+  };
+
+  const finishOutroSkip = (immediate = false) => {
+    const v = videoRef.current;
+    setOutroCountdown(null);
+    if (!v || v.paused || !activity.isActive() || nearEndFiredRef.current) return;
+    nearEndFiredRef.current = true;
+    trace("skip.outro", { time: v.currentTime, duration: v.duration, outro: skipPrefsRef.current.outro, immediate });
+    store?.toast(tr("已跳过片尾，即将播放下一集"), "info", "playback-skip");
+    onEnded?.();
+  };
+
+  useEffect(() => {
+    if (outroCountdown === null) return;
+    if (!active) { setOutroCountdown(null); return; }
+    if (outroCountdown <= 0) {
+      finishOutroSkip(false);
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setOutroCountdown((prev) => (prev === null ? null : prev - 1));
+    }, 1000);
+    return () => window.clearTimeout(timer);
+  }, [outroCountdown, active]);
+
   const showAmbientGlow = ambientGlow && isAmbientGlowSupported();
+  const outroPortalHost = outroCountdown !== null && outroCountdown > 0 && active
+    ? (hostRef.current?.closest(".player-root") as HTMLElement | null)
+    : null;
 
   return (
-    <div className="relative isolate h-full w-full">
+    <div ref={hostRef} className="relative isolate h-full w-full">
       {showAmbientGlow && active && <AmbientGlow videoRef={videoRef} active={active} />}
       {SuperResolutionCanvas && active && (
         <SuperResolutionCanvas videoRef={videoRef} fit={fit} active={active}
@@ -376,14 +440,27 @@ const VideoSurface = forwardRef<VideoHandle, Props>(function VideoSurface(
           const v = e.target as HTMLVideoElement;
           setReady(true);
           reapply(v);
+          maybeSkipIntro(v);
           reportSize(v);
         }}
         onTimeUpdate={(e) => {
           const v = e.target as HTMLVideoElement;
           reportSize(v);
           onTime?.(v.currentTime);
-          // iOS 有时不触发 ended：靠近片尾自己补一次，保证自动连播（暂停态拖动不触发切集）
           const d = v.duration;
+          const { intro, outro, mode } = skipPrefsRef.current;
+          if (
+            mode === "both" && outro > 0 && !v.paused && activity.isActive()
+            && d && Number.isFinite(d) && d > intro + outro + 15
+            && v.currentTime >= d - outro
+            && outroHandledSrcRef.current !== latestSource.current
+            && !nearEndFiredRef.current
+          ) {
+            outroHandledSrcRef.current = latestSource.current;
+            setOutroCountdown(OUTRO_COUNTDOWN_SECS);
+            return;
+          }
+          // iOS 有时不触发 ended：靠近片尾自己补一次，保证自动连播（暂停态拖动不触发切集）
           if (!v.paused && activity.isActive() && d && Number.isFinite(d) && v.currentTime > d - 0.3 && !nearEndFiredRef.current) {
             nearEndFiredRef.current = true;
             onEnded?.();
@@ -393,12 +470,13 @@ const VideoSurface = forwardRef<VideoHandle, Props>(function VideoSurface(
           const v = e.target as HTMLVideoElement;
           reapply(v);
           onDuration?.(v.duration || 0);
+          maybeSkipIntro(v);
           reportSize(v);
         }}
         onPlay={() => { if (activity.isActive()) { onPlay?.(); onPlaying?.(); } }}
-        onPause={() => onPause?.()}
+        onPause={() => { setOutroCountdown(null); onPause?.(); }}
         onWaiting={() => onWaiting?.()}
-        onSeeked={() => onSeeked?.()}
+        onSeeked={() => { setOutroCountdown(null); onSeeked?.(); }}
         onPlaying={(e) => {
           reportSize(e.target as HTMLVideoElement);
           if (activity.isActive()) onPlaying?.();
@@ -406,6 +484,37 @@ const VideoSurface = forwardRef<VideoHandle, Props>(function VideoSurface(
         onEnded={() => { if (activity.isActive()) onEnded?.(); }}
         onError={handleVideoError}
       />
+      {outroPortalHost && outroCountdown !== null && outroCountdown > 0 && createPortal(
+        <div
+          role="status"
+          data-no-edge-back=""
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+          className="absolute left-1/2 -translate-x-1/2 z-[45] flex items-center gap-2 px-3 py-1.5 rounded-full text-[12px] text-white whitespace-nowrap"
+          style={{
+            bottom: isMobile ? "calc(env(safe-area-inset-bottom, 0px) + 124px)" : "78px",
+            background: "rgba(18, 21, 30, 0.92)",
+            boxShadow: "inset 0 0 0 1px rgba(255,255,255,.16), 0 6px 20px rgba(0,0,0,.45)",
+          }}
+        >
+          <span className="tabular-nums font-medium">{tr("{0} 秒后跳过片尾", outroCountdown)}</span>
+          <button
+            type="button"
+            onClick={() => setOutroCountdown(null)}
+            className="px-2 py-0.5 rounded-full text-[11.5px] text-white/85 hover:text-white bg-white/12 pressable"
+          >
+            {tr("取消")}
+          </button>
+          <button
+            type="button"
+            onClick={() => finishOutroSkip(true)}
+            className="px-2 py-0.5 rounded-full text-[11.5px] font-semibold text-white bg-primary/85 hover:bg-primary pressable"
+          >
+            {tr("立即下一集")}
+          </button>
+        </div>,
+        outroPortalHost,
+      )}
     </div>
   );
 });

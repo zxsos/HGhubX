@@ -13,10 +13,12 @@ export default function HomePage({ onOpen, active = true }: { onOpen: (content: 
   const fulfilled = useRef("");
   const canHome = !activeSource || activeSource.capabilities.home;
   const canRank = sourceState === "unsupported" || Boolean(activeSource?.capabilities.catalog.rankings);
-  const firstChannel = activeSource?.capabilities.catalog.categories
-    ? activeSource.catalog?.channels?.find((ch) => ch.kind !== "post")
-    : undefined;
-  const identity = `${sourceKey}:${activeSource?.id ?? ""}:${retry}:${revision}`;
+  const videoChannels = activeSource?.capabilities.catalog.categories
+    ? (activeSource.catalog?.channels?.filter((ch) => ch.kind !== "post") ?? [])
+    : [];
+  const shelfChannels = videoChannels.slice(0, canRank ? 1 : 3);
+  const shelfChannelKey = shelfChannels.map((c) => c.id).join(",");
+  const identity = `${sourceKey}:${activeSource?.id ?? ""}:${shelfChannelKey}:${retry}:${revision}`;
   useEffect(() => {
     if (!active || !source) return;
     if (!canHome) { setRows([]); setBusy(false); setError(""); return; }
@@ -31,14 +33,21 @@ export default function HomePage({ onOpen, active = true }: { onOpen: (content: 
           const popular = await api.rank("hot"); if (!current) return;
           next.push({ title: "热门", items: popular.items.slice(0, 15).map(rankCard) });
         }
-        if (firstChannel) {
-          const chRes = await api.category(firstChannel.id, 1, 15, firstChannel.sorts?.[0]); if (!current) return;
-          next.push({ title: firstChannel.label, items: chRes.items.map(videoCard) });
+        if (shelfChannels.length) {
+          const settled = await Promise.allSettled(
+            shelfChannels.map((ch) => api.category(ch.id, 1, 15, ch.sorts?.[0]).then((res) => ({ title: ch.label, items: res.items.map(videoCard) }))),
+          );
+          if (!current) return;
+          for (const item of settled) {
+            if (item.status === "fulfilled" && item.value.items.length > 0) {
+              next.push(item.value);
+            }
+          }
         }
         fulfilled.current = identity; setRows(next); void indexMetadata(source, next.flatMap(row => row.items)).catch(() => {});
       } catch(e) { if(current) setError(String(e)); } finally { if(current) setBusy(false); }
     })(); return () => { current = false; };
-  }, [sourceKey, source, retry, revision, active, identity, canHome, canRank, firstChannel]);
+  }, [sourceKey, source, retry, revision, active, identity, canHome, canRank, shelfChannelKey]);
   const history = library.filter(entry => entry.progress).sort((a,b) => b.progress!.updatedAt - a.progress!.updatedAt).slice(0,15).map(entry => entry.content);
   return <><header className="tv-page-heading"><h1>首页</h1></header>
     {canHome && <TvStatus busy={busy} error={error} onRetry={() => setRetry(r=>r+1)} />}

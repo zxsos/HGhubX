@@ -14,7 +14,7 @@
 ## 事实来源
 
 - 下载与重试：[`src-tauri/src/net/edge.rs`](../../src-tauri/src/net/edge.rs) 的 `retryable_error()`、
-  `with_retry()`、`fetch_bytes()`、`fetch_bytes_with_url()`（`edge_redirect_target()` 仅用于 `#[cfg(test)]`）。
+  `with_retry()`、`fetch_bytes()`、`fetch_bytes_with_url()`（流式分块读取并向 [`src-tauri/src/media_stats.rs`](../../src-tauri/src/media_stats.rs) 的无锁原子计数器 `MEDIA_RX_BYTES` 累计接收字节，供前端缓冲态经 `media_rx_bytes` 计算实时网速；`edge_redirect_target()` 仅用于 `#[cfg(test)]`）。
 - 源沙箱 HTTP 与加密原语：[`src-tauri/src/source/runtime.rs`](../../src-tauri/src/source/runtime.rs) 的
   `host_http_request()`、`send_host_attempt()`、`run_crypto_op()`（`host.fetch` 与 `host.crypto`）。
 - 线路基准同步：[`src-tauri/src/net/line.rs`](../../src-tauri/src/net/line.rs) 的

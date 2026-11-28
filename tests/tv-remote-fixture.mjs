@@ -38,6 +38,7 @@ export function installTvFixture({ accepted = false, legacy, contentPreferences,
     async invoke(command, args = {}) {
       fixture.calls.push({ command, args });
       if (command === "debug_log" || command === "playback_log_write" || command === "line_cancel") return null;
+      if (command === "media_rx_bytes") return 0;
       if (command === "playback_log_status") return { enabled: false, path: null, error: null };
       if (command === "plugin:app|register_listener" && args.event === "back-button") { fixture.nativeListeners++; fixture.backChannel = args.handler; return null; }
       if (command === "plugin:app|remove_listener") return null;

@@ -160,6 +160,28 @@ if (existsSync(manifestPath)) {
   }
 }
 
+// Ensure Android FileProvider exposes cacheDir/exports and filesDir/exports for direct log sharing.
+const filePathsXml = join(res, "xml", "file_paths.xml");
+if (existsSync(filePathsXml)) {
+  const originalPaths = readFileSync(filePathsXml, "utf8");
+  let updatedPaths = originalPaths;
+  if (!updatedPaths.includes('name="hg_cache_exports"')) {
+    updatedPaths = updatedPaths.replace(
+      /<\/paths\s*>/,
+      '    <cache-path name="hg_cache_exports" path="exports/" />\n    <files-path name="hg_files_exports" path="exports/" />\n    <external-cache-path name="hg_ext_cache_exports" path="exports/" />\n</paths>',
+    );
+  } else if (!updatedPaths.includes('name="hg_ext_cache_exports"')) {
+    updatedPaths = updatedPaths.replace(
+      /<\/paths\s*>/,
+      '    <external-cache-path name="hg_ext_cache_exports" path="exports/" />\n</paths>',
+    );
+  }
+  if (updatedPaths !== originalPaths) {
+    writeFileSync(filePathsXml, updatedPaths);
+    console.log("[splash] Android FileProvider 已放行 exports/ 日志分享目录");
+  }
+}
+
 // Standard edition (com.hghubx.app): keep edge-to-edge video while exposing
 // native system-bar, cutout and keyboard insets as CSS variables, plus hghubx:// deep links.
 // Old WebViews (e.g. Chromium 66 car headunits) lack CSS env(safe-area-inset-*)
@@ -177,6 +199,7 @@ class MainActivity : TauriActivity() {
 }`;
   const patchedActivity = `package com.hghubx.app
 
+import android.content.ClipData
 import android.content.Context
 import android.content.Intent
 import android.graphics.Rect
@@ -191,6 +214,7 @@ import android.view.WindowManager
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import androidx.activity.enableEdgeToEdge
+import androidx.core.content.FileProvider
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import java.io.File
@@ -274,6 +298,41 @@ class MainActivity : TauriActivity() {
         } catch (_: Throwable) {}
       }
       return true
+    }
+
+    @JavascriptInterface
+    fun shareFile(filePath: String, title: String): String {
+      if (isFinishing || isDestroyed) return "err:activity_unavailable"
+      return try {
+        val file = File(filePath).canonicalFile
+        val allowedRoots = listOfNotNull(cacheDir, filesDir, externalCacheDir).map { it.canonicalPath }
+        if (!file.exists() || !file.isFile || allowedRoots.none { file.path.startsWith("$it/") }) {
+          android.util.Log.e("HGhubXShare", "shareFile rejected path=$filePath canonical=\${file.path}")
+          return "err:file_not_allowed"
+        }
+        val uri = FileProvider.getUriForFile(this@MainActivity, "\${packageName}.fileprovider", file)
+        val send = Intent(Intent.ACTION_SEND).apply {
+          type = "text/plain"
+          putExtra(Intent.EXTRA_STREAM, uri)
+          putExtra(Intent.EXTRA_SUBJECT, title)
+          clipData = ClipData.newRawUri(title, uri)
+          addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        val chooser = Intent.createChooser(send, title).apply {
+          addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        runOnUiThread {
+          try {
+            if (!isFinishing && !isDestroyed) startActivity(chooser)
+          } catch (e: Throwable) {
+            android.util.Log.e("HGhubXShare", "startActivity chooser failed", e)
+          }
+        }
+        "ok"
+      } catch (e: Throwable) {
+        android.util.Log.e("HGhubXShare", "shareFile failed", e)
+        "err:" + (e.message ?: e.javaClass.simpleName)
+      }
     }
   }
 
@@ -403,6 +462,9 @@ class MainActivity : TauriActivity() {
     "fd5f83e7377db5344964105d5a5eeaf332c598080ac1820c07e596c65b9f60e4",
     "875364ca6c68491074b33fb2eb1f222432d312c432a90972e949d0f0b2a76a92",
     "9abb4b0208333437310900b1fc5b1bf19d83db44d77dcdd14ae0158f2b9b4ff0",
+    "ca8bce745da3ba68b20fefb4519dff510c5e5ec80e10d5c70cf607726bc7e893",
+    "deb0f904aed65bd476c348675374934b650b06804a2f46a802f6b01554df78ec",
+    "1de92db074a5045a9edeb0e8ad7f452d4ba473f460c4f05e6f251737c74f4a46",
   ]);
   if (![templateActivity, patchedActivity].some((expected) => normalize(expected) === normalized) &&
       !previousPatchedHashes.has(createHash("sha256").update(normalized).digest("hex"))) {

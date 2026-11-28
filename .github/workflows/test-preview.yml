@@ -5,7 +5,7 @@ run-name: "Test Preview · ${{ github.event_name == 'workflow_dispatch' && input
 # - 自动模式：监听 `Sync Test Branch` 完成事件（workflow_run），不直接挂载在 PR 检查页上，
 #   因此并发取消旧构建时绝不会把任何 PR 标红或标取消；
 # - 手动模式：支持按需选择 `all` 或单平台重编并原地更新 `test-pre` 对应资产；
-# - 隔离安全：6 平台构建机无密钥，独立干净运行器签名 APK 并原地零空窗滚动更新 `test-pre`。
+# - 隔离安全：7 平台构建机无密钥，独立干净运行器签名 APK 并原地零空窗滚动更新 `test-pre`。
 on:
   workflow_run:
     workflows: ["Sync Test Branch"]
@@ -16,7 +16,7 @@ on:
         description: "构建平台范围：all 全平台；或指定单平台覆盖更新 test-pre 对应产物"
         type: choice
         default: all
-        options: [all, windows, android, android-tv, macos, ios, linux]
+        options: [all, windows, android, android-tv, macos, ios, linux, harmonyos]
 
 permissions:
   contents: read
@@ -419,9 +419,187 @@ jobs:
           path: artifacts/*
           if-no-files-found: error
 
+  harmonyos:
+    name: Test · HarmonyOS (unsigned hap)
+    needs: [prepare]
+    if: >-
+      needs.prepare.outputs.should_build == 'true' &&
+      (github.event_name != 'workflow_dispatch' || inputs.platforms == 'all' || inputs.platforms == 'harmonyos')
+    concurrency:
+      group: test-preview-harmonyos
+      cancel-in-progress: true
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      HARMONY_TOOLS_DIR: /home/runner/harmony
+      DEVECO_SDK_HOME: /home/runner/harmony/command-line-tools/sdk
+      OHOS_HOME: /home/runner/harmony/command-line-tools/sdk/default/openharmony
+      OHOS_NDK_HOME: /home/runner/harmony/command-line-tools/sdk/default/openharmony
+      CARGO_PROFILE_RELEASE_LTO: thin
+      CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "4"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.commit_sha }}
+      - name: 读取版本号并切换 OHOS 依赖
+        id: ver
+        shell: bash
+        run: |
+          V="$(node -p "require('./src-tauri/tauri.conf.json').version")"
+          node scripts/set-version.mjs "$V"
+          node scripts/patch-ohos-cargo.mjs
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+      - uses: ./.github/actions/setup-node-pnpm
+      - name: 安装原生构建依赖
+        run: |
+          sudo rm -rf /var/lib/apt/lists/*
+          sudo find /etc/apt/sources.list.d -maxdepth 1 -type f ! -name 'ubuntu.sources' -delete
+          printf 'https://mirrors.tuna.tsinghua.edu.cn/ubuntu/\n' | sudo tee /etc/apt/apt-mirrors.txt >/dev/null
+          if [ -f /etc/apt/sources.list.d/ubuntu.sources ]; then
+            sudo sed -i -E 's|^URIs:.*|URIs: https://mirrors.tuna.tsinghua.edu.cn/ubuntu/|g' /etc/apt/sources.list.d/ubuntu.sources
+          fi
+          if [ -f /etc/apt/sources.list ]; then
+            sudo sed -i -E 's|https?://[^/[:space:]]+/ubuntu/?|https://mirrors.tuna.tsinghua.edu.cn/ubuntu/|g' /etc/apt/sources.list
+          fi
+          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=15 -o Acquire::https::Timeout=15 update
+          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=15 -o Acquire::https::Timeout=15 install -y --no-install-recommends \
+            cmake ninja-build clang libclang-dev pkg-config libssl-dev \
+            default-jdk-headless unzip zip jq
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-unknown-linux-ohos
+      - name: Restore HarmonyOS Command Line Tools 26.0.0.821 cache
+        id: ohos-sdk-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: /home/runner/harmony
+          key: ohos-sdk-26.0.0.821-linux-amd64-v1
+      - name: Install HarmonyOS Command Line Tools 26.0.0.821
+        if: steps.ohos-sdk-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          work="$(mktemp -d)"
+          trap 'rm -rf "$work"' EXIT
+          base="https://github.com/ErBWs/ohos-sdk/releases/download/26.0.0.821/ohos-sdk-linux-amd64.tar.gz"
+          curl --fail --location --retry 3 "$base.aa" -o "$work/sdk.aa"
+          curl --fail --location --retry 3 "$base.ab" -o "$work/sdk.ab"
+          cat "$work/sdk.aa" "$work/sdk.ab" > "$work/ohos-sdk-linux-amd64.tar.gz"
+          rm -f "$work/sdk.aa" "$work/sdk.ab"
+          printf '%s  %s\n' \
+            0cbdf7ac5c1be1e42694d448ffaee0c0be0ba9a948197e2bc5b61ca5bdc481f2 "$work/ohos-sdk-linux-amd64.tar.gz" \
+            | sha256sum -c -
+          mkdir -p "$HARMONY_TOOLS_DIR"
+          tar -xzf "$work/ohos-sdk-linux-amd64.tar.gz" -C "$HARMONY_TOOLS_DIR"
+      - name: Save HarmonyOS SDK cache
+        if: steps.ohos-sdk-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: /home/runner/harmony
+          key: ohos-sdk-26.0.0.821-linux-amd64-v1
+      - name: Restore OHOS Tauri CLI and ohrs cache
+        id: ohos-tools-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: /home/runner/.ohos-tools
+          key: ohos-tools-richerfu-00c8756-ohrs-1.5.0-v1
+      - name: Install ohrs and richerfu tauri-cli (feat-openharmony)
+        if: steps.ohos-tools-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          CARGO_PROFILE_RELEASE_LTO=thin CARGO_PROFILE_RELEASE_CODEGEN_UNITS=8 \
+            cargo install ohrs --version 1.5.0 --locked --root /home/runner/.ohos-tools
+          CARGO_PROFILE_RELEASE_LTO=thin CARGO_PROFILE_RELEASE_CODEGEN_UNITS=8 \
+            cargo install tauri-cli \
+            --git https://github.com/richerfu/tauri \
+            --rev 00c8756 \
+            --root /home/runner/.ohos-tools \
+            --no-default-features --features native-tls
+      - name: Save OHOS Tauri CLI and ohrs cache
+        if: steps.ohos-tools-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: /home/runner/.ohos-tools
+          key: ohos-tools-richerfu-00c8756-ohrs-1.5.0-v1
+      - uses: swatinem/rust-cache@v2.9.3
+        continue-on-error: true
+        timeout-minutes: 8
+        with:
+          workspaces: src-tauri -> target
+          prefix-key: ohos-exp-v1
+      - name: 配置 OHOS 交叉编译环境
+        run: |
+          set -euo pipefail
+          echo "/home/runner/.ohos-tools/bin" >> "$GITHUB_PATH"
+          echo "$HARMONY_TOOLS_DIR/command-line-tools/bin" >> "$GITHUB_PATH"
+          OHOS_NATIVE_HOME="$OHOS_HOME/native"
+          wrapper_dir="$RUNNER_TEMP/ohos-compilers"
+          mkdir -p "$wrapper_dir"
+          for compiler in clang clang++; do
+            printf '#!/usr/bin/env bash\nexec "%s/llvm/bin/%s" --target=aarch64-linux-ohos --sysroot="%s/sysroot" -D__MUSL__ "$@"\n' \
+              "$OHOS_NATIVE_HOME" "$compiler" "$OHOS_NATIVE_HOME" > "$wrapper_dir/aarch64-$compiler"
+            chmod +x "$wrapper_dir/aarch64-$compiler"
+          done
+          {
+            echo "OHOS_NATIVE_HOME=$OHOS_NATIVE_HOME"
+            echo "CC_aarch64_unknown_linux_ohos=$wrapper_dir/aarch64-clang"
+            echo "CXX_aarch64_unknown_linux_ohos=$wrapper_dir/aarch64-clang++"
+            echo "AR_aarch64_unknown_linux_ohos=$OHOS_NATIVE_HOME/llvm/bin/llvm-ar"
+            echo "RANLIB_aarch64_unknown_linux_ohos=$OHOS_NATIVE_HOME/llvm/bin/llvm-ranlib"
+            echo "CXXSTDLIB_aarch64_unknown_linux_ohos=c++"
+            echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_OHOS_LINKER=$wrapper_dir/aarch64-clang"
+            echo "BINDGEN_EXTRA_CLANG_ARGS_aarch64_unknown_linux_ohos=--target=aarch64-linux-ohos --sysroot=$OHOS_NATIVE_HOME/sysroot -D__MUSL__"
+          } >> "$GITHUB_ENV"
+      - name: 编译并收集未签名 HAP
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          set -euo pipefail
+          ROOT="$(pwd)"
+          cargo tauri --version
+          ohrs --version
+          pnpm build
+          cd src-tauri
+          cargo tauri ohos init --ci
+          if [ -f "$ROOT/scripts/patch-ohos-project.mjs" ]; then
+            node "$ROOT/scripts/patch-ohos-project.mjs"
+          fi
+          set +e
+          cargo tauri ohos build \
+            --ci \
+            --target aarch64 \
+            --ignore-version-mismatches \
+            --config "{\"build\":{\"beforeBuildCommand\":\"pnpm --dir '${ROOT}' build\"}}"
+          build_rc=$?
+          set -e
+          echo "cargo tauri ohos build exited with: $build_rc"
+          hap_path="$(find "$ROOT/src-tauri/gen/ohos" -name "*.hap" 2>/dev/null | head -n 1 || true)"
+          so_path="$(find "$ROOT/src-tauri/gen/ohos" "$ROOT/src-tauri/target" -name "libhghubx_lib.so" 2>/dev/null | head -n 1 || true)"
+          if [ -z "$so_path" ]; then
+            echo "Rust cdylib libhghubx_lib.so was not produced; failing early."
+            exit "${build_rc:-1}"
+          fi
+          if [ -z "$hap_path" ]; then
+            echo "libhghubx_lib.so built ($so_path), trying direct ohpm + hvigorw assembly..."
+            cd "$ROOT/src-tauri/gen/ohos"
+            ohpm install
+            hvigorw clean --no-daemon
+            hvigorw assembleHap -p module=entry_mobile@default --no-daemon --stacktrace
+            hap_path="$(find "$ROOT/src-tauri/gen/ohos" -name "*.hap" 2>/dev/null | head -n 1 || true)"
+          fi
+          test -n "$hap_path" && test -f "$hap_path"
+          unzip -l "$hap_path" | grep -E "libhghubx_lib\.so|module\.json|ets/modules\.abc"
+          mkdir -p "$ROOT/artifacts"
+          cp "$hap_path" "$ROOT/artifacts/HGhubX_${VERSION}_ohos_arm64_unsigned.hap"
+          ls -lh "$ROOT/artifacts"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ready-harmonyos
+          path: artifacts/*
+          if-no-files-found: error
+
   publish-test-pre:
     name: Sign & Publish test-pre Pre-release
-    needs: [prepare, windows, android, android-tv, macos, linux, ios]
+    needs: [prepare, windows, android, android-tv, macos, linux, ios, harmonyos]
     # 独立干净运行器（不检出 PR 代码）：按平台范围签名 APK 并原地零空窗滚动更新 `test-pre`
     if: >-
       always() &&
@@ -434,13 +612,15 @@ jobs:
           needs.android-tv.result == 'success' &&
           needs.macos.result == 'success' &&
           needs.linux.result == 'success' &&
-          (needs.ios.result == 'success' || needs.ios.result == 'failure')) ||
+          (needs.ios.result == 'success' || needs.ios.result == 'failure') &&
+          (needs.harmonyos.result == 'success' || needs.harmonyos.result == 'failure')) ||
         (github.event_name == 'workflow_dispatch' && inputs.platforms == 'windows' && needs.windows.result == 'success') ||
         (github.event_name == 'workflow_dispatch' && inputs.platforms == 'android' && needs.android.result == 'success') ||
         (github.event_name == 'workflow_dispatch' && inputs.platforms == 'android-tv' && needs.android-tv.result == 'success') ||
         (github.event_name == 'workflow_dispatch' && inputs.platforms == 'macos' && needs.macos.result == 'success') ||
         (github.event_name == 'workflow_dispatch' && inputs.platforms == 'ios' && needs.ios.result == 'success') ||
-        (github.event_name == 'workflow_dispatch' && inputs.platforms == 'linux' && needs.linux.result == 'success')
+        (github.event_name == 'workflow_dispatch' && inputs.platforms == 'linux' && needs.linux.result == 'success') ||
+        (github.event_name == 'workflow_dispatch' && inputs.platforms == 'harmonyos' && needs.harmonyos.result == 'success')
       )
     concurrency:
       group: test-preview-publish

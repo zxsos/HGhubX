@@ -1,10 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { addPluginListener } from "@tauri-apps/api/core";
 import { platform } from "../api/api";
 import { exitApp } from "../lib/appLifecycle";
 import { acceptUsageAgreement, USAGE_AGREEMENT_VERSION } from "../storage/usageAgreement";
 import "../../styles/usage-agreement.css";
-import type { RegisterStartupBack } from "../lib/back";
+import { subscribeNativeBack, syncOhosBackIntercept, type RegisterStartupBack } from "../lib/back";
 import { tr } from "../i18n";
 
 /** Shared verbatim text for first-run signing and read-only review in Settings. */
@@ -48,15 +47,14 @@ export default function UsageAgreement({ onAccept, registerBack, active = true }
   useEffect(() => {
     if (!active) return;
     if (registerBack) return registerBack(() => setDeclined(true));
-    if (platform !== "android") return;
-    let disposed = false;
-    let listener: { unregister: () => Promise<void> } | undefined;
-    void addPluginListener("app", "back-button", () => setDeclined(true)).then(handle => {
-      if (disposed) void handle.unregister().catch(() => {});
-      else listener = handle;
-    }).catch(() => {});
-    return () => { disposed = true; void listener?.unregister().catch(() => {}); };
+    // Android `app:back-button` 与 HarmonyOS `hg:ohos-back` 统一订阅；协议未接受前 App 尚未挂载，无人处理返回。
+    return subscribeNativeBack(platform, () => setDeclined(true));
   }, [active, registerBack]);
+  useEffect(() => {
+    if (!active || registerBack) return;
+    // 鸿蒙无退出按钮：在「不同意」页再按返回交还系统（退到后台），协议页内则拦截以进入「不同意」页。
+    syncOhosBackIntercept(platform, !declined);
+  }, [active, registerBack, declined]);
 
   const accept = () => {
     if (!confirmed) return;

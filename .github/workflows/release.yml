@@ -467,6 +467,7 @@ jobs:
           pnpm build
           cd src-tauri
           cargo tauri ohos init --ci
+          node "$ROOT/scripts/patch-ohos-project.mjs"
           set +e
           cargo tauri ohos build \
             --ci \

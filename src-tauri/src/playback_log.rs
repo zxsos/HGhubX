@@ -8,11 +8,17 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Mutex;
 
+use tauri::Manager;
+
 const MAX_FILE: u64 = 2 * 1024 * 1024;
 // 导出上限：安卓 ClipboardManager.setPrimaryClip 走 Binder，单次事务约 1 MiB，
 // 两份 2 MiB 日志拼起来可达 4 MiB+，整份复制会 TransactionTooLargeException（issue #142）。
-// 这里把导出裁到安全尺寸，保留环境头 + 最近的事件，并插一行 truncation 说明（仍是 JSONL）。
+// 这里把剪贴板导出裁到安全尺寸，保留环境头 + 最近的事件，并插一行 truncation 说明（仍是 JSONL）。
 const MAX_EXPORT: usize = 256 * 1024;
+const MAX_CLIPBOARD_DEBUG: usize = 64 * 1024;
+// 文件分享/导出通道不走剪贴板 Binder，保留完整 playback.previous.log + playback.log，
+// 并对未轮转的 debug.log 放宽到 4 MiB 尾部保护，既给足全量上下文又防止异常超大文件撑爆内存。
+const MAX_FULL_DEBUG: usize = 4 * 1024 * 1024;
 static ENABLED: AtomicBool = AtomicBool::new(false);
 static SEQ: AtomicU64 = AtomicU64::new(0);
 static LOG: Lazy<Mutex<Journal>> = Lazy::new(|| Mutex::new(Journal::default()));
@@ -22,6 +28,7 @@ struct Journal {
     dir: Option<PathBuf>,
     enabled: bool,
     error: Option<String>,
+    last_export: Option<PathBuf>,
 }
 
 #[derive(Serialize)]
@@ -29,6 +36,28 @@ pub struct Status {
     enabled: bool,
     path: Option<String>,
     error: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FullExport {
+    filename: String,
+    path: Option<String>,
+    content: String,
+    bytes: usize,
+    line_count: usize,
+    truncated: bool,
+    native_opened: bool,
+    native_outcome: Option<String>,
+    native_error: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NativeExportResult {
+    opened: bool,
+    outcome: String,
+    detail: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -262,12 +291,305 @@ pub fn playback_log_read() -> Result<String, String> {
     export(dir)
 }
 
-// 纯函数：从目录组装并裁剪导出。不依赖全局 LOG，便于并行单测直接验证尺寸上限。
-fn export(dir: &Path) -> Result<String, String> {
-    let base = crate::net::base();
-    let host = base.split("://").nth(1).unwrap_or(&base);
-    let host = host.split('/').next().unwrap_or(host);
-    let header = env_line(host)?;
+#[tauri::command]
+pub async fn playback_log_export_full(
+    app: tauri::AppHandle,
+    reveal: Option<bool>,
+    title: Option<String>,
+) -> Result<FullExport, String> {
+    let dir = {
+        let log = LOG.lock().map_err(|_| "日志锁失败")?;
+        log.dir.clone().ok_or("日志目录尚未初始化")?
+    };
+    let (content, line_count, truncated) = export_full(&dir)?;
+    let bytes = content.len();
+    let filename = export_filename();
+    let saved = write_export_file(&app, &dir, &filename, &content);
+    if let Some(ref saved_path) = saved {
+        if let Ok(mut log) = LOG.lock() {
+            log.last_export = Some(saved_path.clone());
+        }
+    }
+    let (native_opened, native_outcome, native_error) = if reveal.unwrap_or(false) {
+        match saved.as_deref() {
+            Some(p) => {
+                let res = reveal_or_open_export(
+                    &app,
+                    p,
+                    &filename,
+                    title.as_deref().unwrap_or("HGhubX Full Diagnostic Log"),
+                )
+                .await;
+                let err = if !res.opened && res.outcome == "failed" {
+                    res.detail.clone()
+                } else {
+                    None
+                };
+                (res.opened, Some(res.outcome), err)
+            }
+            None => (false, Some("failed".into()), Some("无法写入临时导出文件".into())),
+        }
+    } else {
+        (false, None, None)
+    };
+    Ok(FullExport {
+        filename,
+        path: saved.map(|p| p.to_string_lossy().into_owned()),
+        content,
+        bytes,
+        line_count,
+        truncated,
+        native_opened,
+        native_outcome,
+        native_error,
+    })
+}
+
+#[tauri::command]
+pub async fn playback_log_reveal_export(
+    app: tauri::AppHandle,
+    title: Option<String>,
+) -> Result<NativeExportResult, String> {
+    let path = {
+        let log = LOG.lock().map_err(|_| "日志锁失败")?;
+        log.last_export.clone()
+    };
+    let Some(path) = path else {
+        return Ok(NativeExportResult {
+            opened: false,
+            outcome: "failed".into(),
+            detail: Some("没有可分享的导出文件".into()),
+        });
+    };
+    if !path.is_file() {
+        return Ok(NativeExportResult {
+            opened: false,
+            outcome: "failed".into(),
+            detail: Some("导出文件不存在".into()),
+        });
+    }
+    let filename = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("hghubx-logs.jsonl.txt")
+        .to_string();
+    Ok(reveal_or_open_export(
+        &app,
+        &path,
+        &filename,
+        title.as_deref().unwrap_or("HGhubX Full Diagnostic Log"),
+    )
+    .await)
+}
+
+#[cfg(target_env = "ohos")]
+mod ohos_share {
+    use napi_derive_ohos::napi;
+    use openharmony_ability::{
+        impl_bridge_napi_type, AsyncBridge, BridgeCallOptions, BridgeContextRequirement,
+        BridgePlugin,
+    };
+
+    pub struct ShareBridgePlugin;
+
+    impl BridgePlugin for ShareBridgePlugin {
+        type Mode = AsyncBridge;
+
+        const ID: &'static str = "hghubx.share";
+        const REQUIRED_CONTEXTS: &'static [BridgeContextRequirement] =
+            &[BridgeContextRequirement::Ability];
+    }
+
+    #[napi(object)]
+    #[derive(Clone, Debug)]
+    pub struct ShareFileRequest {
+        pub path: String,
+        pub filename: String,
+        pub title: String,
+    }
+
+    impl_bridge_napi_type!(ShareFileRequest, "hghubx.share.FileRequest");
+
+    #[napi(object)]
+    #[derive(Clone, Debug)]
+    pub struct ShareFileResponse {
+        pub outcome: String,
+        pub detail: String,
+    }
+
+    impl_bridge_napi_type!(ShareFileResponse, "hghubx.share.FileResponse");
+
+    pub async fn share_file(
+        path: String,
+        filename: String,
+        title: String,
+    ) -> Result<ShareFileResponse, String> {
+        let ohos_app = tauri::ohos::APP
+            .lock()
+            .map_err(|_| "ohos app lock failed".to_string())?
+            .clone()
+            .ok_or_else(|| "ohos app not initialized".to_string())?;
+        let bridge = ohos_app.bridge().map_err(|e| e.to_string())?;
+        bridge
+            .call_async::<ShareBridgePlugin, ShareFileRequest, ShareFileResponse>(
+                "share-file",
+                ShareFileRequest {
+                    path,
+                    filename,
+                    title,
+                },
+                BridgeCallOptions::default(),
+            )
+            .await
+            .map_err(|e| e.to_string())
+    }
+}
+
+fn export_filename() -> String {
+    let stamp = crate::logging::utc_timestamp().unwrap_or_default();
+    let digits: String = stamp.bytes().filter(u8::is_ascii_digit).map(char::from).collect();
+    if digits.len() >= 14 {
+        format!("hghubx-logs-{}-{}.jsonl.txt", &digits[..8], &digits[8..14])
+    } else {
+        "hghubx-logs.jsonl.txt".into()
+    }
+}
+
+fn write_export_file(
+    app: &tauri::AppHandle,
+    dir: &Path,
+    filename: &str,
+    content: &str,
+) -> Option<PathBuf> {
+    #[cfg(all(desktop, not(target_env = "ohos")))]
+    let (export_dir, prune_old) = match app.path().download_dir() {
+        Ok(d) => (d, false),
+        Err(_) => (dir.join("exports"), true),
+    };
+    #[cfg(not(all(desktop, not(target_env = "ohos"))))]
+    let (export_dir, prune_old) = match app.path().app_cache_dir() {
+        Ok(c) => (c.join("exports"), true),
+        Err(_) => (dir.join("exports"), true),
+    };
+    if fs::create_dir_all(&export_dir).is_err() {
+        return None;
+    }
+    let dest = export_dir.join(filename);
+    if fs::write(&dest, content.as_bytes()).is_err() {
+        return None;
+    }
+    if prune_old {
+        prune_old_exports(&export_dir, &dest, 3);
+    }
+    Some(dest)
+}
+
+fn prune_old_exports(dir: &Path, keep: &Path, max_files: usize) {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+    let mut files: Vec<(String, PathBuf)> = entries
+        .flatten()
+        .filter_map(|entry| {
+            let path = entry.path();
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if path.is_file()
+                && name.starts_with("hghubx-logs-")
+                && name.ends_with(".jsonl.txt")
+            {
+                Some((name, path))
+            } else {
+                None
+            }
+        })
+        .collect();
+    if files.len() <= max_files {
+        return;
+    }
+    files.sort_by(|a, b| b.0.cmp(&a.0));
+    for (_, path) in files.into_iter().skip(max_files) {
+        if path != keep {
+            let _ = fs::remove_file(path);
+        }
+    }
+}
+
+async fn reveal_or_open_export(
+    app: &tauri::AppHandle,
+    path: &Path,
+    filename: &str,
+    title: &str,
+) -> NativeExportResult {
+    #[cfg(all(desktop, not(target_env = "ohos")))]
+    {
+        let _ = (filename, title);
+        use tauri_plugin_opener::OpenerExt;
+        match app.opener().reveal_item_in_dir(path) {
+            Ok(()) => NativeExportResult {
+                opened: true,
+                outcome: "reveal".into(),
+                detail: None,
+            },
+            Err(e) => NativeExportResult {
+                opened: false,
+                outcome: "failed".into(),
+                detail: Some(crate::net::redact_error_proxy_auth(&e.to_string())),
+            },
+        }
+    }
+    #[cfg(target_env = "ohos")]
+    {
+        let _ = app;
+        let path_str = path.to_string_lossy().into_owned();
+        match ohos_share::share_file(path_str, filename.to_string(), title.to_string()).await {
+            Ok(resp) => {
+                let opened = resp.outcome == "shared" || resp.outcome == "saved";
+                let detail = if resp.detail.is_empty() {
+                    None
+                } else {
+                    Some(resp.detail)
+                };
+                NativeExportResult {
+                    opened,
+                    outcome: resp.outcome,
+                    detail,
+                }
+            }
+            Err(e) => NativeExportResult {
+                opened: false,
+                outcome: "failed".into(),
+                detail: Some(crate::net::redact_error_proxy_auth(&e)),
+            },
+        }
+    }
+    #[cfg(target_os = "ios")]
+    {
+        let _ = (filename, title);
+        match crate::ios_layout::present_share_sheet(app, path) {
+            Ok(()) => NativeExportResult {
+                opened: true,
+                outcome: "shared".into(),
+                detail: None,
+            },
+            Err(e) => NativeExportResult {
+                opened: false,
+                outcome: "failed".into(),
+                detail: Some(crate::net::redact_error_proxy_auth(&e)),
+            },
+        }
+    }
+    #[cfg(target_os = "android")]
+    {
+        let _ = (app, path, filename, title);
+        NativeExportResult {
+            opened: false,
+            outcome: "unsupported".into(),
+            detail: None,
+        }
+    }
+}
+
+fn read_playback_lines(dir: &Path) -> Result<Vec<String>, String> {
     let mut body: Vec<String> = Vec::new();
     for name in ["playback.previous.log", "playback.log"] {
         let path = dir.join(name);
@@ -283,6 +605,20 @@ fn export(dir: &Path) -> Result<String, String> {
             }
         }
     }
+    Ok(body)
+}
+
+fn current_line_host() -> String {
+    let base = crate::net::base();
+    let host = base.split("://").nth(1).unwrap_or(&base);
+    host.split('/').next().unwrap_or(host).to_string()
+}
+
+// 纯函数：从目录组装并裁剪导出。不依赖全局 LOG，便于并行单测直接验证尺寸上限。
+fn export(dir: &Path) -> Result<String, String> {
+    let host = current_line_host();
+    let header = env_line(&host)?;
+    let mut body = read_playback_lines(dir)?;
     body.extend(debug_lines(dir)?);
 
     let mut text = header;
@@ -314,16 +650,62 @@ fn export(dir: &Path) -> Result<String, String> {
     Ok(text)
 }
 
+/// 纯函数：组装全量脱敏 JSONL（不受 256 KiB 剪贴板裁剪上限限制），供直接分享/文件导出使用。
+fn export_full(dir: &Path) -> Result<(String, usize, bool), String> {
+    let host = current_line_host();
+    let header = env_line(&host)?;
+    let mut body = read_playback_lines(dir)?;
+    let (debug, debug_trunc) = debug_lines_bounded(dir, MAX_FULL_DEBUG, 4000)?;
+    let truncated = debug_trunc.is_some();
+    if let Some((total_bytes, kept_bytes)) = debug_trunc {
+        body.push(
+            json!({
+                "event": "log.truncated",
+                "data": { "source": "debug.log", "total_bytes": total_bytes, "kept_bytes": kept_bytes }
+            })
+            .to_string(),
+        );
+    }
+    body.extend(debug);
+
+    let line_count = 1 + body.len();
+    let cap = header.len() + body.iter().map(|l| l.len() + 1).sum::<usize>();
+    let mut text = String::with_capacity(cap);
+    text.push_str(&header);
+    for line in &body {
+        text.push_str(line);
+        text.push('\n');
+    }
+    Ok((text, line_count, truncated))
+}
+
 /// 始终在写的 debug.log 尾部，也转成同构记录（`debug.line`）。
 /// 好处：忘了先开诊断，复制出来也不是空的；而且整份导出依旧是一个 JSON 对象一行，
 /// 能直接 grep / jq，不会出现纯文本块。
 fn debug_lines(dir: &Path) -> Result<Vec<String>, String> {
+    let (lines, _) = debug_lines_bounded(dir, MAX_CLIPBOARD_DEBUG, 2000)?;
+    Ok(lines)
+}
+
+fn debug_lines_bounded(
+    dir: &Path,
+    max_bytes: usize,
+    max_line_chars: usize,
+) -> Result<(Vec<String>, Option<(usize, usize)>), String> {
     let path = dir.join("debug.log");
     if !path.exists() {
-        return Ok(Vec::new());
+        return Ok((Vec::new(), None));
     }
     let bytes = fs::read(&path).map_err(|_| "无法读取日志")?;
-    let start = bytes.len().saturating_sub(64 * 1024);
+    let mut start = bytes.len().saturating_sub(max_bytes);
+    let truncated = if start > 0 {
+        if let Some(nl) = bytes[start..].iter().position(|&b| b == b'\n') {
+            start += nl + 1;
+        }
+        Some((bytes.len(), bytes.len().saturating_sub(start)))
+    } else {
+        None
+    };
     let tail = String::from_utf8_lossy(&bytes[start..]);
     let pid = std::process::id();
     let stamp = crate::logging::utc_timestamp()?;
@@ -348,12 +730,12 @@ fn debug_lines(dir: &Path) -> Result<Vec<String>, String> {
                 "seq": SEQ.load(Ordering::Relaxed),
                 "event": "debug.line",
                 "strict": strict,
-                "data": { "source_ts": source_ts, "text": safe_text.chars().take(2000).collect::<String>() },
+                "data": { "source_ts": source_ts, "text": safe_text.chars().take(max_line_chars).collect::<String>() },
             })
             .to_string(),
         );
     }
-    Ok(out)
+    Ok((out, truncated))
 }
 
 /// 与落盘行完全同构的环境记录：版本 / 平台 / 线路 host / 严格模式。

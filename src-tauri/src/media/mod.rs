@@ -53,6 +53,10 @@ pub fn apply_cache_limits(l: &crate::cache::CacheBucketLimits) {
     hls::set_limits(l.pl_items, l.pl_bytes);
 }
 
+fn proxy_err_status(err: &str) -> u16 {
+    match err.strip_prefix("HTTP ").and_then(|s| s.split_whitespace().next()) { Some("403") => 403, Some("404") => 404, Some("410") => 410, Some("451") => 451, _ => 502 }
+}
+
 /// 统一入口：`<LOCAL_ORIGIN>/img?u=` / `hls?u=` / `seg?u=`
 ///
 /// `origin` 是本平台自定义协议的完整基址，见 [`LOCAL_ORIGIN`]；用于改写 m3u8 里的
@@ -87,7 +91,7 @@ pub async fn handle(path: &str, query: &str, origin: &str, range: Option<&str>) 
                 bytes.as_ref().clone(),
                 PROXIED_IMAGE_CACHE_CONTROL,
             ),
-            Err(e) => respond(502, "text/plain", e.into_bytes(), "no-store"),
+            Err(e) => respond(proxy_err_status(&e), "text/plain", e.into_bytes(), "no-store"),
         },
         "/hls" => match load_playlist(&target, origin).await {
             Ok(text) => respond(
@@ -96,11 +100,11 @@ pub async fn handle(path: &str, query: &str, origin: &str, range: Option<&str>) 
                 text.as_bytes().to_vec(),
                 "no-store",
             ),
-            Err(e) => respond(502, "text/plain", e.into_bytes(), "no-store"),
+            Err(e) => respond(proxy_err_status(&e), "text/plain", e.into_bytes(), "no-store"),
         },
         "/seg" => match load_segment(&target).await {
             Ok((ctype, bytes)) => segment_response(&target, ctype.as_deref(), bytes.as_ref().clone(), origin),
-            Err(e) => respond(502, "text/plain", e.into_bytes(), "no-store"),
+            Err(e) => respond(proxy_err_status(&e), "text/plain", e.into_bytes(), "no-store"),
         },
         _ => respond(404, "text/plain", b"not found".to_vec(), "no-store"),
     };

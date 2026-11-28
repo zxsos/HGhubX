@@ -166,8 +166,8 @@ loopback、Windows 的自定义标题栏与注册表代理判断、Android 的 W
 
 ### HarmonyOS（自签版）
 
-1. Rust 侧通过 `#[cfg(all(target_os = "linux", not(target_env = "ohos")))]` 排除桌面 WebKitGTK、GStreamer loopback、GNOME `gsettings` 代理与桌面深链/单实例依赖，通过 `#[cfg_attr(target_env = "ohos", tauri::ohos::entry_point)]` 注册入口并在 `api/update.rs` 的 `open_url` 中 `await` 异步 opener；媒体 `LOCAL_ORIGIN` 与前端 `LOCAL` 对齐为 `hg://localhost`，更新检查 `asset_rank` 匹配 `.hap`。
-2. 前端 `src/shared/api/api.ts` 按 `OpenHarmony|HarmonyOS|ArkWeb` 识别 `isHarmony` / `platform = "harmony"`，手持设备共用移动端触屏界面，且首启协议页隐藏退出按钮（与 iOS 一致）。
+1. Rust 侧通过 `#[cfg(all(target_os = "linux", not(target_env = "ohos")))]` 排除桌面 WebKitGTK、GStreamer loopback、GNOME `gsettings` 代理与桌面深链/单实例依赖，通过 `#[cfg_attr(target_env = "ohos", tauri::ohos::entry_point)]` 注册入口并在 `api/update.rs` 的 `open_url` 中 `await` 异步 opener；媒体 `LOCAL_ORIGIN` 与前端 `LOCAL` 对齐为 `hg://localhost`，更新检查 `asset_rank` 匹配 `.hap`。在 `src-tauri/src/lib.rs` 中注册 `OpenHarmonyApp::on_back_press_intercept`，并经 `set_back_intercept` 命令按前端导航/弹层状态动态开关拦截：有弹窗、全屏、子页或非首页时拦截并向 WebView 派发 `hg:ohos-back`，位于首页根层级且无覆层时返回 `false` 交回鸿蒙系统退后台。
+2. 前端 `src/shared/api/api.ts` 按 `OpenHarmony|HarmonyOS|ArkWeb` 识别 `isHarmony` / `platform = "harmony"`，手持设备共用移动端触屏界面，且首启协议页隐藏退出按钮（与 iOS 一致）；`src/shared/lib/back.ts` 统一订阅 Android `app:back-button` 与 HarmonyOS `hg:ohos-back`，同时移动壳所有非 `feed` 子页与无源设置页经 `useEdgeSwipeBack` 支持左缘右滑跟手返回；启用时该层带 `data-edge-back-active`，页内 `useTabSwipe` 在其左缘 36px 热区内起手时让出手势，避免返回与切换分类同时触发，且拖动锁定时临时为紧邻下层的 `.ios-layer-hidden` 节点附加 `data-edge-reveal` 露出上一页预览，松手提交或回弹结束后立即清除（保持被覆盖层 `pointer-events: none` 与 `inert` 不变）。
 3. 主线 `src-tauri/Cargo.toml` 与 `Cargo.lock` 保持官方 crates.io Tauri 2 稳定依赖；仅在 [`.github/workflows/release.yml`](../../.github/workflows/release.yml) 的 `harmonyos` job 中由 [`scripts/patch-ohos-cargo.mjs`](../../scripts/patch-ohos-cargo.mjs) 临时切换 OpenHarmony Tauri 分支与锁定 `ohos-*` 绑定 crate，构建未签名 `HGhubX_<ver>_ohos_arm64_unsigned.hap` 随标准版 Release 一并发布（由用户自签侧载安装）。
 
 ### 共享页面壳几何
@@ -177,8 +177,7 @@ loopback、Windows 的自定义标题栏与注册表代理判断、Android 的 W
 子页的 `.ios-subpage-header` 外层底色与分隔线铺满页面面板。导航、榜单切换、分类筛选及页内搜索框
 仍与正文列对齐；普通标题和滚动体维持原来的限宽与安全区内边距。
 移动壳合并 Android 原生 inset 与 iOS WebView 的 CSS 安全区；标题、内容和浮动底栏按左、右
-分别留出内边距，底栏在原生手势区之上，同级滚动页继续留出最后一项的可见距离。移动端底栏
-（`TabBar`）横向拖动或轻弹时，通过直写 `MainTabs` 可见页签容器的 `translate3d` 与底栏胶囊同步跟手滑动（两端带轻微橡皮筋阻尼，预览页签保持 `active={false}` 与 `inert` 不抢跑加载或播放），松手后以 280ms 缓动落位并清零 `transform`、恢复非活跃页 `hidden`，静止态不常驻合成层。
+分别留出内边距，底栏在原生手势区之上，同级滚动页继续留出最后一项的可见距离。移动端底栏（`TabBar`）采用纯合成器沉浸光感液态玻璃胶囊（`16px` 增艳毛玻璃 + 顶/底镜面高光描边 + `transform/opacity` GPU 光斑 + 液态玻璃滑块，视频页 `14px`、拖动中降为 `10px`，Android 压住首页硬件视频时按 `#240` 关闭 `backdrop-filter` 保留光边与液态滑块，弱透明/高对比/减弱动效自动退回实体样式）；横向拖动或轻弹时，通过直写 `MainTabs` 可见页签容器的 `translate3d` 与底栏胶囊同步跟手滑动（两端带轻微橡皮筋阻尼，预览页签保持 `active={false}` 与 `inert` 不抢跑加载或播放），松手后以 280ms 缓动落位并清零 `transform`、恢复非活跃页 `hidden`，静止态不常驻合成层。
 挂到移动壳外的模态框与半屏面板直接读取同一套原生变量和 `env()`，低高度横屏缩小外边距，
 内容过长时在安全区内滚动。老 WebView 用原生变量回退，无需新增布局依赖。
 `App.tsx` 的 `LayerBox` 对被压栈覆盖的 `MainTabs` 与非顶层栈页统一从合成器隐藏（常规用 `hidden pointer-events-none`，
