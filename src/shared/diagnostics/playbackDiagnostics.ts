@@ -199,13 +199,19 @@ export async function sharePlaybackLog(opts: { title: string; isMobile: boolean;
     }
   }
 
-  // Android WebView 无 Web Share 文件支持，优先走 MainActivity.AppBridge.shareFile（FileProvider + ACTION_SEND）
-  const androidShare = (window as Window & { __HG_ANDROID__?: { shareFile?: (path: string, title: string) => boolean | string } }).__HG_ANDROID__?.shareFile;
-  if (opts.platform === "android" && res.path && typeof androidShare === "function") {
+  // Android WebView 无 Web Share 文件支持，优先走 MainActivity.AppBridge.shareFile（FileProvider + ACTION_SEND）。
+  // 注意：Android WebView addJavascriptInterface（Gin Java Bridge）必须以 bridge 对象作为 receiver 调用，
+  // 拆出方法引用直接调用会抛 `TypeError: Illegal invocation`。
+  const androidBridge = (window as Window & { __HG_ANDROID__?: { shareFile?: (path: string, title: string) => boolean | string } }).__HG_ANDROID__;
+  let androidShareErr = "";
+  if (opts.platform === "android" && res.path && androidBridge && typeof androidBridge.shareFile === "function") {
     try {
-      const ret = androidShare(res.path, opts.title);
+      const ret = androidBridge.shareFile(res.path, opts.title);
       if (ret === true || ret === "ok") return { ...base, method: "share" };
-    } catch { /* fall through */ }
+      if (typeof ret === "string" && ret.startsWith("err:")) androidShareErr = ret.slice(4);
+    } catch (err) {
+      androidShareErr = err instanceof Error ? err.message : String(err);
+    }
   }
 
   // iOS WKWebView / 支持 Web Share 的移动端 WebView 直接拉起系统分享面板
@@ -213,6 +219,7 @@ export async function sharePlaybackLog(opts: { title: string; isMobile: boolean;
   if (webShare === "shared") return { ...base, method: "share" };
   if (webShare === "cancelled") return { ...base, method: "cancelled" };
 
+  if (androidShareErr) throw new Error(androidShareErr);
   if (triggerBlobDownload(res.filename, res.content)) return { ...base, method: res.path ? "saved" : "download" };
   return { ...base, method: "saved" };
 }

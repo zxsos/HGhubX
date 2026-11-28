@@ -168,7 +168,12 @@ if (existsSync(filePathsXml)) {
   if (!updatedPaths.includes('name="hg_cache_exports"')) {
     updatedPaths = updatedPaths.replace(
       /<\/paths\s*>/,
-      '    <cache-path name="hg_cache_exports" path="exports/" />\n    <files-path name="hg_files_exports" path="exports/" />\n</paths>',
+      '    <cache-path name="hg_cache_exports" path="exports/" />\n    <files-path name="hg_files_exports" path="exports/" />\n    <external-cache-path name="hg_ext_cache_exports" path="exports/" />\n</paths>',
+    );
+  } else if (!updatedPaths.includes('name="hg_ext_cache_exports"')) {
+    updatedPaths = updatedPaths.replace(
+      /<\/paths\s*>/,
+      '    <external-cache-path name="hg_ext_cache_exports" path="exports/" />\n</paths>',
     );
   }
   if (updatedPaths !== originalPaths) {
@@ -300,8 +305,9 @@ class MainActivity : TauriActivity() {
       if (isFinishing || isDestroyed) return "err:activity_unavailable"
       return try {
         val file = File(filePath).canonicalFile
-        val allowedRoots = listOf(cacheDir.canonicalPath, filesDir.canonicalPath)
+        val allowedRoots = listOfNotNull(cacheDir, filesDir, externalCacheDir).map { it.canonicalPath }
         if (!file.exists() || !file.isFile || allowedRoots.none { file.path.startsWith("$it/") }) {
+          android.util.Log.e("HGhubXShare", "shareFile rejected path=$filePath canonical=\${file.path}")
           return "err:file_not_allowed"
         }
         val uri = FileProvider.getUriForFile(this@MainActivity, "\${packageName}.fileprovider", file)
@@ -318,10 +324,13 @@ class MainActivity : TauriActivity() {
         runOnUiThread {
           try {
             if (!isFinishing && !isDestroyed) startActivity(chooser)
-          } catch (_: Throwable) {}
+          } catch (e: Throwable) {
+            android.util.Log.e("HGhubXShare", "startActivity chooser failed", e)
+          }
         }
         "ok"
       } catch (e: Throwable) {
+        android.util.Log.e("HGhubXShare", "shareFile failed", e)
         "err:" + (e.message ?: e.javaClass.simpleName)
       }
     }
@@ -455,6 +464,7 @@ class MainActivity : TauriActivity() {
     "9abb4b0208333437310900b1fc5b1bf19d83db44d77dcdd14ae0158f2b9b4ff0",
     "ca8bce745da3ba68b20fefb4519dff510c5e5ec80e10d5c70cf607726bc7e893",
     "deb0f904aed65bd476c348675374934b650b06804a2f46a802f6b01554df78ec",
+    "1de92db074a5045a9edeb0e8ad7f452d4ba473f460c4f05e6f251737c74f4a46",
   ]);
   if (![templateActivity, patchedActivity].some((expected) => normalize(expected) === normalized) &&
       !previousPatchedHashes.has(createHash("sha256").update(normalized).digest("hex"))) {
