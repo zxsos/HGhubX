@@ -68,6 +68,7 @@ html.theme-light {
 .ios-segmented-items>.ios-button { flex:1; display:flex; align-items:center; justify-content:center; min-width:0; min-height:40px; height:auto; border:0; border-radius:var(--control-radius); background:transparent; box-shadow:none; font-size:14px; font-weight:600; padding:8px 12px; color:var(--p-mut); line-height:1.4; transition:color .16s ease,scale .24s var(--motion-spring); }
 .ios-segmented-items>[aria-pressed=true] { color:var(--p-on-primary)!important; }
 .ios-segmented-indicator { position:absolute; z-index:0; top:4px; bottom:4px; left:4px; width:calc((100% - 8px - (var(--segment-count, 2) - 1)*4px)/var(--segment-count, 2)); border:1px solid var(--ios-edge); border-radius:var(--control-radius); background:var(--p-primary); box-shadow:var(--control-shadow); pointer-events:none; transform:translateX(calc(var(--segment-index, 0)*100% + var(--segment-index, 0)*4px)); transition:transform .26s var(--motion-glide); }
+.ios-segmented[data-empty]>.ios-segmented-indicator { opacity:0; }
 .ios-loader { display:inline-block; width:24px; height:24px; border:2.5px solid var(--p-s4); border-top-color:var(--p-primary); border-radius:50%; animation:kf-spin .75s linear infinite; vertical-align:middle; flex-shrink:0; }
 /* Thumb and press halo share the track's coordinates and the same travel distance. */
 .ios-switch { --switch-track-width:52px; --switch-thumb-size:22px; --switch-thumb-inset:2px; --switch-thumb-end-inset:2px; --switch-offset:0px; position:relative; isolation:isolate; display:inline-flex; align-items:center; justify-content:center; width:60px; min-width:60px; height:44px; padding:0; flex-shrink:0; border-radius:var(--control-radius); }
@@ -403,6 +404,7 @@ body { background:var(--motion-paper); }
 
 .ios-input { background:var(--p-s1); border-color:var(--ios-edge); box-shadow:0 3px 0 rgb(0 0 0 / .05) inset; }
 .ios-input:focus-visible { outline:3px solid var(--motion-accent); outline-offset:2px; }
+.skip-secs-input.ios-input { min-height:0; height:32px; padding:0 6px; border-radius:var(--r-sm); background:var(--p-s3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:13px; line-height:1; font-variant-numeric:tabular-nums; text-align:center; }
 
 .ios-poster { transition:scale .3s var(--motion-spring-soft); }
 .ios-poster-art { border-radius:var(--r-md); box-shadow:0 6px 16px rgb(0 0 0 / .12); transition:box-shadow .2s ease; }

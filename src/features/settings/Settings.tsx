@@ -254,7 +254,7 @@ export default function Settings({ onBack, initialSection }: { onBack: () => voi
             </div>}
           </>)}
 
-          {section(N_("播放"), <IFilm size={16} />, `${startupSummary}${preferHevc ? ` · ${tr("优先高清")}` : ""}${skipIntroSecs > 0 || skipOutroSecs > 0 ? ` · ${tr("跳过 {0}s/{1}s", skipIntroSecs, skipOutroSecs)}` : ""}`, <>
+          {section(N_("播放"), <IFilm size={16} />, `${startupSummary}${preferHevc ? ` · ${tr("优先高清")}` : ""}${skipIntroSecs > 0 ? ` · ${tr("片头 {0}秒", skipIntroSecs)}` : ""}${skipOutroSecs > 0 ? ` · ${tr("片尾 {0}秒", skipOutroSecs)}` : ""}`, <>
             <div className="ios-settings-row flex-wrap">
               <span className="ios-setting-icon"><IHome size={16} /></span>
               <div className="flex-1 min-w-0">

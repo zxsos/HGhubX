@@ -44,6 +44,7 @@ export default function PlayerPage({ content, sourceKey, part: initialPart, resu
   const [attempt, setAttempt] = useState(0);
   const [error, setError] = useState("");
   const [fallbackNotice, setFallbackNotice] = useState("");
+  const [outroCountdown, setOutroCountdown] = useState<number | null>(null);
   const [saveError, setSaveError] = useState("");
   const [preferenceError, setPreferenceError] = useState("");
   const [playing, setPlaying] = useState(false);
@@ -66,6 +67,7 @@ export default function PlayerPage({ content, sourceKey, part: initialPart, resu
   const endedSession = useRef("");
   const restoredSession = useRef("");
   const outroSkippedSession = useRef("");
+  const pendingNotice = useRef("");
   const pendingRestore = useRef(finiteSeconds(resumeSeconds));
   const clock = useRef<Clock>({ key, content, part: initialPart, seconds: finiteSeconds(resumeSeconds), duration: 0, ready: false });
   const lastSaved = useRef(0);
@@ -111,8 +113,8 @@ export default function PlayerPage({ content, sourceKey, part: initialPart, resu
     };
     const pagehide = () => persistRef.current();
     const sourceChanged = () => {
-      cancelPreheat(); persistRef.current(); transportEpoch.current++; setPrepared(null); setDenied(null);
-      setFallbackNotice(""); setPlaying(false); setWaiting(true); setModal(null); setSeek(null); setControls(true);
+      cancelPreheat(); persistRef.current(); transportEpoch.current++; pendingNotice.current = ""; setPrepared(null); setDenied(null);
+      setFallbackNotice(""); setOutroCountdown(null); setPlaying(false); setWaiting(true); setModal(null); setSeek(null); setControls(true);
     };
     document.addEventListener("visibilitychange", visibility);
     window.addEventListener("pagehide", pagehide);
@@ -133,7 +135,7 @@ export default function PlayerPage({ content, sourceKey, part: initialPart, resu
     let alive = true;
     const transport = transportEpoch.current;
     const current = () => alive && mounted.current && latest.current.request === request && transport === transportEpoch.current;
-    setError(""); setFallbackNotice(""); setWaiting(true); setPlaying(false); setSeek(null); setModal(null); setControls(true);
+    setError(""); setFallbackNotice(pendingNotice.current); pendingNotice.current = ""; setOutroCountdown(null); setWaiting(true); setPlaying(false); setSeek(null); setModal(null); setControls(true);
     persistRef.current();
     if (clock.current.key !== key || clock.current.part !== part) {
       clock.current = { key, content, part, seconds: 0, duration: 0, ready: false };
@@ -251,10 +253,10 @@ export default function PlayerPage({ content, sourceKey, part: initialPart, resu
   const retryPlayback = () => { persist(); setAttempt(value => value + 1); interact(); };
   const replay = () => {
     clock.current.seconds = 0; pendingRestore.current = 0; wanted.current = true;
-    outroSkippedSession.current = "";
+    outroSkippedSession.current = ""; setOutroCountdown(null);
     setTime(0); setAttempt(value => value + 1); setModal(null); interact();
   };
-  const onEnded = (token: string) => {
+  const onEnded = (token: string, notice = "") => {
     if (!currentSession(token) || endedSession.current === token || document.hidden || !wanted.current) return;
     const element = video.current?.el();
     // VideoSurface also emits near-end from timeupdate. A paused seek/background
@@ -265,7 +267,7 @@ export default function PlayerPage({ content, sourceKey, part: initialPart, resu
     persist(); setPlaying(false); setWaiting(false); interact();
     const index = loaded!.parts.findIndex(candidate => candidate.id === part);
     const next = loaded!.parts[index + 1];
-    if (next && autoNext) changePart(next.id);
+    if (next && autoNext) { pendingNotice.current = notice; changePart(next.id); }
     else { wanted.current = false; setModal("ended"); }
   };
   const restore = (token: string, value: number) => {
@@ -298,8 +300,8 @@ export default function PlayerPage({ content, sourceKey, part: initialPart, resu
   };
   const changeQuality = (next: Quality) => {
     if (next === quality || next === "hevc" && !loaded?.streams.hevc) return;
-    persist(); pendingRestore.current = clock.current.seconds; restoredSession.current = "";
-    setError(""); setFallbackNotice(""); setPlaying(false); setWaiting(true); setQuality(next);
+    persist(); pendingRestore.current = clock.current.seconds; restoredSession.current = ""; pendingNotice.current = "";
+    setError(""); setFallbackNotice(""); setOutroCountdown(null); setPlaying(false); setWaiting(true); setQuality(next);
     persistPreferences({ rate, quality: next });
   };
   const changeRate = (next: number) => {
@@ -313,9 +315,22 @@ export default function PlayerPage({ content, sourceKey, part: initialPart, resu
     finally { if (mounted.current) setFavoritePending(false); }
   };
 
+  useEffect(() => {
+    if (outroCountdown === null) return;
+    if (!playing || waiting || error || blocked || !foreground || modal) { setOutroCountdown(null); return; }
+    if (outroCountdown <= 0) {
+      setOutroCountdown(null);
+      onEnded(session, "已跳过片尾，即将播放下一集");
+      return;
+    }
+    const timer = window.setTimeout(() => setOutroCountdown(prev => (prev === null ? null : prev - 1)), 1000);
+    return () => window.clearTimeout(timer);
+  }, [outroCountdown, playing, waiting, error, blocked, foreground, modal, session]);
+
   useRemoteScope({ id: `player:${key}`, priority: 60, onKey: remote => {
     if (remote === "back") {
-      if (seek !== null) { setSeek(null); interact(); }
+      if (outroCountdown !== null && !modal) { setOutroCountdown(null); interact(); }
+      else if (seek !== null) { setSeek(null); interact(); }
       else if (modal) setModal(null);
       else if (controls && !blocked && !error) setControls(false);
       else exit();
@@ -364,8 +379,7 @@ export default function PlayerPage({ content, sourceKey, part: initialPart, resu
           && outroSkippedSession.current !== session && endedSession.current !== session
         ) {
           outroSkippedSession.current = session;
-          setFallbackNotice("已跳过片尾，即将播放下一集");
-          onEnded(session);
+          setOutroCountdown(5);
           return;
         }
         if (playing && !waiting && !error && !blocked && foreground && content.kind === "video" && loaded && shouldPreheatNext(value, clock.current.duration)) {
@@ -385,7 +399,7 @@ export default function PlayerPage({ content, sourceKey, part: initialPart, resu
         }
       }}
       onPlaying={() => { if (currentSession(session)) { setPlaying(true); setWaiting(false); setError(""); } }}
-      onPause={() => { if (currentSession(session)) { setPlaying(false); setControls(true); persist(); } }}
+      onPause={() => { if (currentSession(session)) { setOutroCountdown(null); setPlaying(false); setControls(true); persist(); } }}
       onWaiting={() => { if (currentSession(session)) { setWaiting(true); setControls(true); } }}
       onEnded={() => onEnded(session)}
       onError={message => {
@@ -401,7 +415,14 @@ export default function PlayerPage({ content, sourceKey, part: initialPart, resu
       }}
       onClick={showControls} />}
     {blocked ? <div className="tv-player-message" role="status"><h1>内容已屏蔽</h1><p>{blocked}</p><div data-tv-region="player-blocked"><button data-tv-focus="player:blocked-back" onClick={exit}>返回详情</button></div></div> : <>
-      {fallbackNotice && !error && <div className="tv-player-notice" role="status">{fallbackNotice}</div>}
+      {fallbackNotice && !error && outroCountdown === null && <div className="tv-player-notice" role="status">{fallbackNotice}</div>}
+      {outroCountdown !== null && outroCountdown > 0 && !error && (
+        <div className="tv-player-outro-bar" role="status" data-tv-region="player-outro-skip">
+          <span>{outroCountdown} 秒后跳过片尾 · 按返回取消</span>
+          <button data-tv-focus="player:outro-cancel" onClick={() => { setOutroCountdown(null); interact(); }}>取消</button>
+          <button data-tv-focus="player:outro-next" onClick={() => { setOutroCountdown(null); onEnded(session, "已跳过片尾，即将播放下一集"); }}>立即下一集</button>
+        </div>
+      )}
       {waiting && !error && (
         <div className="tv-player-loading" role="status">
           {tvSpeedBps !== null ? `正在加载 · ${formatNetSpeed(tvSpeedBps)}` : "正在加载…"}
