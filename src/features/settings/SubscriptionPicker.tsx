@@ -11,13 +11,6 @@ import { Button, Input } from "../../shared/ui/ios/controls";
 
 const PROBE_BATCH_SIZE = 6;
 
-function defaultSelectedIds(preview: SubscriptionPreview): Set<string> {
-  const uninstalled = preview.items.filter((item) => !item.installed);
-  if (!uninstalled.length) return new Set();
-  const initial = uninstalled.length <= 5 ? uninstalled : uninstalled.slice(0, 3);
-  return new Set(initial.map((item) => item.id));
-}
-
 export default function SubscriptionPicker({
   preview,
   busy,
@@ -30,7 +23,7 @@ export default function SubscriptionPicker({
   onConfirm: (items: SubscriptionSiteInput[]) => Promise<void>;
 }) {
   const [query, setQuery] = useState("");
-  const [selected, setSelected] = useState<Set<string>>(() => defaultSelectedIds(preview));
+  const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [probes, setProbes] = useState<Record<string, SubscriptionProbeResult>>({});
   const [probing, setProbing] = useState(false);
   const [probingIds, setProbingIds] = useState<Set<string>>(() => new Set());
