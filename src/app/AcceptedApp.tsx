@@ -203,18 +203,23 @@ function SourceGate() {
   if (sourceState !== "unsupported" && !sourceState.activeSourceId) {
     return (
       <div className={`fixed inset-0 bg-bg plat-${platform}`} style={preSourceShellStyle()}>
-        {settingsOpen ? (
-          <div ref={settingsLayerRef} className="absolute inset-0 bg-bg">
-            <Suspense fallback={null}>
-              <Settings wide={wide} onBack={closePreSourceSettings} />
-            </Suspense>
-          </div>
-        ) : (
+        <div
+          className={`absolute inset-0 ${settingsOpen ? "ios-layer-hidden" : ""}`}
+          aria-hidden={settingsOpen || undefined}
+          inert={settingsOpen || undefined}
+        >
           <SourceOnboarding
             state={sourceState}
             onChanged={refreshSourceState}
             onOpenSettings={() => setSettingsOpen(true)}
           />
+        </div>
+        {settingsOpen && (
+          <div ref={settingsLayerRef} className="absolute inset-0 bg-bg z-10">
+            <Suspense fallback={null}>
+              <Settings wide={wide} onBack={closePreSourceSettings} />
+            </Suspense>
+          </div>
         )}
         <DeepLinkImportPrompt onImported={refreshSourceState} />
         <ToastHost />

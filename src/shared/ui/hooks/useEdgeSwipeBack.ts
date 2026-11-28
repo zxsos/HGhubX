@@ -1,7 +1,10 @@
 import { useEffect, useRef, type RefObject } from "react";
-import { hasActiveBackConsumer } from "../../lib/back";
+import { blocksEdgeSwipeBack } from "../../lib/back";
 
-const EDGE_ZONE_PX = 36;
+/** 左缘返回热区宽度；useTabSwipe 在该热区内起手时让出手势。 */
+export const EDGE_BACK_ZONE_PX = 36;
+/** 挂在启用了左缘返回的层上，供页内横滑判断是否需要让出起手。 */
+export const EDGE_BACK_ATTR = "data-edge-back-active";
 const LOCK_DISTANCE_PX = 8;
 const COMMIT_MIN_PX = 96;
 const FLICK_MIN_PX = 40;
@@ -40,6 +43,7 @@ export function useEdgeSwipeBack(
   useEffect(() => {
     const el = ref.current;
     if (!el || !enabled) return undefined;
+    el.setAttribute(EDGE_BACK_ATTR, "");
 
     let active = false;
     let locked = false;
@@ -50,6 +54,7 @@ export function useEdgeSwipeBack(
     let velocity = 0;
     let width = 1;
     let resetTimer = 0;
+    let revealed: HTMLElement | null = null;
 
     const clearStyle = () => {
       window.clearTimeout(resetTimer);
@@ -57,6 +62,10 @@ export function useEdgeSwipeBack(
       el.style.transition = "";
       el.style.transform = "";
       el.style.boxShadow = "";
+      if (revealed) {
+        revealed.removeAttribute("data-edge-reveal");
+        revealed = null;
+      }
     };
 
     const detachTracking = () => {
@@ -66,10 +75,10 @@ export function useEdgeSwipeBack(
     };
 
     const onStart = (e: TouchEvent) => {
-      if (e.touches.length !== 1 || hasActiveBackConsumer()) return;
+      if (e.touches.length !== 1 || blocksEdgeSwipeBack()) return;
       const touch = e.touches[0];
       const rect = el.getBoundingClientRect();
-      if (rect.width <= 0 || touch.clientX - rect.left > EDGE_ZONE_PX) return;
+      if (rect.width <= 0 || touch.clientX - rect.left > EDGE_BACK_ZONE_PX) return;
       if (isBlockedTarget(e.target, el)) return;
       clearStyle();
       active = true;
@@ -100,6 +109,11 @@ export function useEdgeSwipeBack(
           return;
         }
         locked = true;
+        const prev = el.previousElementSibling;
+        if (prev instanceof HTMLElement && prev.classList.contains("ios-layer-hidden")) {
+          revealed = prev;
+          revealed.setAttribute("data-edge-reveal", "");
+        }
       }
       if (e.cancelable) e.preventDefault();
       const now = e.timeStamp || performance.now();
@@ -145,6 +159,7 @@ export function useEdgeSwipeBack(
     return () => {
       detachTracking();
       clearStyle();
+      el.removeAttribute(EDGE_BACK_ATTR);
       el.removeEventListener("touchstart", onStart);
     };
   }, [ref, enabled]);

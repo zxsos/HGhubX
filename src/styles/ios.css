@@ -444,6 +444,7 @@ body { background:var(--motion-paper); }
 .ios-tab-active { animation:motion-tab-in .16s var(--motion-glide) both; }
 .ios-tab-pane-hidden,
 .ios-layer-hidden { visibility:hidden; content-visibility:hidden; contain:strict; pointer-events:none; z-index:0; }
+.ios-layer-hidden[data-edge-reveal] { visibility:visible; content-visibility:visible; contain:layout paint; }
 .ios-tab-pane-swiping { animation:none!important; will-change:transform; contain:layout style paint; }
 .ios-tab-pane-settled,
 [data-tab-pane][data-visited="true"].ios-tab-active { animation:none!important; }
@@ -842,19 +843,22 @@ html.theme-transitioning .ios-mobile-nav .hg-glass {
   }
 }
 
-/* Keep accessibility fallbacks last so the glass layer cannot override them. */
+/* Keep accessibility fallbacks last so the glass layer cannot override them.
+   Nav rules use !important: the liquid-glass theme/over-video/platform selectors are more specific. */
 @media(prefers-reduced-transparency:reduce),(prefers-contrast:more) {
-  .ios-mobile-nav .hg-glass,.ios-dialog,.ios-toast-host>div,.win-search-launch,
+  .ios-dialog,.ios-toast-host>div,.win-search-launch,
   .ios-setting-group,.ios-account-card,.ios-rank-row,.ios-surface {
     background:var(--ios-glass-solid); backdrop-filter:none; -webkit-backdrop-filter:none;
   }
+  .ios-mobile-nav .hg-glass { background:var(--ios-glass-solid)!important; backdrop-filter:none!important; -webkit-backdrop-filter:none!important; }
+  .ios-mobile-nav[data-over-video=true] { --motion-ink:#f4f1eb; --motion-on-ink:#191919; --p-mut:#c2bdb5; }
   .ios-mobile-nav .hg-glass::before,.ios-mobile-nav .ios-nav-glow,
   .ios-dialog::before,.ios-toast-host>div::before,.win-search-launch::before,
   .ios-setting-group::before,.ios-account-card::before { display:none; }
-  .ios-mobile-nav .hg-drop>.ios-liquid-fill { background:var(--motion-ink); border-color:transparent; box-shadow:none; }
-  .ios-mobile-nav .ios-mobile-nav-item { color:var(--p-mut); text-shadow:none; }
+  .ios-mobile-nav .hg-drop>.ios-liquid-fill { background:var(--motion-ink)!important; border-color:transparent!important; box-shadow:none!important; }
+  .ios-mobile-nav .ios-mobile-nav-item { color:var(--p-mut)!important; text-shadow:none; }
   .ios-mobile-nav .ios-mobile-nav-item[aria-current=page],
-  .ios-mobile-nav .ios-mobile-nav-item[data-preview=true] { color:var(--motion-on-ink); text-shadow:none; }
+  .ios-mobile-nav .ios-mobile-nav-item[data-preview=true] { color:var(--motion-on-ink)!important; text-shadow:none; }
 }
 @supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))) {
   .ios-mobile-nav .hg-glass,.ios-dialog,.ios-toast-host>div,.win-search-launch,
@@ -875,7 +879,7 @@ html.theme-transitioning .ios-mobile-nav .hg-glass {
   .ios-switch[data-platform=android] .ios-switch-track { background:Canvas; border-color:ButtonText; }
   .ios-switch[data-state=on] .ios-switch-track { background:Highlight; border-color:Highlight; }
   .ios-switch[data-state=on] .ios-switch-thumb { background:Canvas; color:ButtonText; border-color:ButtonText; }
-  .ios-mobile-nav .hg-drop>.ios-liquid-fill,.ios-segmented-indicator { background:Highlight; }
+  .ios-mobile-nav .hg-drop>.ios-liquid-fill,.ios-segmented-indicator { background:Highlight!important; }
   .ios-mobile-nav .ios-mobile-nav-item[aria-current=page],.ios-mobile-nav[data-over-video=true] .ios-mobile-nav-item[aria-current=page],.ios-segmented-items>[aria-pressed=true] { color:HighlightText!important; }
 }
 
