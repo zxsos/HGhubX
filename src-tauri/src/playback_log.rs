@@ -562,7 +562,23 @@ async fn reveal_or_open_export(
             },
         }
     }
-    #[cfg(any(target_os = "android", target_os = "ios"))]
+    #[cfg(target_os = "ios")]
+    {
+        let _ = (filename, title);
+        match crate::ios_layout::present_share_sheet(app, path) {
+            Ok(()) => NativeExportResult {
+                opened: true,
+                outcome: "shared".into(),
+                detail: None,
+            },
+            Err(e) => NativeExportResult {
+                opened: false,
+                outcome: "failed".into(),
+                detail: Some(crate::net::redact_error_proxy_auth(&e)),
+            },
+        }
+    }
+    #[cfg(target_os = "android")]
     {
         let _ = (app, path, filename, title);
         NativeExportResult {

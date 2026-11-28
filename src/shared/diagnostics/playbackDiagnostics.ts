@@ -167,7 +167,8 @@ async function tryWebShareFile(filename: string, content: string, title: string)
 export async function sharePlaybackLog(opts: { title: string; isMobile: boolean; platform: string }): Promise<ShareLogResult> {
   await flushPlaybackLog();
   const isHarmony = opts.platform === "harmony";
-  const res = await playbackLogApi.exportFull(!opts.isMobile || isHarmony, opts.title);
+  const isIos = opts.platform === "ios";
+  const res = await playbackLogApi.exportFull(!opts.isMobile || isHarmony || isIos, opts.title);
   if (!res.content) throw new Error("尚无诊断日志，请开启后复现问题");
   const base = { filename: res.filename, path: res.path, bytes: res.bytes, lineCount: res.lineCount };
 
@@ -179,6 +180,11 @@ export async function sharePlaybackLog(opts: { title: string; isMobile: boolean;
     if (res.path) return { ...base, method: "saved" };
     if (triggerBlobDownload(res.filename, res.content)) return { ...base, method: "download" };
     return { ...base, method: "saved" };
+  }
+
+  // iOS / iPadOS: Rust 侧直接拉起原生 UIActivityViewController（无 WKWebView 安全上下文/手势过期限制）
+  if (isIos && res.nativeOpened) {
+    return { ...base, method: "share" };
   }
 
   // HarmonyOS: Rust -> ShareBridgePlugin.ets 依次拉起系统分享 / 打开方式 / 原生 DocumentViewPicker 保存弹窗

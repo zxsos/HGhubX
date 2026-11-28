@@ -116,18 +116,22 @@ export class ShareBridgePlugin extends AsyncPluginBase {
       }
       const destUri: string = uris[0];
       const src = fileIo.openSync(req.path, fileIo.OpenMode.READ_ONLY);
-      const dst = fileIo.openSync(
-        destUri,
-        fileIo.OpenMode.READ_WRITE | fileIo.OpenMode.CREATE | fileIo.OpenMode.TRUNC,
-      );
+      let dst: fileIo.File;
       try {
-        const stat = fileIo.statSync(req.path);
-        if (stat.size > 0) {
-          const buf = new ArrayBuffer(stat.size);
-          const readLen = fileIo.readSync(src.fd, buf);
-          if (readLen > 0) {
-            fileIo.writeSync(dst.fd, buf, { length: readLen });
+        dst = fileIo.openSync(destUri, fileIo.OpenMode.READ_WRITE | fileIo.OpenMode.TRUNC);
+      } catch (_truncErr) {
+        dst = fileIo.openSync(destUri, fileIo.OpenMode.READ_WRITE);
+      }
+      try {
+        const chunk = new ArrayBuffer(65536);
+        let offset = 0;
+        while (true) {
+          const n = fileIo.readSync(src.fd, chunk, { offset: offset });
+          if (n <= 0) {
+            break;
           }
+          fileIo.writeSync(dst.fd, chunk, { length: n });
+          offset += n;
         }
       } finally {
         fileIo.closeSync(src);
