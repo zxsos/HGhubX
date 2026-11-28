@@ -366,19 +366,25 @@ export type LineTryMain = {
   probe: { ok: boolean; base: string; tier: string; ms: number; status: number | null };
 };
 
+export type CatalogSort = string | { key: string; name?: string };
+
+/** API key sent to the source; named sorts keep a stable key separate from the tab label. */
+export const catalogSortKey = (sort?: CatalogSort): string =>
+  typeof sort === "string" ? sort : sort?.key ?? "";
+
 export type CatalogChannel = {
   id: string;
   label: string;
   kind?: string;
   icon?: string;
-  sorts?: string[];
+  sorts?: CatalogSort[];
 };
 
 export type CatalogShortcut = {
   id: string;
   label: string;
   icon?: string;
-  sorts?: string[];
+  sorts?: CatalogSort[];
 };
 
 export type SourceCatalogConfig = {

@@ -111,6 +111,29 @@ pub struct SourceMediaConfig {
     pub image_decrypt: Option<ImageDecryptConfig>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(untagged)]
+pub enum CatalogSort {
+    Key(String),
+    Named { key: String, name: String },
+}
+
+impl CatalogSort {
+    fn is_valid(&self) -> bool {
+        match self {
+            Self::Key(key) => !key.trim().is_empty() && key.chars().count() <= 32,
+            Self::Named { key, name } => {
+                let key = key.trim();
+                let name = name.trim();
+                !key.is_empty()
+                    && key.chars().count() <= 32
+                    && !name.is_empty()
+                    && name.chars().count() <= 32
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct CatalogChannel {
@@ -121,7 +144,7 @@ pub struct CatalogChannel {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub icon: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub sorts: Vec<String>,
+    pub sorts: Vec<CatalogSort>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -132,7 +155,7 @@ pub struct CatalogShortcut {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub icon: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub sorts: Vec<String>,
+    pub sorts: Vec<CatalogSort>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -364,9 +387,7 @@ pub fn validate_package(pkg: &SourcePackage) -> Result<(), String> {
                     return Err("catalog.shortcuts.icon 无效".into());
                 }
             }
-            if sc.sorts.len() > 16
-                || sc.sorts.iter().any(|s| s.trim().is_empty() || s.chars().count() > 32)
-            {
+            if sc.sorts.len() > 16 || sc.sorts.iter().any(|sort| !sort.is_valid()) {
                 return Err("catalog.shortcuts.sorts 条目无效".into());
             }
         }
@@ -391,9 +412,7 @@ pub fn validate_package(pkg: &SourcePackage) -> Result<(), String> {
                     return Err("catalog.channels.icon 无效".into());
                 }
             }
-            if ch.sorts.len() > 16
-                || ch.sorts.iter().any(|s| s.trim().is_empty() || s.chars().count() > 32)
-            {
+            if ch.sorts.len() > 16 || ch.sorts.iter().any(|sort| !sort.is_valid()) {
                 return Err("catalog.channels.sorts 条目无效".into());
             }
         }
@@ -429,4 +448,32 @@ pub fn parse_image_decrypt_bytes(cfg: &ImageDecryptConfig) -> Result<([u8; 16], 
         return Err(format!("不支持的封面解密算法：{}", cfg.algorithm));
     }
     Ok((decode_16_bytes(&cfg.key)?, decode_16_bytes(&cfg.iv)?))
+}
+
+#[cfg(test)]
+mod catalog_sort_tests {
+    use super::{CatalogChannel, CatalogSort};
+    use serde_json::json;
+
+    #[test]
+    fn catalog_sorts_accept_legacy_strings_and_named_entries() {
+        let channel: CatalogChannel = serde_json::from_value(json!({
+            "id": "featured",
+            "label": "Featured",
+            "sorts": [
+                "latest",
+                { "key": "hot_window", "name": "当前热播" }
+            ]
+        }))
+        .expect("catalog channel should accept both sort shapes");
+
+        assert_eq!(channel.sorts[0], CatalogSort::Key("latest".into()));
+        assert_eq!(
+            channel.sorts[1],
+            CatalogSort::Named {
+                key: "hot_window".into(),
+                name: "当前热播".into()
+            }
+        );
+    }
 }

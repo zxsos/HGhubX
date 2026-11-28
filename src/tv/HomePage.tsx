@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { api } from "../shared/api/api";
+import { api, catalogSortKey } from "../shared/api/api";
 import { useContentPreferences } from "../shared/model/contentPreferences";
 import { contentKey, type TvContent } from "./model";
 import { rankCard, videoCard } from "./catalogCards";
@@ -32,7 +32,7 @@ export default function HomePage({ onOpen, active = true }: { onOpen: (content: 
           next.push({ title: "热门", items: popular.items.slice(0, 15).map(rankCard) });
         }
         if (firstChannel) {
-          const chRes = await api.category(firstChannel.id, 1, 15, firstChannel.sorts?.[0]); if (!current) return;
+          const chRes = await api.category(firstChannel.id, 1, 15, catalogSortKey(firstChannel.sorts?.[0]) || undefined); if (!current) return;
           next.push({ title: firstChannel.label, items: chRes.items.map(videoCard) });
         }
         fulfilled.current = identity; setRows(next); void indexMetadata(source, next.flatMap(row => row.items)).catch(() => {});
