@@ -454,13 +454,13 @@ function LayerBox({
 
   const entering = !hidden && !entered && !!enterClass;
   const baseStyle: CSSProperties | undefined = entering
-    ? { ...style, boxShadow: "-18px 0 40px rgba(0,0,0,.5)" }
+    ? { ...style, borderLeft: "1px solid var(--ios-edge)" }
     : style;
   const boxStyle: CSSProperties | undefined = hidden && hasPip
     ? { ...baseStyle, visibility: "hidden", pointerEvents: "none" }
     : baseStyle;
   const boxClass = hidden
-    ? (hasPip ? `${className} pointer-events-none` : `${className} hidden pointer-events-none`)
+    ? (hasPip ? `${className} pointer-events-none` : `${className} ios-layer-hidden`)
     : `${className}${entering ? ` ${enterClass}` : ""}`;
 
   return (
@@ -558,7 +558,7 @@ function MainTabs({ wide, pageActive, covered, bottomInset, swipe }: {
     && (visited.has(key) || (pageActive && tab === key) || inSwipeView(key));
   const paneClass = (key: Tab) => {
     const isVisible = tab === key || inSwipeView(key);
-    if (!isVisible) return "absolute inset-0 hidden pointer-events-none";
+    if (!isVisible) return "absolute inset-0 ios-tab-pane-hidden";
     const bgClass = key === "home" ? "bg-black overflow-hidden" : "bg-bg overflow-hidden";
     const activeClass = key === "home" ? "" : "ios-tab-active";
     const suppressAnim = swipeVisual.suppressAnimTab === key || restoredTab === key || (wasCoveredRef.current && !covered);

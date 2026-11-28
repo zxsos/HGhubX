@@ -48,6 +48,16 @@ pub struct FullExport {
     line_count: usize,
     truncated: bool,
     native_opened: bool,
+    native_outcome: Option<String>,
+    native_error: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NativeExportResult {
+    opened: bool,
+    outcome: String,
+    detail: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -285,6 +295,7 @@ pub fn playback_log_read() -> Result<String, String> {
 pub async fn playback_log_export_full(
     app: tauri::AppHandle,
     reveal: Option<bool>,
+    title: Option<String>,
 ) -> Result<FullExport, String> {
     let dir = {
         let log = LOG.lock().map_err(|_| "日志锁失败")?;
@@ -299,13 +310,27 @@ pub async fn playback_log_export_full(
             log.last_export = Some(saved_path.clone());
         }
     }
-    let native_opened = if reveal.unwrap_or(false) {
+    let (native_opened, native_outcome, native_error) = if reveal.unwrap_or(false) {
         match saved.as_deref() {
-            Some(p) => reveal_or_open_export(&app, p).await,
-            None => false,
+            Some(p) => {
+                let res = reveal_or_open_export(
+                    &app,
+                    p,
+                    &filename,
+                    title.as_deref().unwrap_or("HGhubX Full Diagnostic Log"),
+                )
+                .await;
+                let err = if !res.opened && res.outcome == "failed" {
+                    res.detail.clone()
+                } else {
+                    None
+                };
+                (res.opened, Some(res.outcome), err)
+            }
+            None => (false, Some("failed".into()), Some("无法写入临时导出文件".into())),
         }
     } else {
-        false
+        (false, None, None)
     };
     Ok(FullExport {
         filename,
@@ -315,22 +340,109 @@ pub async fn playback_log_export_full(
         line_count,
         truncated,
         native_opened,
+        native_outcome,
+        native_error,
     })
 }
 
 #[tauri::command]
-pub async fn playback_log_reveal_export(app: tauri::AppHandle) -> Result<bool, String> {
+pub async fn playback_log_reveal_export(
+    app: tauri::AppHandle,
+    title: Option<String>,
+) -> Result<NativeExportResult, String> {
     let path = {
         let log = LOG.lock().map_err(|_| "日志锁失败")?;
         log.last_export.clone()
     };
     let Some(path) = path else {
-        return Ok(false);
+        return Ok(NativeExportResult {
+            opened: false,
+            outcome: "failed".into(),
+            detail: Some("没有可分享的导出文件".into()),
+        });
     };
     if !path.is_file() {
-        return Ok(false);
+        return Ok(NativeExportResult {
+            opened: false,
+            outcome: "failed".into(),
+            detail: Some("导出文件不存在".into()),
+        });
     }
-    Ok(reveal_or_open_export(&app, &path).await)
+    let filename = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("hghubx-logs.jsonl.txt")
+        .to_string();
+    Ok(reveal_or_open_export(
+        &app,
+        &path,
+        &filename,
+        title.as_deref().unwrap_or("HGhubX Full Diagnostic Log"),
+    )
+    .await)
+}
+
+#[cfg(target_env = "ohos")]
+mod ohos_share {
+    use napi_derive_ohos::napi;
+    use openharmony_ability::{
+        impl_bridge_napi_type, AsyncBridge, BridgeCallOptions, BridgeContextRequirement,
+        BridgePlugin,
+    };
+
+    pub struct ShareBridgePlugin;
+
+    impl BridgePlugin for ShareBridgePlugin {
+        type Mode = AsyncBridge;
+
+        const ID: &'static str = "hghubx.share";
+        const REQUIRED_CONTEXTS: &'static [BridgeContextRequirement] =
+            &[BridgeContextRequirement::Ability];
+    }
+
+    #[napi(object)]
+    #[derive(Clone, Debug)]
+    pub struct ShareFileRequest {
+        pub path: String,
+        pub filename: String,
+        pub title: String,
+    }
+
+    impl_bridge_napi_type!(ShareFileRequest, "hghubx.share.FileRequest");
+
+    #[napi(object)]
+    #[derive(Clone, Debug)]
+    pub struct ShareFileResponse {
+        pub outcome: String,
+        pub detail: String,
+    }
+
+    impl_bridge_napi_type!(ShareFileResponse, "hghubx.share.FileResponse");
+
+    pub async fn share_file(
+        path: String,
+        filename: String,
+        title: String,
+    ) -> Result<ShareFileResponse, String> {
+        let ohos_app = tauri::ohos::APP
+            .lock()
+            .map_err(|_| "ohos app lock failed".to_string())?
+            .clone()
+            .ok_or_else(|| "ohos app not initialized".to_string())?;
+        let bridge = ohos_app.bridge().map_err(|e| e.to_string())?;
+        bridge
+            .call_async::<ShareBridgePlugin, ShareFileRequest, ShareFileResponse>(
+                "share-file",
+                ShareFileRequest {
+                    path,
+                    filename,
+                    title,
+                },
+                BridgeCallOptions::default(),
+            )
+            .await
+            .map_err(|e| e.to_string())
+    }
 }
 
 fn export_filename() -> String {
@@ -402,24 +514,62 @@ fn prune_old_exports(dir: &Path, keep: &Path, max_files: usize) {
     }
 }
 
-async fn reveal_or_open_export(app: &tauri::AppHandle, path: &Path) -> bool {
+async fn reveal_or_open_export(
+    app: &tauri::AppHandle,
+    path: &Path,
+    filename: &str,
+    title: &str,
+) -> NativeExportResult {
     #[cfg(all(desktop, not(target_env = "ohos")))]
     {
+        let _ = (filename, title);
         use tauri_plugin_opener::OpenerExt;
-        app.opener().reveal_item_in_dir(path).is_ok()
+        match app.opener().reveal_item_in_dir(path) {
+            Ok(()) => NativeExportResult {
+                opened: true,
+                outcome: "reveal".into(),
+                detail: None,
+            },
+            Err(e) => NativeExportResult {
+                opened: false,
+                outcome: "failed".into(),
+                detail: Some(crate::net::redact_error_proxy_auth(&e.to_string())),
+            },
+        }
     }
     #[cfg(target_env = "ohos")]
     {
-        use tauri_plugin_opener::OpenerExt;
-        app.opener()
-            .open_path(path.to_string_lossy().into_owned(), None::<&str>)
-            .await
-            .is_ok()
+        let _ = app;
+        let path_str = path.to_string_lossy().into_owned();
+        match ohos_share::share_file(path_str, filename.to_string(), title.to_string()).await {
+            Ok(resp) => {
+                let opened = resp.outcome == "shared" || resp.outcome == "saved";
+                let detail = if resp.detail.is_empty() {
+                    None
+                } else {
+                    Some(resp.detail)
+                };
+                NativeExportResult {
+                    opened,
+                    outcome: resp.outcome,
+                    detail,
+                }
+            }
+            Err(e) => NativeExportResult {
+                opened: false,
+                outcome: "failed".into(),
+                detail: Some(crate::net::redact_error_proxy_auth(&e)),
+            },
+        }
     }
     #[cfg(any(target_os = "android", target_os = "ios"))]
     {
-        let _ = (app, path);
-        false
+        let _ = (app, path, filename, title);
+        NativeExportResult {
+            opened: false,
+            outcome: "unsupported".into(),
+            detail: None,
+        }
     }
 }
 

@@ -61,6 +61,12 @@ export function useTabSwipe<T extends HTMLElement>({
     const canStart = (target: EventTarget | null) => target instanceof Element &&
       !target.closest(current.current.ignoreSelector);
 
+    const detachMove = () => {
+      root.removeEventListener("touchmove", move);
+      root.removeEventListener("touchend", finish);
+      root.removeEventListener("touchcancel", cancel);
+    };
+
     const begin = (event: TouchEvent) => {
       // A new user touch is a deliberate interaction, never the trailing synthetic click of a previous swipe.
       clearClickSuppression();
@@ -68,6 +74,9 @@ export function useTabSwipe<T extends HTMLElement>({
       const touch = event.touches[0];
       if (!canStart(event.target)) { touchStart.current = null; return; }
       touchStart.current = { x: touch.clientX, y: touch.clientY, lastX: touch.clientX, lastY: touch.clientY, axis: null };
+      root.addEventListener("touchmove", move, { passive: false });
+      root.addEventListener("touchend", finish, { passive: true });
+      root.addEventListener("touchcancel", cancel, { passive: true });
     };
     const move = (event: TouchEvent) => {
       const gesture = touchStart.current;
@@ -79,13 +88,18 @@ export function useTabSwipe<T extends HTMLElement>({
       const dy = touch.clientY - gesture.y;
       if (!gesture.axis && (Math.abs(dx) >= AXIS_LOCK_DISTANCE || Math.abs(dy) >= AXIS_LOCK_DISTANCE)) {
         if (Math.abs(dx) > Math.abs(dy) * AXIS_RATIO) gesture.axis = "x";
-        else if (Math.abs(dy) > Math.abs(dx)) gesture.axis = "y";
+        else if (Math.abs(dy) > Math.abs(dx)) {
+          gesture.axis = "y";
+          detachMove();
+          return;
+        }
       }
       /* Claim a clearly horizontal gesture so the browser cannot turn it into a
          click on the card underneath. Vertical scrolling is left untouched. */
       if (gesture.axis === "x" && event.cancelable) event.preventDefault();
     };
     const finish = (event: TouchEvent) => {
+      detachMove();
       const gesture = touchStart.current;
       touchStart.current = null;
       if (!gesture) return;
@@ -93,18 +107,14 @@ export function useTabSwipe<T extends HTMLElement>({
       commit(gesture.x, gesture.y, touch?.clientX ?? gesture.lastX, touch?.clientY ?? gesture.lastY, gesture.axis);
     };
     const cancel = () => {
+      detachMove();
       touchStart.current = null;
     };
 
     root.addEventListener("touchstart", begin, { passive: true });
-    root.addEventListener("touchmove", move, { passive: false });
-    root.addEventListener("touchend", finish, { passive: true });
-    root.addEventListener("touchcancel", cancel, { passive: true });
     return () => {
+      detachMove();
       root.removeEventListener("touchstart", begin);
-      root.removeEventListener("touchmove", move);
-      root.removeEventListener("touchend", finish);
-      root.removeEventListener("touchcancel", cancel);
     };
   }, [rootRef]);
 

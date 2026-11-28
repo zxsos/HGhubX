@@ -160,6 +160,23 @@ if (existsSync(manifestPath)) {
   }
 }
 
+// Ensure Android FileProvider exposes cacheDir/exports and filesDir/exports for direct log sharing.
+const filePathsXml = join(res, "xml", "file_paths.xml");
+if (existsSync(filePathsXml)) {
+  const originalPaths = readFileSync(filePathsXml, "utf8");
+  let updatedPaths = originalPaths;
+  if (!updatedPaths.includes('name="hg_cache_exports"')) {
+    updatedPaths = updatedPaths.replace(
+      /<\/paths\s*>/,
+      '    <cache-path name="hg_cache_exports" path="exports/" />\n    <files-path name="hg_files_exports" path="exports/" />\n</paths>',
+    );
+  }
+  if (updatedPaths !== originalPaths) {
+    writeFileSync(filePathsXml, updatedPaths);
+    console.log("[splash] Android FileProvider 已放行 exports/ 日志分享目录");
+  }
+}
+
 // Standard edition (com.hghubx.app): keep edge-to-edge video while exposing
 // native system-bar, cutout and keyboard insets as CSS variables, plus hghubx:// deep links.
 // Old WebViews (e.g. Chromium 66 car headunits) lack CSS env(safe-area-inset-*)
@@ -279,13 +296,13 @@ class MainActivity : TauriActivity() {
     }
 
     @JavascriptInterface
-    fun shareFile(filePath: String, title: String): Boolean {
-      if (isFinishing || isDestroyed) return false
+    fun shareFile(filePath: String, title: String): String {
+      if (isFinishing || isDestroyed) return "err:activity_unavailable"
       return try {
         val file = File(filePath).canonicalFile
         val allowedRoots = listOf(cacheDir.canonicalPath, filesDir.canonicalPath)
         if (!file.exists() || !file.isFile || allowedRoots.none { file.path.startsWith("$it/") }) {
-          return false
+          return "err:file_not_allowed"
         }
         val uri = FileProvider.getUriForFile(this@MainActivity, "\${packageName}.fileprovider", file)
         val send = Intent(Intent.ACTION_SEND).apply {
@@ -303,9 +320,9 @@ class MainActivity : TauriActivity() {
             if (!isFinishing && !isDestroyed) startActivity(chooser)
           } catch (_: Throwable) {}
         }
-        true
-      } catch (_: Throwable) {
-        false
+        "ok"
+      } catch (e: Throwable) {
+        "err:" + (e.message ?: e.javaClass.simpleName)
       }
     }
   }
@@ -437,6 +454,7 @@ class MainActivity : TauriActivity() {
     "875364ca6c68491074b33fb2eb1f222432d312c432a90972e949d0f0b2a76a92",
     "9abb4b0208333437310900b1fc5b1bf19d83db44d77dcdd14ae0158f2b9b4ff0",
     "ca8bce745da3ba68b20fefb4519dff510c5e5ec80e10d5c70cf607726bc7e893",
+    "deb0f904aed65bd476c348675374934b650b06804a2f46a802f6b01554df78ec",
   ]);
   if (![templateActivity, patchedActivity].some((expected) => normalize(expected) === normalized) &&
       !previousPatchedHashes.has(createHash("sha256").update(normalized).digest("hex"))) {

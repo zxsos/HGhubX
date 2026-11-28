@@ -165,6 +165,7 @@ html.theme-light {
   max-width:min(clamp(720px, 92cqi, 960px), 880px);
 }
 .plat-android .ios-tab-active .ios-page>.scroll-y,
+.plat-harmony .ios-tab-active .ios-page>.scroll-y,
 .plat-ios .ios-tab-active .ios-page>.scroll-y {
   /* 66px navigation surface + 12px top gap + 12px content clearance. */
   padding-bottom:calc(90px + var(--sab,0px));
@@ -372,6 +373,9 @@ body { background:var(--motion-paper); }
     var(--p-bg) 52%,
     color-mix(in srgb,var(--p-bg) 97%,var(--p-primary)) 100%);
 }
+:is(.plat-android,.plat-harmony,.plat-ios) .ios-page {
+  background-image:none;
+}
 .ios-page-title { letter-spacing:0; font-weight:800; }
 .ios-page-heading { animation:motion-title-in .62s var(--motion-spring-soft) both; }
 .ios-section-label { letter-spacing:.04em; font-size:12px; font-weight:650; color:var(--p-mut); }
@@ -428,16 +432,19 @@ body { background:var(--motion-paper); }
 
 @keyframes motion-title-in { from{opacity:0;transform:translate3d(-10px,6px,0)} 72%{opacity:1;transform:translate3d(2px,0,0)} to{opacity:1;transform:none} }
 @keyframes motion-rise { 0%{opacity:0;transform:translate3d(0,14px,0) scale(.98)} 72%{opacity:1;transform:translate3d(0,-2px,0)} 100%{opacity:1;transform:none} }
-@keyframes motion-page-in { 0%{opacity:.96;transform:translate3d(20px,0,0)} 100%{opacity:1;transform:none} }
-@keyframes motion-tab-in { 0%{opacity:.92;transform:translate3d(0,8px,0)} 100%{opacity:1;transform:none} }
+@keyframes motion-page-in { 0%{opacity:.96;transform:translate3d(16px,0,0)} 100%{opacity:1;transform:none} }
+@keyframes motion-tab-in { 0%{opacity:.94;transform:translate3d(0,6px,0)} 100%{opacity:1;transform:none} }
 @keyframes motion-dialog-in { 0%{opacity:0;transform:translate3d(0,14px,0) scale(.97)} 72%{opacity:1;transform:translate3d(0,-2px,0) scale(1.005)} 100%{opacity:1;transform:none} }
 @keyframes motion-sheet-in { 0%{opacity:0;transform:translate3d(0,36px,0)} 72%{opacity:1;transform:translate3d(0,-3px,0)} 100%{opacity:1;transform:none} }
 @keyframes motion-dialog-out { from{opacity:1;transform:none} to{opacity:0;transform:translate3d(0,8px,0) scale(.985)} }
-.a-rise { animation:motion-rise .42s var(--motion-spring) both; }
-.a-page-in,.win-page-in { animation:motion-page-in .24s var(--motion-glide) both; }
-.ios-tab-active { animation:motion-tab-in .22s var(--motion-glide) both; }
+.a-rise { animation:motion-rise .36s var(--motion-spring) both; }
+.a-page-in,.win-page-in { animation:motion-page-in .18s var(--motion-glide) both; will-change:transform,opacity; }
+.ios-tab-active { animation:motion-tab-in .16s var(--motion-glide) both; }
+.ios-tab-pane-hidden,
+.ios-layer-hidden { visibility:hidden; content-visibility:hidden; contain:strict; pointer-events:none; z-index:0; }
 .ios-tab-pane-swiping { animation:none!important; will-change:transform; contain:layout style paint; }
-.ios-tab-pane-settled { animation:none!important; }
+.ios-tab-pane-settled,
+[data-tab-pane][data-visited="true"].ios-tab-active { animation:none!important; }
 [data-tab-pane][data-visited="true"] .ios-page-heading,
 [data-tab-pane][data-visited="true"] .a-rise,
 .ios-tab-pane-swiping .ios-page-heading,
@@ -749,8 +756,7 @@ html.theme-transitioning .ios-account-card { backdrop-filter:none; -webkit-backd
   z-index:0;
   opacity:0;
   background:radial-gradient(closest-side,rgb(255 255 255 / .34) 0%,rgb(96 205 255 / .18) 46%,transparent 100%);
-  transition:opacity .2s ease;
-  will-change:transform,opacity;
+  transition:opacity .18s ease;
 }
 .ios-mobile-nav .hg-drop { z-index:1; }
 .ios-mobile-nav .hg-glass>.ios-mobile-nav-items { z-index:2; }
@@ -761,10 +767,10 @@ html.theme-transitioning .ios-account-card { backdrop-filter:none; -webkit-backd
   transition:transform .16s var(--motion-glide);
 }
 .ios-mobile-nav .hg-drop.is-dragging>.ios-liquid-fill { transform:scale(1.03,1.05); }
-.ios-mobile-nav .ios-mobile-nav-item { color:rgb(255 255 255 / .74); text-shadow:0 1px 4px rgb(0 0 0 / .32); }
+.ios-mobile-nav .ios-mobile-nav-item { color:rgb(255 255 255 / .74); }
 .ios-mobile-nav .ios-mobile-nav-item[aria-current=page],
-.ios-mobile-nav .ios-mobile-nav-item[data-preview=true] { color:#fff; text-shadow:0 0 10px rgb(125 211 252 / .45); }
-.ios-mobile-nav .hg-glass[data-dragging=true] .ios-mobile-nav-item[aria-current=page]:not([data-preview=true]) { color:rgb(255 255 255 / .74); text-shadow:0 1px 4px rgb(0 0 0 / .32); }
+.ios-mobile-nav .ios-mobile-nav-item[data-preview=true] { color:#fff; }
+.ios-mobile-nav .hg-glass[data-dragging=true] .ios-mobile-nav-item[aria-current=page]:not([data-preview=true]) { color:rgb(255 255 255 / .74); }
 
 /* Light theme non-video pages: bright luminous liquid glass. */
 html.theme-light .ios-mobile-nav:not([data-over-video=true]) .hg-glass {
@@ -782,25 +788,37 @@ html.theme-light .ios-mobile-nav:not([data-over-video=true]) .hg-drop>.ios-liqui
   border:1px solid rgb(255 255 255 / .96);
   box-shadow:0 4px 12px rgb(15 23 42 / .10),inset 0 1px 0 #fff;
 }
-html.theme-light .ios-mobile-nav:not([data-over-video=true]) .ios-mobile-nav-item { color:rgb(15 23 42 / .64); text-shadow:none; }
+html.theme-light .ios-mobile-nav:not([data-over-video=true]) .ios-mobile-nav-item { color:rgb(15 23 42 / .64); }
 html.theme-light .ios-mobile-nav:not([data-over-video=true]) .ios-mobile-nav-item[aria-current=page],
-html.theme-light .ios-mobile-nav:not([data-over-video=true]) .ios-mobile-nav-item[data-preview=true] { color:var(--p-primary); text-shadow:none; }
+html.theme-light .ios-mobile-nav:not([data-over-video=true]) .ios-mobile-nav-item[data-preview=true] { color:var(--p-primary); }
 html.theme-light .ios-mobile-nav:not([data-over-video=true]) .hg-glass[data-dragging=true] .ios-mobile-nav-item[aria-current=page]:not([data-preview=true]) { color:rgb(15 23 42 / .64); }
 
-/* Over-video dark glass keeps high legibility in both themes; Android disables video backdrop blur (#240). */
+/* Over-video dark glass keeps high legibility in both themes; Android & HarmonyOS (Chromium/ArkWeb)
+   disable video & dragging backdrop blur to avoid GPU framebuffer readback stalls (#240). */
 .ios-mobile-nav[data-over-video=true] { --ios-glass-solid:#1c1c20; --glass-blur:14px; }
 .ios-mobile-nav[data-over-video=true] .hg-glass {
   background:linear-gradient(180deg,rgb(255 255 255 / .15) 0%,rgb(255 255 255 / .04) 48%,rgb(255 255 255 / .08) 100%),rgb(14 17 24 / .54);
   border-color:rgb(255 255 255 / .28);
 }
 .ios-mobile-nav[data-over-video=true] .ios-mobile-nav-item { font-size:12px; }
-.plat-android .ios-mobile-nav[data-over-video=true] .hg-glass,
+:is(.plat-android,.plat-harmony) .ios-mobile-nav .hg-glass {
+  backdrop-filter:blur(8px) saturate(135%);
+  -webkit-backdrop-filter:blur(8px) saturate(135%);
+  box-shadow:0 8px 20px rgb(0 0 0 / .24),inset 0 1px 0 rgb(255 255 255 / .52);
+}
+html.theme-light :is(.plat-android,.plat-harmony) .ios-mobile-nav:not([data-over-video=true]) .hg-glass {
+  backdrop-filter:blur(8px) saturate(135%);
+  -webkit-backdrop-filter:blur(8px) saturate(135%);
+  box-shadow:0 8px 20px rgb(15 23 42 / .10),inset 0 1px 0 #fff;
+}
+:is(.plat-android,.plat-harmony) .ios-mobile-nav[data-over-video=true] .hg-glass,
+:is(.plat-android,.plat-harmony) .ios-mobile-nav .hg-glass[data-dragging=true],
 html.theme-transitioning .ios-mobile-nav .hg-glass {
   backdrop-filter:none;
   -webkit-backdrop-filter:none;
 }
-.plat-android .ios-mobile-nav[data-over-video=true] .hg-glass {
-  background:linear-gradient(180deg,rgb(255 255 255 / .11) 0%,rgb(255 255 255 / .03) 50%,rgb(255 255 255 / .06) 100%),rgb(20 22 28 / .86);
+:is(.plat-android,.plat-harmony) .ios-mobile-nav[data-over-video=true] .hg-glass {
+  background:linear-gradient(180deg,rgb(255 255 255 / .14) 0%,rgb(255 255 255 / .04) 50%,rgb(255 255 255 / .07) 100%),rgb(18 22 30 / .84);
 }
 
 /* Compact mobile chrome on short landscape screens so switching tabs in landscape never crushes content or clips controls. */
@@ -816,6 +834,7 @@ html.theme-transitioning .ios-mobile-nav .hg-glass {
   .ios-mobile-nav .ios-mobile-nav-item { flex-direction:row; gap:6px; font-size:12px; }
   .ios-mobile-nav .ios-mobile-nav-item svg { width:18px; height:18px; }
   .plat-android .ios-tab-active .ios-page>.scroll-y,
+  .plat-harmony .ios-tab-active .ios-page>.scroll-y,
   .plat-ios .ios-tab-active .ios-page>.scroll-y {
     padding-bottom:calc(64px + max(6px,var(--native-sab,env(safe-area-inset-bottom,0px))));
   }

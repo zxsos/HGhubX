@@ -21,6 +21,13 @@ export type FullLogExport = {
   lineCount: number;
   truncated: boolean;
   nativeOpened: boolean;
+  nativeOutcome?: string | null;
+  nativeError?: string | null;
+};
+export type NativeExportResult = {
+  opened: boolean;
+  outcome: string;
+  detail: string | null;
 };
 export type ShareLogResult = {
   method: "share" | "reveal" | "download" | "saved" | "cancelled";
@@ -36,8 +43,8 @@ export const playbackLogApi = {
   set: (enabled: boolean) => invoke<Status>("playback_log_set", { enabled }),
   write: (entries: Entry[]) => invoke<void>("playback_log_write", { entries }),
   read: () => invoke<string>("playback_log_read"),
-  exportFull: (reveal = false) => invoke<FullLogExport>("playback_log_export_full", { reveal }),
-  revealExport: () => invoke<boolean>("playback_log_reveal_export"),
+  exportFull: (reveal = false, title?: string) => invoke<FullLogExport>("playback_log_export_full", { reveal, title }),
+  revealExport: (title?: string) => invoke<NativeExportResult | boolean>("playback_log_reveal_export", { title }),
 };
 let state: Snapshot = { enabled: false, path: null, error: null, ready: false, pending: false };
 const listeners = new Set<() => void>();
@@ -126,18 +133,30 @@ function triggerBlobDownload(filename: string, content: string): boolean {
 }
 
 async function tryWebShareFile(filename: string, content: string, title: string): Promise<"shared" | "cancelled" | "unsupported"> {
-  if (typeof navigator === "undefined" || typeof navigator.share !== "function" || typeof File !== "function") return "unsupported";
-  const file = new File([content], filename, { type: "text/plain;charset=utf-8" });
-  const shareData: ShareData = { files: [file], title };
-  if (typeof navigator.canShare === "function") {
-    try {
-      if (!navigator.canShare(shareData)) return "unsupported";
-    } catch {
-      return "unsupported";
+  if (typeof navigator === "undefined" || typeof navigator.share !== "function") return "unsupported";
+  if (typeof File === "function") {
+    const file = new File([content], filename, { type: "text/plain;charset=utf-8" });
+    const shareData: ShareData = { files: [file], title };
+    let canShareFile = true;
+    if (typeof navigator.canShare === "function") {
+      try {
+        canShareFile = navigator.canShare(shareData);
+      } catch {
+        canShareFile = false;
+      }
+    }
+    if (canShareFile) {
+      try {
+        await navigator.share(shareData);
+        return "shared";
+      } catch (err) {
+        if ((err as DOMException)?.name === "AbortError") return "cancelled";
+      }
     }
   }
+  // Fallback for WebViews that support navigator.share({ text }) but not files
   try {
-    await navigator.share(shareData);
+    await navigator.share({ title, text: content.length > 262144 ? content.slice(-262144) : content });
     return "shared";
   } catch (err) {
     if ((err as DOMException)?.name === "AbortError") return "cancelled";
@@ -147,7 +166,8 @@ async function tryWebShareFile(filename: string, content: string, title: string)
 
 export async function sharePlaybackLog(opts: { title: string; isMobile: boolean; platform: string }): Promise<ShareLogResult> {
   await flushPlaybackLog();
-  const res = await playbackLogApi.exportFull(!opts.isMobile);
+  const isHarmony = opts.platform === "harmony";
+  const res = await playbackLogApi.exportFull(!opts.isMobile || isHarmony, opts.title);
   if (!res.content) throw new Error("尚无诊断日志，请开启后复现问题");
   const base = { filename: res.filename, path: res.path, bytes: res.bytes, lineCount: res.lineCount };
 
@@ -161,25 +181,37 @@ export async function sharePlaybackLog(opts: { title: string; isMobile: boolean;
     return { ...base, method: "saved" };
   }
 
+  // HarmonyOS: Rust -> ShareBridgePlugin.ets 依次拉起系统分享 / 打开方式 / 原生 DocumentViewPicker 保存弹窗
+  if (isHarmony) {
+    if (res.nativeOutcome === "cancelled") return { ...base, method: "cancelled" };
+    if (res.nativeOpened) {
+      return { ...base, method: res.nativeOutcome === "saved" ? "saved" : "share" };
+    }
+    if (res.path) {
+      try {
+        const revealed = await playbackLogApi.revealExport(opts.title);
+        if (revealed === true) return { ...base, method: "share" };
+        if (revealed && typeof revealed === "object") {
+          if (revealed.outcome === "cancelled") return { ...base, method: "cancelled" };
+          if (revealed.opened) return { ...base, method: revealed.outcome === "saved" ? "saved" : "share" };
+        }
+      } catch { /* fall through */ }
+    }
+  }
+
   // Android WebView 无 Web Share 文件支持，优先走 MainActivity.AppBridge.shareFile（FileProvider + ACTION_SEND）
-  const androidShare = (window as Window & { __HG_ANDROID__?: { shareFile?: (path: string, title: string) => boolean } }).__HG_ANDROID__?.shareFile;
+  const androidShare = (window as Window & { __HG_ANDROID__?: { shareFile?: (path: string, title: string) => boolean | string } }).__HG_ANDROID__?.shareFile;
   if (opts.platform === "android" && res.path && typeof androidShare === "function") {
     try {
-      if (androidShare(res.path, opts.title)) return { ...base, method: "share" };
+      const ret = androidShare(res.path, opts.title);
+      if (ret === true || ret === "ok") return { ...base, method: "share" };
     } catch { /* fall through */ }
   }
 
-  // iOS WKWebView / HarmonyOS ArkWeb 等支持 Web Share Level 2 的环境直接拉起系统分享面板
+  // iOS WKWebView / 支持 Web Share 的移动端 WebView 直接拉起系统分享面板
   const webShare = await tryWebShareFile(res.filename, res.content, opts.title);
   if (webShare === "shared") return { ...base, method: "share" };
   if (webShare === "cancelled") return { ...base, method: "cancelled" };
-
-  // HarmonyOS 若 ArkWeb 未开放 Web Share，回退至原生 open_path 调起系统文件打开/分享
-  if (opts.platform === "harmony" && res.path) {
-    try {
-      if (await playbackLogApi.revealExport()) return { ...base, method: "share" };
-    } catch { /* fall through */ }
-  }
 
   if (triggerBlobDownload(res.filename, res.content)) return { ...base, method: res.path ? "saved" : "download" };
   return { ...base, method: "saved" };
