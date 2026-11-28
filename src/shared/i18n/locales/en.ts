@@ -1022,6 +1022,8 @@ const en: Record<string, string> = {
   "片源不可达": "Stream unreachable",
   "片源受限 ({0})": "Stream restricted ({0})",
   "片源异常 ({0})": "Stream error ({0})",
+  "日志设置尚未就绪": "Log settings are not ready yet",
+  "尚无诊断日志，请开启后复现问题": "No diagnostic log yet. Turn it on and reproduce the issue",
 };
 
 export default en;

@@ -490,7 +490,7 @@ export default function Settings({ onBack, initialSection }: { onBack: () => voi
             <Button disabled={!playbackLog.ready || playbackLog.pending || copyingLog} onClick={async () => {
               setCopyingLog(true);
               try { await copyPlaybackLog(); toast(tr("播放诊断日志已复制"), "ok"); }
-              catch (e) { toast((e as Error).message || tr("复制日志失败"), "info"); }
+              catch (e) { toast((e as Error).message ? tr((e as Error).message) : tr("复制日志失败"), "info"); }
               finally { setCopyingLog(false); }
             }} className="ios-settings-row text-left pressable disabled:opacity-60">
               <span className="ios-setting-icon"><ILink size={16} /></span>
@@ -508,10 +508,10 @@ export default function Settings({ onBack, initialSection }: { onBack: () => voi
                 const size = formatLogSize(res.bytes);
                 if (res.method === "share") toast(tr("已调起分享（{0}）", size), "ok");
                 else if (res.method === "reveal") toast(tr("全量日志已保存并打开位置（{0}）", size), "ok");
-                else if (res.path) toast(tr("全量日志已保存（{0}）：{1}", size, res.path), "ok");
+                else if (res.path && !isMobile) toast(tr("全量日志已保存（{0}）：{1}", size, res.path), "ok");
                 else toast(tr("全量日志已导出（{0}）", size), "ok");
               } catch (e) {
-                toast((e as Error).message || tr("分享日志失败"), "info");
+                toast((e as Error).message ? tr((e as Error).message) : tr("分享日志失败"), "info");
               } finally {
                 setSharingLog(false);
               }
@@ -519,7 +519,7 @@ export default function Settings({ onBack, initialSection }: { onBack: () => voi
               <span className="ios-setting-icon"><IShare size={16} /></span>
               <div className="flex-1 min-w-0">
                 <div className="text-[14px] text-on">{sharingLog ? tr("正在导出…") : tr("分享全量诊断日志")}</div>
-                <div className="text-[12px] text-mut">{isMobile ? tr("导出完整日志（含轮转与错误记录），直接调起系统分享") : tr("导出完整日志到下载目录并打开位置，不受剪贴板长度限制")}</div>
+                <div className="text-[12px] text-mut">{(isMobile || platform === "harmony") ? tr("导出完整日志（含轮转与错误记录），直接调起系统分享") : tr("导出完整日志到下载目录并打开位置，不受剪贴板长度限制")}</div>
               </div>
               <IChevR size={15} className="text-mut" />
             </Button>

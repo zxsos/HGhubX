@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useRef, useSyncExternalStore, type RefObject } from "react";
 import type Hls from "hls.js";
 import type { FragBufferedData, FragLoadedData, FragLoadingData, HlsListeners } from "hls.js";
+import { N_ } from "../i18n";
 import { copyText } from "../lib/clipboard";
 
 let registeredHlsVersion: string | null = null;
@@ -91,7 +92,7 @@ export function initPlaybackLog() {
 }
 
 export async function setPlaybackLog(on: boolean) {
-  if (!state.ready || state.pending) throw new Error("日志设置尚未就绪");
+  if (!state.ready || state.pending) throw new Error(N_("日志设置尚未就绪"));
   publish({ pending: true });
   try {
     await flushPlaybackLog();
@@ -104,7 +105,7 @@ export async function setPlaybackLog(on: boolean) {
 export async function copyPlaybackLog() {
   await flushPlaybackLog();
   const text = await playbackLogApi.read();
-  if (!text) throw new Error("尚无诊断日志，请开启后复现问题");
+  if (!text) throw new Error(N_("尚无诊断日志，请开启后复现问题"));
   await copyText(text);
 }
 
@@ -169,10 +170,10 @@ export async function sharePlaybackLog(opts: { title: string; isMobile: boolean;
   const isHarmony = opts.platform === "harmony";
   const isIos = opts.platform === "ios";
   const res = await playbackLogApi.exportFull(!opts.isMobile || isHarmony || isIos, opts.title);
-  if (!res.content) throw new Error("尚无诊断日志，请开启后复现问题");
+  if (!res.content) throw new Error(N_("尚无诊断日志，请开启后复现问题"));
   const base = { filename: res.filename, path: res.path, bytes: res.bytes, lineCount: res.lineCount };
 
-  if (!opts.isMobile) {
+  if (!opts.isMobile && !isHarmony) {
     if (res.nativeOpened) return { ...base, method: "reveal" };
     const webShare = await tryWebShareFile(res.filename, res.content, opts.title);
     if (webShare === "shared") return { ...base, method: "share" };
@@ -226,8 +227,11 @@ export async function sharePlaybackLog(opts: { title: string; isMobile: boolean;
   if (webShare === "cancelled") return { ...base, method: "cancelled" };
 
   if (androidShareErr) throw new Error(androidShareErr);
-  if (triggerBlobDownload(res.filename, res.content)) return { ...base, method: res.path ? "saved" : "download" };
-  return { ...base, method: "saved" };
+  // 移动端导出文件位于应用私有缓存目录，WebView 中 <a download> 不会真正保存文件；
+  // 原生分享与 Web Share 均未成功时直接报错，不再误报“已保存”并暴露沙盒路径。
+  if (res.path) throw new Error(res.nativeError || "");
+  if (triggerBlobDownload(res.filename, res.content)) return { ...base, method: "download" };
+  throw new Error("");
 }
 
 function isLocalMediaWrapper(url: URL) {
