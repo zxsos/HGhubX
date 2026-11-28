@@ -17,6 +17,7 @@
     "test:line-selection": "node scripts/test-line-selection.mjs",
     "test:network-settings": "node scripts/test-network-settings.mjs",
     "test:ui-feedback": "node scripts/test-ui-feedback.mjs",
+    "test:home-refresh-toast": "node scripts/test-home-refresh-toast.mjs",
     "test:favorite-status": "node scripts/test-favorite-status-counts.mjs",
     "test:haptic-tap": "node scripts/test-haptic-tap.mjs",
     "test:home-controls": "node tests/test-home-controls.mjs",

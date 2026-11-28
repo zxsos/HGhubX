@@ -13,6 +13,7 @@ const tests = [
   ["line-selection", "scripts/test-line-selection.mjs"],
   ["diagnostic-copy", "scripts/test-diagnostic-copy.mjs"],
   ["ui-feedback", "scripts/test-ui-feedback.mjs"],
+  ["home-refresh-toast", "scripts/test-home-refresh-toast.mjs"],
   ["profile-swipe", "scripts/test-profile-swipe.mjs"],
   ["channel-swipe", "scripts/test-channel-swipe.mjs"],
   ["posts-tabs", "scripts/test-posts-tabs.mjs"],
