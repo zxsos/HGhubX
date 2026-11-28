@@ -1,7 +1,10 @@
 import { useEffect, useRef, type RefObject } from "react";
 import { hasActiveBackConsumer } from "../../lib/back";
 
-const EDGE_ZONE_PX = 36;
+/** 左缘返回热区宽度；useTabSwipe 在该热区内起手时让出手势。 */
+export const EDGE_BACK_ZONE_PX = 36;
+/** 挂在启用了左缘返回的层上，供页内横滑判断是否需要让出起手。 */
+export const EDGE_BACK_ATTR = "data-edge-back-active";
 const LOCK_DISTANCE_PX = 8;
 const COMMIT_MIN_PX = 96;
 const FLICK_MIN_PX = 40;
@@ -40,6 +43,7 @@ export function useEdgeSwipeBack(
   useEffect(() => {
     const el = ref.current;
     if (!el || !enabled) return undefined;
+    el.setAttribute(EDGE_BACK_ATTR, "");
 
     let active = false;
     let locked = false;
@@ -69,7 +73,7 @@ export function useEdgeSwipeBack(
       if (e.touches.length !== 1 || hasActiveBackConsumer()) return;
       const touch = e.touches[0];
       const rect = el.getBoundingClientRect();
-      if (rect.width <= 0 || touch.clientX - rect.left > EDGE_ZONE_PX) return;
+      if (rect.width <= 0 || touch.clientX - rect.left > EDGE_BACK_ZONE_PX) return;
       if (isBlockedTarget(e.target, el)) return;
       clearStyle();
       active = true;
@@ -145,6 +149,7 @@ export function useEdgeSwipeBack(
     return () => {
       detachTracking();
       clearStyle();
+      el.removeAttribute(EDGE_BACK_ATTR);
       el.removeEventListener("touchstart", onStart);
     };
   }, [ref, enabled]);

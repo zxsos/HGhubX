@@ -1,4 +1,5 @@
 import { useEffect, useRef, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
+import { EDGE_BACK_ATTR, EDGE_BACK_ZONE_PX } from "./useEdgeSwipeBack";
 
 const SWIPE_DISTANCE = 56;
 const AXIS_LOCK_DISTANCE = 10;
@@ -73,6 +74,9 @@ export function useTabSwipe<T extends HTMLElement>({
       if (current.current.tabCount <= 1 || event.touches.length !== 1) { touchStart.current = null; return; }
       const touch = event.touches[0];
       if (!canStart(event.target)) { touchStart.current = null; return; }
+      // 起手落在子页左缘返回热区时让给 useEdgeSwipeBack，避免返回与切换分类同时触发。
+      const edgeHost = root.closest(`[${EDGE_BACK_ATTR}]`);
+      if (edgeHost && touch.clientX - edgeHost.getBoundingClientRect().left <= EDGE_BACK_ZONE_PX) { touchStart.current = null; return; }
       touchStart.current = { x: touch.clientX, y: touch.clientY, lastX: touch.clientX, lastY: touch.clientY, axis: null };
       root.addEventListener("touchmove", move, { passive: false });
       root.addEventListener("touchend", finish, { passive: true });
