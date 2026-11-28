@@ -344,6 +344,7 @@ const en: Record<string, string> = {
   "搜索 · {0}": "Search · {0}",
   "搜索 · 专题": "Search · Collections",
   "搜索 · 标签": "Search · Tags",
+  "搜索 · 作者": "Search · Authors",
   "搜索{0}…": "Search {0}…",
   "搜索历史": "Search History",
   "搜索失败": "Search failed",
