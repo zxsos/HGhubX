@@ -14,11 +14,15 @@ function SkipSecondsRow({
   title,
   subtitle,
   value,
+  decreaseLabel,
+  increaseLabel,
   onChange,
 }: {
   title: string;
   subtitle: string;
   value: number;
+  decreaseLabel: string;
+  increaseLabel: string;
   onChange: (secs: number) => void;
 }) {
   const [draft, setDraft] = useState(String(value));
@@ -46,7 +50,7 @@ function SkipSecondsRow({
       <div className="flex items-center gap-1.5 shrink-0">
         <Button
           type="button"
-          aria-label={tr("减少 5 秒")}
+          aria-label={decreaseLabel}
           disabled={value <= 0}
           onClick={() => onChange(clamp(value - 5))}
           className="h-8 w-8 rounded-(--r-sm) bg-s3 text-[13px] font-semibold text-on pressable disabled:opacity-40"
@@ -65,12 +69,12 @@ function SkipSecondsRow({
           }}
           onBlur={() => commit(draft)}
           onKeyDown={(e) => { if (e.key === "Enter") commit(draft); }}
-          className="w-14 h-8 px-2 rounded-(--r-sm) bg-s3 text-center text-[13px] font-mono text-on tabular-nums"
+          className="skip-secs-input w-14 h-8 px-2 rounded-(--r-sm) bg-s3 text-center text-[13px] font-mono text-on tabular-nums"
         />
         <span className="text-[12px] text-mut">{tr("秒")}</span>
         <Button
           type="button"
-          aria-label={tr("增加 5 秒")}
+          aria-label={increaseLabel}
           disabled={value >= 600}
           onClick={() => onChange(clamp(value + 5))}
           className="h-8 w-8 rounded-(--r-sm) bg-s3 text-[13px] font-semibold text-on pressable disabled:opacity-40"
@@ -80,7 +84,7 @@ function SkipSecondsRow({
       </div>
       <SegmentedControl
         className="w-full"
-        aria-label={title}
+        aria-label={tr("{0}预设", title)}
         activeIndex={PRESETS.indexOf(value as typeof PRESETS[number])}
       >
         {PRESETS.map((secs) => (
@@ -109,6 +113,8 @@ export default function SkipIntroOutroSetting() {
           ? tr("开播自动跳过前 {0} 秒；续播或短片时不生效", skipIntroSecs)
           : tr("开播自动跳过片头；0 秒为关闭")}
         value={skipIntroSecs}
+        decreaseLabel={tr("减少跳过片头秒数")}
+        increaseLabel={tr("增加跳过片头秒数")}
         onChange={setSkipIntroSecs}
       />
       <SkipSecondsRow
@@ -117,6 +123,8 @@ export default function SkipIntroOutroSetting() {
           ? tr("距结尾剩余 {0} 秒自动切下一集；无下一集时不中断", skipOutroSecs)
           : tr("距结尾自动切下一集；0 秒为关闭")}
         value={skipOutroSecs}
+        decreaseLabel={tr("减少跳过片尾秒数")}
+        increaseLabel={tr("增加跳过片尾秒数")}
         onChange={setSkipOutroSecs}
       />
     </>
