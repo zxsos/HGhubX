@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { Button } from "./ios/controls";
-import { IFilter, ISortAsc, ISortDesc } from "./icons";
+import { ICheck, IFilter, ISortAsc, ISortDesc } from "./icons";
 import { tr } from "../i18n";
+import { registerOverlayBack } from "../lib/back";
 import { videoSortLabel, VIDEO_SORT_METRICS, type VideoSortDirection, type VideoSortMetric } from "../model/videoSort";
 
 const DEFAULT_SORT: VideoSortMetric = "default";
@@ -47,9 +48,26 @@ export function VideoSortMenu({ value, direction, onChange, className = "" }: {
     const onPointerDown = (event: PointerEvent) => {
       if (!wrapRef.current?.contains(event.target as Node)) setOpen(false);
     };
-    document.addEventListener("pointerdown", onPointerDown);
-    return () => document.removeEventListener("pointerdown", onPointerDown);
-  }, [open]);
+    const isCovered = () => !wrapRef.current || Boolean(wrapRef.current.closest("[inert]"));
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.isComposing || isCovered()) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      close(true);
+    };
+    const removeBack = registerOverlayBack(() => {
+      if (isCovered()) return false;
+      close(true);
+      return true;
+    });
+    document.addEventListener("pointerdown", onPointerDown, true);
+    document.addEventListener("keydown", onEscape, true);
+    return () => {
+      removeBack();
+      document.removeEventListener("pointerdown", onPointerDown, true);
+      document.removeEventListener("keydown", onEscape, true);
+    };
+  }, [open, close]);
 
   useEffect(() => {
     if (!open) return;
@@ -75,6 +93,7 @@ export function VideoSortMenu({ value, direction, onChange, className = "" }: {
     const currentIndex = items.indexOf(document.activeElement as HTMLButtonElement);
     if (event.key === "Escape") {
       event.preventDefault();
+      event.stopPropagation();
       close(true);
     } else if (event.key === "Tab") {
       close();
@@ -111,6 +130,7 @@ export function VideoSortMenu({ value, direction, onChange, className = "" }: {
           <button type="button" role="menuitemradio" aria-checked={value === DEFAULT_SORT}
             onClick={() => apply(DEFAULT_SORT)}>
             <span>{tr("默认排序")}</span>
+            {value === DEFAULT_SORT && <span className="ios-sort-dir" aria-hidden="true"><ICheck size={14} strokeWidth={2.2} /></span>}
           </button>
           {VIDEO_SORT_METRICS.map(metric => {
             const itemDirection = value === metric ? direction : "desc";

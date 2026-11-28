@@ -124,10 +124,7 @@ async fn download_image(url: &str, cache_key: &str, req_scope: crate::net::Reque
 }
 
 pub(super) fn clear_cache() {
-    if let Ok(mut g) = IMG_CACHE.lock() {
-        IMG_GENERATION.fetch_add(1, Ordering::AcqRel);
-        g.clear();
-    }
+    if let Ok(mut g) = IMG_CACHE.lock() { IMG_GENERATION.fetch_add(1, Ordering::AcqRel); g.clear(); }
 }
 
 pub(super) fn stats() -> (usize, usize, usize) {

@@ -38,14 +38,19 @@
   `LOCAL_ORIGIN`、`handle()`、`clear_caches()`；
   [`hls.rs`](../../src-tauri/src/media/hls.rs) 的 `load_playlist()`、`rewrite_playlist()`；
   [`image.rs`](../../src-tauri/src/media/image.rs) 的 `load_image()`；
-  [`segment.rs`](../../src-tauri/src/media/segment.rs) 的 `load_segment()`；
+  [`segment.rs`](../../src-tauri/src/media/segment.rs) 的 `load_segment()`、`load_segment_raw()`；
   [`response.rs`](../../src-tauri/src/media/response.rs) 的 `respond()`、`apply_byte_range()`、
-  `segment_response()`。
-- 诊断与脱敏：[`src-tauri/src/net_diag.rs`](../../src-tauri/src/net_diag.rs) 的
+  `segment_response()`；
+  HLS 并发预读：[`src-tauri/src/media_prefetch.rs`](../../src-tauri/src/media_prefetch.rs) 的
+  `on_playlist()`、`on_segment_access()`、`clear()`。
+- 诊断、脱敏与错误层：[`src-tauri/src/net_diag.rs`](../../src-tauri/src/net_diag.rs) 的
   `diagnose()`、`proxy_state()`、`test_proxy()`；
   [`src-tauri/src/net/redact.rs`](../../src-tauri/src/net/redact.rs) 的
   `redact_proxy()`、`is_proxy_error()`、`heal_client()`、`err_text()`、
-  `redact_error_proxy_auth()`。
+  `redact_error_proxy_auth()`；
+  前端统一错误归一化 [`src/shared/api/errorFormat.ts`](../../src/shared/api/errorFormat.ts)
+  （`classifyApiError()`、`formatErrorWithCode()`、`sanitizeErrorForLog()`）与
+  [`src/shared/api/api.ts`](../../src/shared/api/api.ts) 的 `call()`/`READ_ONLY`。
 
 ## 主运行时路径
 
@@ -56,24 +61,35 @@
    `media_dns::eligible()` 错误（含 `InvalidContentType` 明文响应、超时、DNS 失败；非幂等写请求仅在连接/TLS 握手
    尚未发出 HTTP 请求前重试）时自动切换至 AliDNS DoH 回退并在 `MEDIA_DNS_ROUTES` 记忆成功路由。
    `source/runtime.rs` 将插件抛出的 `"401"` / `status: 401` / `"HTTP 401..."` 统一规范为 `"401"`，其余 `"HTTP <nnn>..."`
-   原样透传以供前端识别 403 并触发自动切线。
+   原样透传以供前端识别 403 并触发自动切线；同时在 `HOST_SHIM_JS` 标记宿主网络/桥接错误（`__isHostError` → `__hostError`）
+   并与脚本自身异常（`__sourceError`）分离返回，剥离 QuickJS 内部 `eval_script` 堆栈。前端 `api.ts` 的 `call()` 统一经
+   `classifyApiError()` 归类，界面只展示「简明中文原因 + 统一代号」（`NET_TIMEOUT`/`NET_DNS`/`NET_PROXY`/`NET_TLS`/
+   `NET_CONN`/`NET_REDIRECT`/`HTTP_*`/`SEC_POLICY`/`SRC_TIMEOUT`/`SRC_PARSE`/`SRC_UNSUPPORTED`/`SRC_RUNTIME`，
+   保留精确 `"401"` 与业务侧明确中文提示），诊断日志记录结构化 `code` 与去 URL 摘要，且只读重试名单 `READ_ONLY` 包含
+   `api_account_history`。
 2. `with_retry()` 只对逻辑 GET、无 body 的请求重试，最多 3 次；408/425/429/5xx、超时/连接类
    错误可重试，401、404、403、地址策略拒绝和重定向错误一次即终止。重试前 `heal_client()` 会在
    3 秒节流内重建客户端，解决代理软件开关后的 tunnel error。
 3. `client_for_dns()` 先做 `parse_target()`，再按严格模式、主机、端口、公网 DNS 标志和
-   `ProxyRoute` 生成缓存键（系统代理匹配器与 GNOME `gsettings` 探针各缓存 10 秒并在 `refresh_client()` 时立即清空）。直连时解析全部地址并 `check_addresses()`，把结果通过
-   `resolve_to_addrs()` 固定进客户端；有代理时把域名交给代理解析。缓存 180 秒，命中不延长
-   TTL，最多 64 项，配置/代理/安全模式变化会推进 generation 并清空。
-4. `get_with_dns()` 关闭自动重定向，最多跟 5 跳。每一跳都重新 `parse_target()`、重新选客户端和
-   固定 DNS，`redirect_target_with_mode()` 拒绝跨协议降级、认证信息和非法目标。
+   `ProxyRoute` 生成缓存键，并对同一键的并发建连通过 `CLIENT_BUILDING` 做单飞去重（避免 Key 与首片
+   对同一新 CDN 域名重复触发 DNS 解析）。系统代理匹配器与 GNOME `gsettings` 探针各缓存 10 秒并在
+   `refresh_client()` 时立即清空。直连严格模式下优先走系统 DNS（保障本机 FakeIP 毫秒返回），若 HTTPS
+   域名系统解析超过 900ms 未返回或快速失败，则并发竞速 AliDNS DoH，所有结果均经 `check_addresses_with_mode()`
+   完整校验后通过 `resolve_to_addrs()` 固定进客户端；有代理时跳过本地解析把域名交给代理。缓存 180 秒
+   （DoH 胜出时取 `min(180s, TTL)`），命中不延长 TTL，最多 64 项，配置/代理/安全模式变化会推进 generation 并清空。
+4. `get_with_dns()` 关闭自动重定向，最多跟 5 跳。每一跳都重新检查 scheme、主机/IP、DNS 和固定地址；
+   `redirect_target_with_mode()` 拒绝跨协议降级、认证信息和非法目标。
 5. 媒体下载统一走 `fetch_bytes()`：`get_with_dns()` 取字节，失败时按
    `media_dns::eligible()` 判断是否切换公网 DNS。只对 HTTPS 域名、DNS/timeout/transport
    类错误回退；403/404/503 或地址策略拒绝不回退。成功的公网 DNS 路由按 host 记住 30 秒。
 6. `media::handle()` 接受 `/img?u=`、`/hls?u=`、`/seg?u=`。当激活源通过 `manifest.media.imageDecrypt`
    声明解密参数且响应字节不是已知图片魔数时，`/img` 使用该参数执行 AES-128-CBC 解密并校验图片魔数；
    明文 JPEG/PNG/GIF/WebP 直接透传；未声明解密参数且非图片魔数时直接报错，不在壳内内置默认密钥。
-   `/hls` 拉清单并把 variant、key、init、part、media 等 URI 改写到本地 `LOCAL_ORIGIN`，移除可派生的
-   URI 字段；`/seg` 下载分片或 Key，若返回 `#EXTM3U` 则继续改写，保证嵌套清单不泄漏原始地址。
+   `/hls` 拉清单（以及 `/seg` 遇到嵌套子清单）时，在把 variant、key、init、part、media 等 URI 改写到本地
+   `LOCAL_ORIGIN`、移除可派生 URI 字段的同时，由 `media_prefetch::on_playlist()` 索引当前媒体清单并立刻后台并发
+   预热首个非 `NONE` Key/Map 与前 2 个分片；当播放器通过 `/seg` 请求第 `N` 片时，`media_prefetch::on_segment_access()`
+   立即后台并发滑窗预读 `N+1`、`N+2` 两片进入 `KEY_CACHE`/`SEG_CACHE`（调用无递归的 `load_segment_raw()`，复用
+   `coalesce` 单飞去重、全局上限 3 路并发，按代次与 `request_scope` 取消过期队列，清缓存时同步清空）。
 7. `apply_byte_range()` 只处理单段 `bytes=`，支持 `start-end`、`start-`、`-suffix`；无效/多段
    范围退回完整 200，越界返回 416。m3u8 永远完整返回，避免原生播放器的 0-1 字节探测把
    `#EXTM3U` 截掉。Linux 的 loopback HTTP 还支持 HEAD，并只发送一份 `Content-Length`/CORS 头。

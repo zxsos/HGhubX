@@ -25,6 +25,7 @@ export default function Search({ active, wide }: { active: boolean; wide: boolea
   const [q, setQ] = useState("");
   const [submitted, setSubmitted] = useState("");
   const [tab, setTab] = useState<"video" | "post">("video");
+  const [scrolled, setScrolled] = useState(false);
   const results = useSearchResults();
   const { result, request, loading, error: err } = results;
   const items = result?.kind === "video" ? result.items as VideoCard[] : [];
@@ -212,7 +213,7 @@ export default function Search({ active, wide }: { active: boolean; wide: boolea
 
   return (
     <div className="ios-page absolute inset-0 bg-bg flex flex-col">
-      <div className="ios-page-heading shrink-0"><h1 className="ios-page-title">{tr("搜索")}</h1></div>
+      <div className={`ios-page-heading shrink-0 ${scrolled ? "is-scrolled" : ""}`}><h1 className="ios-page-title">{tr("搜索")}</h1></div>
       {/* 搜索栏 */}
       <div className="shrink-0 pb-3 flex items-center gap-2.5" >
         <Form className="ios-search-form flex-1 min-w-0 flex items-center gap-2"
@@ -228,15 +229,15 @@ export default function Search({ active, wide }: { active: boolean; wide: boolea
             className="flex-1 min-w-0 bg-transparent text-[14px] text-on placeholder-dim outline-none" />
           {(q || submitted) && <Button aria-label={tr("清空搜索")} type="button" onClick={() => resetSearch()} className="ios-icon-button ios-search-clear"><IClose size={16} /></Button>}
         </Form>
-        {capabilities.catalog.rankings && (
+        {isMobile && capabilities.catalog.rankings && (
           <Button onClick={() => push({ kind: "ranks" })} aria-label={tr("排行榜")}
-            variant="primary" className="ios-icon-button ios-search-shortcut">
+            className="ios-icon-button ios-search-shortcut">
             <ITrophy size={19} />
           </Button>
         )}
       </div>
 
-      <div ref={scrollRef} {...tabSwipe} style={{ touchAction: "pan-y" }} className="flex-1 scroll-y pb-24">
+      <div ref={scrollRef} {...tabSwipe} style={{ touchAction: "pan-y" }} onScroll={(e) => setScrolled(e.currentTarget.scrollTop > 4)} className="flex-1 scroll-y pb-24">
         {!querying ? (
           <>
             {capabilities.catalog.rankings && (
@@ -347,7 +348,8 @@ const RANK_TABS = [
 ] as const;
 
 export function RankPage({ onBack, wide }: { onBack: () => void; wide: boolean }) {
-  const { push, lineEpoch } = useStore();
+  const { push, lineEpoch, stack } = useStore();
+  const showBack = isMobile || stack.length > 1;
   type RankKind = typeof RANK_TABS[number]["k"];
   type RankState = { items: RankItem[]; loadedAt: number; loading: boolean; error: string };
   const [tab, setTab] = useState<RankKind>("hot");
@@ -403,12 +405,12 @@ export function RankPage({ onBack, wide }: { onBack: () => void; wide: boolean }
 
   return (
     <div ref={rankSwipe.rootRef} {...rankSwipe.handlers} style={{ touchAction: "pan-y" }}
-      className="ios-page absolute inset-0 bg-bg flex flex-col">
+      className="ios-page is-rank-page absolute inset-0 bg-bg flex flex-col">
       <div className="ios-subpage-header shrink-0 relative overflow-hidden" style={{ paddingTop: "var(--sat, 0px)" }}>
         <div className="absolute inset-0 pointer-events-none" style={{ background: "radial-gradient(90% 120% at 100% 0%, var(--p-pc) 0%, transparent 60%)", opacity: 0.32 }} />
         <div className="ios-subpage-inner relative">
           <div className="ios-subpage-bar">
-            <Button aria-label={tr("返回")} onClick={onBack} className="ios-nav-btn"><IBack size={20} /></Button>
+            {showBack && <Button aria-label={tr("返回")} onClick={onBack} className="ios-nav-btn"><IBack size={20} /></Button>}
             <span className="w-9 h-9 rounded-[12px] bg-pc text-on-pc flex items-center justify-center shrink-0"><ITrophy size={19} /></span>
             <div className="flex-1 min-w-0">
               <h1 className="text-[17px] font-bold text-on leading-tight">{tr("排行榜")}</h1>

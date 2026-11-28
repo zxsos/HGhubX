@@ -25,7 +25,7 @@ ad-hoc 签名都不应进入仓库或本机脚本输出。
 - CI 与 CD 拆分工作流（+ 公共 Composite Actions 与测试预览合成）：
   - 公共环境动作：`.github/actions/setup-node-pnpm`、`.github/actions/install-webkitgtk`、`.github/actions/setup-ffmpeg-chrome`、`.github/actions/setup-android-sdk`、`.github/actions/setup-ios-project`，供以下 5 个工作流统一复用。
   - 标准版 CI：[`.github/workflows/ci.yml`](../../.github/workflows/ci.yml)（名称 `CI`），负责标准版日常校验（`changes`、`frontend`、`rust`、`smoke`、`playback` 矩阵）；纯文档变更（`docs/**`、`*.md`）仅运行 `frontend`（含文档链接与预算检查），跳过 `rust`/`smoke`/`playback`。
-  - 标准版 CD：[`.github/workflows/release.yml`](../../.github/workflows/release.yml)（名称 `Release`），先执行 `preflight`（版本号格式、`check-i18n`、`check-doc-links` 与发布说明提示），再并行执行 5 平台构建（`windows`、`android`、`macos`、`ios`、`linux`）与 `release`。
+  - 标准版 CD：[`.github/workflows/release.yml`](../../.github/workflows/release.yml)（名称 `Release`），先执行 `preflight`（版本号格式、`check-i18n`、`check-doc-links` 与发布说明提示），再并行执行 6 平台构建（`windows`、`android`、`macos`、`ios`、`linux`、`harmonyos`）与 `release`。
   - TV 版 CI：[`.github/workflows/tv.yml`](../../.github/workflows/tv.yml)（名称 `TV CI`），负责 TV 版按路径过滤的构建与遥控器验收（`acceptance`）。
   - TV 版 CD：[`.github/workflows/tv-release.yml`](../../.github/workflows/tv-release.yml)（名称 `TV Release`），先执行 `preflight` 校验 TV 版本号/字典/文档，再执行 `package` 与 `release`（`--latest=false` 不抢占仓库 `Latest` 徽章）。
   - 测试预览：[`.github/workflows/sync-test-branch.yml`](../../.github/workflows/sync-test-branch.yml)（名称 `Sync Test Branch`）、[`.github/workflows/test-preview.yml`](../../.github/workflows/test-preview.yml)（名称 `Test Preview`）与 [`scripts/sync-test-branch.mjs`](../../scripts/sync-test-branch.mjs)。`Sync Test Branch` 在 PR/推送 `main` 时仅执行约 15 秒的标签门禁与 `test` 分支合流（`cancel-in-progress: false`，绝不互杀污染 PR 状态；Draft 草稿不提前贴标，纯文档/工作流 PR 自动跳过，拦截外部 PR 修改 `.github/`）；`Test Preview` 通过 `workflow_run` 异步承接 6 平台隔离编译（无密钥）与独立干净运行器 APK 签名，支持手动按单平台重编并原地零 404 空窗滚动更新 `test-pre` Pre-release（`--latest=false`）。`Test Preview` 将 `concurrency` 下沉至各平台构建 job（`cancel-in-progress: true`）与发布 job（`cancel-in-progress: false`），`should_build=false` 的空跑不会取消进行中的构建；`sync-test-branch.mjs` 还会比对 `refs/tags/test-pre` 的树及活跃的 `Test Preview` 运行，在不打断运行中构建的前提下自动补建未发布的 `test` 提交。
@@ -36,9 +36,10 @@ ad-hoc 签名都不应进入仓库或本机脚本输出。
   [`scripts/check-size-budgets.mjs`](../../scripts/check-size-budgets.mjs)、
   [`tools/size-budgets.json`](../../tools/size-budgets.json)、
   [`scripts/pack-source.mjs`](../../scripts/pack-source.mjs)（视频源插件打包与 Ed25519 签名工具）。
-- iOS/TV 打包：[`scripts/build-ios-unsigned.sh`](../../scripts/build-ios-unsigned.sh)、
+- iOS/TV/HarmonyOS 打包：[`scripts/build-ios-unsigned.sh`](../../scripts/build-ios-unsigned.sh)、
   [`scripts/build-android-tv.mjs`](../../scripts/build-android-tv.mjs)（含 `--android-init` / `--android-build` 临时覆盖与自动清理）、
-  [`scripts/patch-android-tv.mjs`](../../scripts/patch-android-tv.mjs)；图标/启动屏：
+  [`scripts/patch-android-tv.mjs`](../../scripts/patch-android-tv.mjs)、
+  [`scripts/patch-ohos-cargo.mjs`](../../scripts/patch-ohos-cargo.mjs)（仅在 HarmonyOS CI job 临时切换 OpenHarmony Tauri 依赖与能力配置）；图标/启动屏：
   `generate-ios-icons.mjs`、`sync-ios-icons.mjs`、`patch-ios-splash.mjs`、
   `sync-android-icons.mjs`（同步 `src-tauri/icons/android/` 含 Android 13+ Material You 单色自适应图层 `drawable/ic_launcher_monochrome.xml` 与 `mipmap-anydpi-v26/ic_launcher*.xml`）、`patch-android-splash.mjs`。
 - 本地入口：[`Makefile`](../../Makefile) 的 `check`、`test-rust`、`test-web`、`test-tv`、`test-smoke`、
@@ -71,8 +72,8 @@ ad-hoc 签名都不应进入仓库或本机脚本输出。
    - `frontend`：Node 22、pnpm 10、版本字段检查（同时校验标准版与 TV 版）、i18n 字典检查、文档链接、纯壳边界守卫（`check-shell-purity.mjs`）、标准版 `pnpm build`、尺寸预算。
    - `rust`：Linux 系统依赖、`cargo check --all-targets`、`cargo test --lib`。
    - `smoke`：安装 Chromium，运行 `pnpm test:smoke`。
-   - `playback`：优先使用运行器的 FFmpeg 和浏览器；需要安装 FFmpeg 时沿用维护者指定的
-     `https://mirrors.edge.kernel.org/ubuntu/`，失败不自动换源。单次工作流并行执行 `core` 与 `extended`
+   - `playback`：优先使用运行器的 FFmpeg 和浏览器；需要安装 FFmpeg 时沿用维护者指定的清华源
+     `https://mirrors.tuna.tsinghua.edu.cn/ubuntu/`，失败不自动换源。单次工作流并行执行 `core` 与 `extended`
      （覆盖 `seek,legacy,lifecycle,gesture,proxy,portrait-fit,ambient,post-flicker,episode-toast,balance-volume,ios-native,recovery,review`）；
      `review` 场景运行 `scripts/test-round-review.mjs`（搜索返回键与网络设置检查）；账号同步/批量取消收藏
      回归 `scripts/test-account-sync-empty-state.mjs` 在 smoke 的 `account-sync` 套件中运行，不在 `review` 中重复执行。
@@ -93,8 +94,9 @@ ad-hoc 签名都不应进入仓库或本机脚本输出。
    - iOS：`pnpm tauri ios init --ci`，用 PlistBuddy 补横竖屏与相机权限（同时由 `Info.ios.plist` 提供本地网络权限与 `hghubx://` 深链），再跑
      `scripts/build-ios-unsigned.sh <version>`；Xcode `CODE_SIGNING_ALLOWED=NO` 编译后执行 `xattr -cr`、`codesign --force --deep --sign - --timestamp=none`、`otool -l` 校验 `LC_CODE_SIGNATURE` 并以 `zip -qrX` 产出 `HGhubX_<version>_ios.ipa`。
    - Linux：`pnpm tauri build` 按 `src-tauri/tauri.linux.conf.json` 同时产出 deb 与 rpm，文件名 `HGhubX_<version>_amd64.deb` 与 `HGhubX_<version>_x86_64.rpm`。
-7. 标准版 `release` job（`release.yml`）依赖五个标准版平台构建 job（不含 TV），在 `!cancelled()` 且
-   `windows`、`android`、`macos`、`linux` 全部成功（`ios` 允许成功或失败）时执行；发布条件是 `v*` tag ref，
+   - HarmonyOS：`harmonyos` job 先执行 `node scripts/patch-ohos-cargo.mjs`（仅在 CI 临时切换 `richerfu/tauri` `feat-openharmony` 依赖、剥离桌面端 `deep-link`/`single-instance` 与 `core:app:allow-exit` 权限），再通过 OpenHarmony SDK 与 `cargo tauri ohos build --target aarch64` 产出未签名包 `HGhubX_<version>_ohos_arm64_unsigned.hap`。
+7. 标准版 `release` job（`release.yml`）依赖六个标准版平台构建 job（不含 TV），在 `!cancelled()` 且
+   `windows`、`android`、`macos`、`linux` 全部成功（`ios` 与 `harmonyos` 允许成功或失败）时执行；发布条件是 `v*` tag ref，
    或手动触发且 `tag` 非空、`platforms=all`、`quick=false`。它下载已有 artifact，用
    `softprops/action-gh-release` 上传 `artifacts/*`；如果存在 `docs/release-notes/<tag>.md` 就作为正文，
    否则开启 `generate_release_notes` 自动生成说明。
@@ -131,12 +133,7 @@ ad-hoc 签名都不应进入仓库或本机脚本输出。
 
 ## 约束与失败行为
 
-- 安装播放测试依赖时，只修改临时 CI 运行器的软件源，不影响客户端的线路或本机配置。
-  [CI 44402407330](https://github.com/zxsos/HGhubX/actions/runs/44402407330/job/135148647519)
-  的扩展用例曾在安装 FFmpeg 前遇到镜像握手失败和连接超时，最终报
-  `E: Unable to locate package ffmpeg`（退出 `100`），未执行播放用例。为绕开该故障曾临时添加
-  Ubuntu 官方归档源回退；维护者确认保留原镜像后已撤销。之后遇到相同失败，按环境故障记录，
-  保持原镜像重跑；替换镜像或添加换源回退前须获明确同意。
+- **CI Ubuntu APT 镜像源固定为清华源**：所有在 Ubuntu 运行器上通过 `apt-get` 安装构建或测试依赖的步骤（`.github/actions/install-webkitgtk`、`.github/actions/setup-ffmpeg-chrome` 与 `.github/workflows/release.yml` 的 `harmonyos` job）统一清理 `/etc/apt/sources.list.d` 下除 `ubuntu.sources` 外的第三方源（避免预装第三方源如 `packages.microsoft.com` 403 阻断更新），并将 Ubuntu 软件源固定指向 `https://mirrors.tuna.tsinghua.edu.cn/ubuntu/`，不添加自动换源回退；仅修改临时 CI 运行器的软件源，不影响客户端线路或本机配置。镜像请求失败时记录失败步骤、原始错误、退出状态与 Actions 链接，可在同一镜像重跑，替换镜像前须获维护者明确同意。（历史案例：[CI 44402407330](https://github.com/zxsos/HGhubX/actions/runs/44402407330/job/135148647519) 曾因擅自添加官方源回退被撤销。）
 
 - 版本字段必须同步：`package.json`、`src-tauri/tauri.conf.json`、`src-tauri/Cargo.toml`、
   `src-tauri/Cargo.lock` 的 `hghubx`。只改一处会造成“关于页/更新检查/安装包”版本错位。

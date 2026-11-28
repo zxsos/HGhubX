@@ -87,6 +87,7 @@ pub async fn load_playlist(url: &str, prefix: &str) -> Result<Arc<String>, Strin
         let (final_url, _, bytes) = fetch_bytes_with_url(url).await?;
         let text = std::str::from_utf8(&bytes).map_err(|_| "播放列表不是 UTF-8 文本")?;
         if !text.trim_start_matches('\u{feff}').starts_with("#EXTM3U") { return Err("响应不是 HLS 播放列表".into()); }
+        crate::media_prefetch::on_playlist(&final_url, text);
         let arc = Arc::new(rewrite_playlist(&final_url, text, prefix));
         let mut cache = PL_CACHE.lock().unwrap();
         if PL_CACHE_GENERATION.load(Ordering::Acquire) == generation && crate::net::request_scope() == req_scope {
@@ -150,9 +151,7 @@ fn absolutize_uri_in_attr(base: &str, line: &str) -> String {
 
 pub(super) fn clear_cache() {
     PL_CACHE_GENERATION.fetch_add(1, Ordering::AcqRel);
-    if let Ok(mut g) = PL_CACHE.lock() {
-        g.clear();
-    }
+    if let Ok(mut g) = PL_CACHE.lock() { g.clear(); }
 }
 
 pub(super) fn stats() -> (usize, usize, usize) {

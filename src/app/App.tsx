@@ -6,6 +6,7 @@ import { PageCoveredContext } from "../shared/model/pageVisibility";
 import { isMobile, selfTest } from "../shared/api/api";
 import { addPluginListener, invoke } from "@tauri-apps/api/core";
 import { runBack } from "../shared/lib/back";
+import { exitApp } from "../shared/lib/appLifecycle";
 import { exitDocumentFullscreen, getFullscreenElement } from "../shared/lib/fullscreen";
 import { initMobileHaptics, triggerHaptic } from "../shared/lib/haptics";
 import Home from "../features/feed/Home";
@@ -922,7 +923,7 @@ export default function App() {
     if (loginOpen) { setLoginOpen(false); return; }
     if (stack.length) { pop(); return; }
     if (tab !== defaultTab) { setTab(defaultTab); return; }
-    invoke("plugin:app|exit", { code: 0 }).catch(() => {});
+    exitApp().catch(() => {});
   };
 
   useEffect(() => {

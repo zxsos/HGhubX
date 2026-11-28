@@ -8,15 +8,16 @@ mod ios_layout;
 #[cfg(any(target_os = "ios", test))]
 mod ios_media_http;
 mod lines;
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", not(target_env = "ohos")))]
 mod linux_http;
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", not(target_env = "ohos")))]
 mod linux_webview;
 mod logging;
 #[cfg(target_os = "macos")]
 mod macos_titlebar;
 mod media;
 mod media_dns;
+mod media_prefetch;
 mod net;
 mod net_diag;
 mod network_policy;
@@ -74,7 +75,7 @@ fn allowed_frontend_origin(origin: &str) -> bool {
         })
 }
 
-#[cfg(desktop)]
+#[cfg(all(desktop, not(target_env = "ohos")))]
 fn focus_main_window(app: &tauri::AppHandle) {
     if let Some(win) = app.get_webview_window("main") {
         let _ = win.unminimize();
@@ -83,7 +84,7 @@ fn focus_main_window(app: &tauri::AppHandle) {
     }
 }
 
-#[cfg(desktop)]
+#[cfg(all(desktop, not(target_env = "ohos")))]
 fn deliver_desktop_deep_link(app: &tauri::AppHandle, raw: &str) {
     let trimmed = raw.trim();
     if !trimmed.to_ascii_lowercase().starts_with("hghubx://") {
@@ -103,9 +104,10 @@ fn deliver_desktop_deep_link(app: &tauri::AppHandle, raw: &str) {
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
+#[cfg_attr(target_env = "ohos", tauri::ohos::entry_point)]
 pub fn run() {
     let mut builder = tauri::Builder::default();
-    #[cfg(desktop)]
+    #[cfg(all(desktop, not(target_env = "ohos")))]
     {
         builder = builder
             .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
@@ -150,7 +152,7 @@ pub fn run() {
             let _ = (webview, payload);
         })
         .setup(|app| {
-            #[cfg(desktop)]
+            #[cfg(all(desktop, not(target_env = "ohos")))]
             {
                 use tauri_plugin_deep_link::DeepLinkExt;
 
@@ -168,7 +170,7 @@ pub fn run() {
                     }
                 }
 
-                #[cfg(any(target_os = "windows", target_os = "linux"))]
+                #[cfg(any(target_os = "windows", all(target_os = "linux", not(target_env = "ohos"))))]
                 {
                     let _ = app.deep_link().register_all();
                 }
@@ -198,7 +200,7 @@ pub fn run() {
             }
             // Linux 的 <video> 由 GStreamer 播放，它只认常规 HTTP scheme；
             // 这里起一个 loopback 代理，前端与 m3u8 改写都指向它（见 linux_http.rs）
-            #[cfg(target_os = "linux")]
+            #[cfg(all(target_os = "linux", not(target_env = "ohos")))]
             linux_http::start();
             // macOS 主窗口在此创建：先按系统红绿灯尺寸算出居中位置（见 macos_titlebar.rs）
             #[cfg(target_os = "macos")]
@@ -208,9 +210,9 @@ pub fn run() {
         .plugin(
             tauri::plugin::Builder::<_, ()>::new("navigation-guard")
                 .on_webview_ready(|webview| {
-                    #[cfg(target_os = "linux")]
+                    #[cfg(all(target_os = "linux", not(target_env = "ohos")))]
                     linux_webview::configure(&webview);
-                    #[cfg(not(target_os = "linux"))]
+                    #[cfg(not(all(target_os = "linux", not(target_env = "ohos"))))]
                     let _ = webview;
                 })
                 .on_navigation(|_webview, url| {

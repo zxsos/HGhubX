@@ -25,7 +25,7 @@ pub(super) fn system_explicit_proxy() -> Option<String> {
     gnome_proxy()
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", not(target_env = "ohos")))]
 fn unquote(s: &str) -> String {
     let s = s.trim();
     if s.len() >= 2 && s.starts_with('\'') && s.ends_with('\'') {
@@ -36,7 +36,7 @@ fn unquote(s: &str) -> String {
 }
 
 /// 读 GNOME 系统代理配置（gsettings）。gsettings 不存在 / schema 缺失时返回 None。
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", not(target_env = "ohos")))]
 fn gsettings_get(schema: &str, key: &str) -> Option<String> {
     let out = std::process::Command::new("gsettings")
         .args(["get", schema, key])
@@ -48,7 +48,7 @@ fn gsettings_get(schema: &str, key: &str) -> Option<String> {
     Some(unquote(&String::from_utf8_lossy(&out.stdout)))
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", not(target_env = "ohos")))]
 fn format_proxy_url(scheme: &str, host: &str, port: &str) -> String {
     let host = if host.contains(':') && !host.starts_with('[') {
         format!("[{host}]")
@@ -58,15 +58,15 @@ fn format_proxy_url(scheme: &str, host: &str, port: &str) -> String {
     format!("{scheme}://{host}:{port}")
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", not(target_env = "ohos")))]
 static GNOME_PROXY_CACHE: once_cell::sync::Lazy<std::sync::Mutex<Option<(std::time::Instant, Option<String>)>>> =
     once_cell::sync::Lazy::new(|| std::sync::Mutex::new(None));
 
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", not(target_env = "ohos")))]
 const GNOME_PROXY_TTL: std::time::Duration = std::time::Duration::from_secs(10);
 
 pub(super) fn clear_proxy_env_cache() {
-    #[cfg(target_os = "linux")]
+    #[cfg(all(target_os = "linux", not(target_env = "ohos")))]
     if let Ok(mut guard) = GNOME_PROXY_CACHE.lock() {
         *guard = None;
     }
@@ -74,7 +74,7 @@ pub(super) fn clear_proxy_env_cache() {
 
 /// Linux 桌面（GNOME）的固定手动代理：`mode=manual` 时取 http，为空再试 socks。
 /// PAC（mode=auto）不支持，返回 None。结果短时缓存，避免每次媒体分片请求反复拉起 gsettings 进程。
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", not(target_env = "ohos")))]
 pub(crate) fn gnome_proxy() -> Option<String> {
     let now = std::time::Instant::now();
     if let Ok(guard) = GNOME_PROXY_CACHE.lock() {
@@ -91,7 +91,7 @@ pub(crate) fn gnome_proxy() -> Option<String> {
     detected
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", not(target_env = "ohos")))]
 fn probe_gnome_proxy() -> Option<String> {
     if gsettings_get("org.gnome.system.proxy", "mode").as_deref() != Some("manual") {
         return None;
@@ -109,7 +109,7 @@ fn probe_gnome_proxy() -> Option<String> {
     None
 }
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(all(target_os = "linux", not(target_env = "ohos"))))]
 pub(crate) fn gnome_proxy() -> Option<String> {
     None
 }

@@ -22,12 +22,12 @@ runs:
           mkdir -p ~/apt-webkit-debs
           sudo rm -rf /var/lib/apt/lists/*
           sudo find /etc/apt/sources.list.d -maxdepth 1 -type f ! -name 'ubuntu.sources' -delete
-          printf 'https://mirrors.edge.kernel.org/ubuntu/\nhttp://archive.ubuntu.com/ubuntu/\n' | sudo tee /etc/apt/apt-mirrors.txt >/dev/null
+          printf 'https://mirrors.tuna.tsinghua.edu.cn/ubuntu/\n' | sudo tee /etc/apt/apt-mirrors.txt >/dev/null
           if [ -f /etc/apt/sources.list.d/ubuntu.sources ]; then
-            sudo sed -i -E 's|^URIs:.*|URIs: https://mirrors.edge.kernel.org/ubuntu/|g' /etc/apt/sources.list.d/ubuntu.sources
+            sudo sed -i -E 's|^URIs:.*|URIs: https://mirrors.tuna.tsinghua.edu.cn/ubuntu/|g' /etc/apt/sources.list.d/ubuntu.sources
           fi
           if [ -f /etc/apt/sources.list ]; then
-            sudo sed -i -E 's|https?://[^/[:space:]]+/ubuntu/?|https://mirrors.edge.kernel.org/ubuntu/|g' /etc/apt/sources.list
+            sudo sed -i -E 's|https?://[^/[:space:]]+/ubuntu/?|https://mirrors.tuna.tsinghua.edu.cn/ubuntu/|g' /etc/apt/sources.list
           fi
           sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=15 -o Acquire::https::Timeout=15 update
           sudo apt-get -o Dir::Cache::archives="$HOME/apt-webkit-debs" -o Acquire::Retries=3 -o Acquire::http::Timeout=15 -o Acquire::https::Timeout=15 \

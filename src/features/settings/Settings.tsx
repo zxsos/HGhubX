@@ -20,7 +20,8 @@ import { Loader } from "../../shared/ui/ios/effects";
 import { isAmbientGlowSupported } from "../playback/AmbientGlow";
 import { isBalanceVolumeSupported } from "../playback/balanceVolume";
 import { PictureEnhanceSetting } from "../playback/PictureEnhanceSetting";
-import { IBack, IBoltF, IBroom, IChevR, ICompress, IGlobe, IHeart, IHome, IInfo, ILink, ILockF, IMoon, IRefresh, IScan, ISun, IVol, IVolMute, Logo } from "../../shared/ui/icons";
+import { useContentPreferences } from "../../shared/model/contentPreferences";
+import { IBack, IBoltF, IBroom, IChevR, ICompress, IFileText, IFilm, IFilter, IGlobe, IHeart, IHome, IInfo, ILink, ILockF, IMoon, IRefresh, IScan, ISpark, ISun, IVol, IVolMute, Logo } from "../../shared/ui/icons";
 import { LOCALE_OPTIONS, N_, setLocale, tr, useLocale, type Locale } from "../../shared/i18n";
 
 const SETTING_GROUPS = [N_("外观"), N_("播放"), N_("内容偏好"), N_("本地数据"), N_("网络"), N_("播放诊断"), N_("其他")] as const;
@@ -33,7 +34,9 @@ export default function Settings({ onBack, initialSection }: { onBack: () => voi
   const locale = useLocale();
   const hapticLevel = useHapticLevel();
   const [localeBusy, setLocaleBusy] = useState(false);
-  const { theme, themePreference, setTheme, favs, history, muteOnStartup, setMuteOnStartup, preferHevc, setPreferHevc, balanceVolume, setBalanceVolume, fsIdleSecs, setFsIdleSecs, startupTab, setStartupTab, ambientGlow, setAmbientGlow, strictSecurity, strictSecurityReady, securityPending, cliRelaxed, setStrictSecurity, toast, capabilities, activeSource } = useStore();
+  const { theme, themePreference, setTheme, favs, history, muteOnStartup, setMuteOnStartup, preferHevc, setPreferHevc, balanceVolume, setBalanceVolume, fsIdleSecs, setFsIdleSecs, startupTab, setStartupTab, ambientGlow, setAmbientGlow, strictSecurity, strictSecurityReady, securityPending, cliRelaxed, setStrictSecurity, toast, capabilities, activeSource, stack } = useStore();
+  const { preferences: contentPrefs } = useContentPreferences();
+  const [scrolled, setScrolled] = useState(false);
   const canCategory = capabilities.catalog.categories || capabilities.catalog.tags || capabilities.catalog.rankings || capabilities.catalog.authors || capabilities.posts || Boolean(activeSource?.catalog?.channels?.some((c) => (c.kind === "post" ? capabilities.posts : capabilities.catalog.categories)));
   const startupTabs = ([
     ...(capabilities.home ? [["home", tr("首页")] as const] : []),
@@ -78,8 +81,8 @@ export default function Settings({ onBack, initialSection }: { onBack: () => voi
     });
     return () => cancelAnimationFrame(frame);
   }, [initialSection]);
-  const section = (title: SettingGroup, children: ReactNode) => <SettingsSection title={title}
-    open={openGroups.has(title)} onToggle={() => setOpenGroups(previous => {
+  const section = (title: SettingGroup, icon: ReactNode, summary: string | undefined, children: ReactNode) => <SettingsSection title={title}
+    icon={icon} summary={summary} open={openGroups.has(title)} onToggle={() => setOpenGroups(previous => {
       const next = new Set(previous);
       if (next.has(title)) next.delete(title); else next.add(title);
       return next;
@@ -159,23 +162,44 @@ export default function Settings({ onBack, initialSection }: { onBack: () => voi
     }
   };
 
+  const showBack = isMobile || stack.length > 1;
+  const themeSummary = themePreference === "system" ? tr("跟随") : theme === "dark" ? tr("深色") : tr("浅色");
+  const localeSummary = LOCALE_OPTIONS.find((o) => o.id === locale)?.label ?? locale;
+  const startupSummary = startupTabs.find(([v]) => v === startupTab)?.[1] ?? tr("首页");
+  const contentSummary = contentPrefs.paused
+    ? tr("屏蔽已暂停")
+    : contentPrefs.blockedTags.length > 0
+      ? tr("已屏蔽 {0} 个标签", contentPrefs.blockedTags.length)
+      : tr("未设置屏蔽");
+  const dataSummary = cacheInfo
+    ? `${formatCacheBytes(cacheInfo.usedBytes)} / ${formatCacheLimitLabel(cacheLimitMb)}`
+    : tr("{0} 部收藏 · {1} 条观看记录", favs.length, history.length);
+  const netSummary = lineBase ? hostOf(lineBase) : (sourceHint || tr("未设置"));
+  const diagSummary = playbackLog.enabled ? tr("详细日志已开启") : tr("仅基础日志");
+
   return (
     <div className="ios-page ios-settings-page absolute inset-0 bg-bg flex flex-col">
-      <div data-settings-header className="ios-settings-header shrink-0">
-        <div className="ios-settings-column">
-          <Button onClick={onBack} aria-label={tr("返回")} className="ios-icon-button"><IBack size={20} /></Button>
+      {showBack ? (
+        <div data-settings-header className="ios-subpage-header shrink-0" style={{ paddingTop: isMobile ? "var(--sat, 0px)" : 0 }}>
+          <div className="ios-subpage-bar ios-settings-column">
+            <Button onClick={onBack} aria-label={tr("返回")} className="ios-nav-btn"><IBack size={20} /></Button>
+            <h1 className="text-[17px] font-bold text-on">{tr("设置")}</h1>
+          </div>
         </div>
-      </div>
-      <div data-settings-scroll className="ios-page-body flex-1 min-h-0 scroll-y">
-        <div ref={contentRef} className="ios-settings-column ios-settings-content">
-          <div className="pt-1 pb-4">
+      ) : (
+        <div data-settings-header className={`ios-page-heading shrink-0 ${scrolled ? "is-scrolled" : ""}`}>
+          <div className="ios-settings-column">
             <h1 className="ios-page-title text-on">{tr("设置")}</h1>
           </div>
-          {section(N_("外观"), <>
+        </div>
+      )}
+      <div data-settings-scroll className="ios-page-body flex-1 min-h-0 scroll-y pt-3" onScroll={(e) => setScrolled(e.currentTarget.scrollTop > 4)}>
+        <div ref={contentRef} className="ios-settings-column ios-settings-content">
+          {section(N_("外观"), <ISpark size={16} />, `${themeSummary} · ${localeSummary}`, <>
             <div className="ios-appearance-row items-center">
               <span className="ios-setting-icon">{themePreference === "system" ? <IRefresh size={16} /> : theme === "dark" ? <IMoon size={16} /> : <ISun size={16} />}</span>
               <div className="flex-1">
-                <div className="text-[14px] text-on">{tr("外观")}</div>
+                <div className="text-[14px] text-on">{tr("外观模式")}</div>
                 <div className="text-[12px] text-mut">{themePreference === "system" ? tr("跟随系统（当前{0}）", theme === "dark" ? tr("深色") : tr("浅色")) : theme === "dark" ? tr("深色外观") : tr("浅色外观")}</div>
               </div>
               <SegmentedControl className="ios-appearance-picker" aria-label={tr("外观模式")} activeIndex={(["system", "light", "dark"] as const).indexOf(themePreference)}>
@@ -187,13 +211,13 @@ export default function Settings({ onBack, initialSection }: { onBack: () => voi
                 ))}
               </SegmentedControl>
             </div>
-            <div className="ios-settings-row flex-wrap">
+            <div className="ios-appearance-row items-center">
               <span className="ios-setting-icon"><IGlobe size={16} /></span>
               <div className="flex-1 min-w-0">
                 <div className="text-[14px] text-on">{tr("语言")}</div>
                 <div className="text-[12px] text-mut">{tr("默认简体中文；切换后立即生效")}</div>
               </div>
-              <SegmentedControl className="w-full" aria-label={tr("界面语言")} activeIndex={LOCALE_OPTIONS.findIndex((o) => o.id === locale)}>
+              <SegmentedControl className="ios-language-picker" aria-label={tr("界面语言")} activeIndex={LOCALE_OPTIONS.findIndex((o) => o.id === locale)}>
                 {LOCALE_OPTIONS.map((option) => (
                   <Button key={option.id} type="button" disabled={localeBusy} aria-pressed={locale === option.id}
                     onClick={() => {
@@ -228,7 +252,7 @@ export default function Settings({ onBack, initialSection }: { onBack: () => voi
             </div>}
           </>)}
 
-          {section(N_("播放"), <>
+          {section(N_("播放"), <IFilm size={16} />, `${startupSummary}${preferHevc ? ` · ${tr("优先高清")}` : ""}`, <>
             <div className="ios-settings-row flex-wrap">
               <span className="ios-setting-icon"><IHome size={16} /></span>
               <div className="flex-1 min-w-0">
@@ -288,9 +312,9 @@ export default function Settings({ onBack, initialSection }: { onBack: () => voi
             </div>}
           </>)}
 
-          {section(N_("内容偏好"), <ContentPreferencesSettings />)}
+          {section(N_("内容偏好"), <IFilter size={16} />, contentSummary, <ContentPreferencesSettings />)}
 
-          {section(N_("本地数据"), <>
+          {section(N_("本地数据"), <IBroom size={16} />, dataSummary, <>
             <div className="ios-settings-row">
               <span className="ios-setting-icon"><IHeart size={16} /></span>
               <div className="flex-1">
@@ -344,7 +368,7 @@ export default function Settings({ onBack, initialSection }: { onBack: () => voi
             </Button>
           </>)}
 
-          {section(N_("网络"), <>
+          {section(N_("网络"), <IGlobe size={16} />, netSummary, <>
             <ProxySettings />
             {capabilities.lines && (
               <Button onClick={() => setLineOpen(true)} className="ios-settings-row text-left pressable">
@@ -449,7 +473,7 @@ export default function Settings({ onBack, initialSection }: { onBack: () => voi
             </Button>
           </>)}
 
-          {section(N_("播放诊断"), <>
+          {section(N_("播放诊断"), <IFileText size={16} />, diagSummary, <>
             <div className="ios-settings-row">
               <span className="ios-setting-icon"><IInfo size={16} /></span>
               <div className="flex-1 min-w-0">
@@ -475,7 +499,7 @@ export default function Settings({ onBack, initialSection }: { onBack: () => voi
             </Button>
             {playbackLog.path && <details className="ios-settings-log-path text-[12px] text-mut"><summary className="cursor-pointer py-3">{tr("查看日志保存位置")}</summary><p className="break-all select-text pb-3">{playbackLog.path}</p></details>}
           </>)}
-          {section(N_("其他"), <>
+          {section(N_("其他"), <IInfo size={16} />, `v${APP_VERSION}`, <>
             <Button onClick={checkUpdate} disabled={checking} className="ios-settings-row text-left pressable disabled:opacity-60">
               <span className="ios-setting-icon">{checking ? <Loader label={tr("正在检查更新")} className="size-4" /> : <IRefresh size={16} />}</span>
               <div className="flex-1">
@@ -502,7 +526,7 @@ export default function Settings({ onBack, initialSection }: { onBack: () => voi
             </Button>
           </>)}
 
-          <div className="text-center text-[12px] text-dim mt-5">{tr("HGhubX {0} · {1} 客户端", APP_VERSION, platform === "android" ? "Android" : platform === "ios" ? "iOS" : platform === "macos" ? "macOS" : platform === "linux" ? "Linux" : "Windows")}</div>
+          {isMobile && <div className="text-center text-[12px] text-dim mt-5">{tr("HGhubX {0} · {1} 客户端", APP_VERSION, platform === "android" ? "Android" : platform === "ios" ? "iOS" : platform === "harmony" ? "HarmonyOS" : platform === "macos" ? "macOS" : platform === "linux" ? "Linux" : "Windows")}</div>}
         </div>
       </div>
 

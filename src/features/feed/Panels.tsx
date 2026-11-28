@@ -26,23 +26,23 @@ export function EpisodesPanel({ episodes, current, onPick, onClose, bare = false
     activeEl?.scrollIntoView({ block: "nearest" });
   }, [current, asc, episodes.length]);
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full min-h-0">
       {bare ? (
         <div className="shrink-0 flex items-center gap-2 px-4 pb-2">
           <span className="text-[12px] text-mut">{tr("共 {0} 集", episodes.length)}</span>
-          <Button onClick={() => setAsc((v) => !v)} className="ml-auto text-[12px] text-primary pressable">{asc ? tr("倒序") : tr("正序")}</Button>
+          <Button onClick={() => setAsc((v) => !v)} className="ml-auto ios-filter-pill !min-h-8 px-3 text-[12px] text-on/90 pressable">{asc ? tr("倒序") : tr("正序")}</Button>
         </div>
       ) : (
-        <div className="shrink-0 flex items-center gap-2 px-4 h-12">
+        <div className="shrink-0 flex items-center gap-2 px-4 py-2 min-h-[52px]">
           <span className="text-[14px] font-bold text-on">{tr("选集")}</span>
           <span className="text-[12px] text-mut">{tr("共 {0} 集", episodes.length)}</span>
-          <Button onClick={() => setAsc((v) => !v)} className="ml-auto text-[12px] text-primary pressable">{asc ? tr("倒序") : tr("正序")}</Button>
-          <Button onClick={onClose} aria-label={tr("关闭")} className="w-8 h-8 min-h-0 rounded-full bg-s3 flex items-center justify-center text-mut pressable">
-            <IClose size={13} />
+          <Button onClick={() => setAsc((v) => !v)} className="ml-auto ios-filter-pill !min-h-8 px-3 text-[12px] text-on/90 pressable">{asc ? tr("倒序") : tr("正序")}</Button>
+          <Button onClick={onClose} aria-label={tr("关闭")} className="ios-icon-button">
+            <IClose size={15} />
           </Button>
         </div>
       )}
-      <div ref={gridRef} className="flex-1 scroll-y px-4 pb-4">
+      <div ref={gridRef} className="flex-1 min-h-0 scroll-y px-4 pb-4">
         <div className="grid grid-cols-4 gap-2">
           {list.map((e) => (
             <Button key={e.ep_num} aria-current={e.ep_num === current ? "true" : undefined} onClick={() => onPick(e.ep_num)}
@@ -158,11 +158,11 @@ export function CommentsPanel({ videoId, ep, total, kind = "video", onClose, onT
 
   return (
     <div className="flex flex-col h-full min-h-0">
-      <div className="shrink-0 flex items-center gap-2 px-4 py-2.5 min-h-[52px] border-b border-[var(--ios-edge)]">
+      <div className="shrink-0 flex items-center gap-2 px-4 py-2.5 min-h-[54px] border-b border-[var(--ios-edge)]">
         <span className="text-[14px] font-bold text-on">{tr("评论")}</span>
         <span className="text-[12px] text-mut">{fmt(Math.max(loadedTotal ?? total, items.length))}{kind === "video" ? tr(" · 第 {0} 集", ep) : tr(" 条")}</span>
-        <Button onClick={onClose} aria-label={tr("关闭")} className="ml-auto w-9 h-9 !min-w-9 !min-h-9 p-0 rounded-full bg-s3 border border-[var(--ios-edge)] flex items-center justify-center text-on/80 pressable">
-          <IClose size={13} />
+        <Button onClick={onClose} aria-label={tr("关闭")} className="ml-auto ios-icon-button">
+          <IClose size={15} />
         </Button>
       </div>
 
@@ -176,8 +176,8 @@ export function CommentsPanel({ videoId, ep, total, kind = "video", onClose, onT
                 <span className="shrink-0 text-[12px] text-mut">{formatTimestamp(c.time) || formatTimestamp(c.created_at)}</span>
               </div>
               <p className="text-[14px] text-on/85 mt-1 leading-relaxed whitespace-pre-wrap [overflow-wrap:anywhere]">{c.text || tr("该评论包含不支持的内容")}</p>
-              <div className="flex items-center gap-3 mt-1.5 text-[12px] text-mut">
-                <span className="flex items-center gap-1"><IHeart size={11} />{c.like_count || 0}</span>
+              <div className="flex items-center gap-3 mt-1.5 text-[12px] text-mut tabular-nums">
+                <span className="inline-flex items-center gap-1"><IHeart size={12} aria-hidden="true" />{c.like_count || 0}</span>
                 {c.reply_count > 0 && <span>{tr("{0} 条回复", c.reply_count)}</span>}
               </div>
             </div>
@@ -241,11 +241,11 @@ export function ArticlePanel({ title, html, cover, hot, onClose }: {
   };
   return (
     <div className="flex flex-col h-full">
-      <div className="shrink-0 flex items-center gap-2 px-4 h-12">
+      <div className="shrink-0 flex items-center gap-2 px-4 py-2 min-h-[52px]">
         <span className="text-[14px] font-bold text-on">{tr("图文详情")}</span>
         {hot ? <span className="text-[12px] text-mut">{tr("{0} 热度", fmt(hot))}</span> : null}
-        <Button onClick={onClose} aria-label={tr("关闭")} className="ml-auto w-8 h-8 min-h-0 rounded-full bg-s3 flex items-center justify-center text-mut pressable">
-          <IClose size={13} />
+        <Button onClick={onClose} aria-label={tr("关闭")} className="ml-auto ios-icon-button">
+          <IClose size={15} />
         </Button>
       </div>
       <div className="flex-1 scroll-y px-4 pb-6">

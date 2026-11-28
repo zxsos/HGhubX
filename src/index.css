@@ -521,6 +521,9 @@ html[data-desktop-fs="true"] .win-main { margin: 0; border-radius: 0; box-shadow
   background: #000;
   overflow: hidden;
 }
+/* 90° 旋转舞台下 Chromium 按物理轴判定 overscroll-behavior：
+   横向容器的物理 X 轴对应视觉纵向滚动，须放开 overscroll-behavior-x 以把纵向滚动链传给外层 .scroll-y。 */
+.fs-landscape .scroll-x { overscroll-behavior-x: auto; overscroll-behavior-y: contain; }
 
 .desktop-dock-panel {
   position: absolute; top: 0; right: 0; bottom: 0; width: 0; z-index: 40;

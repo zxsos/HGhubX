@@ -4,6 +4,7 @@ import type {
   AccountHistoryPage, AccountIdentity, AccountSnapshot, CommentPage, Detail, HotSearchVideo, HotTagItem, Paged, PlayInfo, Post, PostCategory, RankItem, TagGroup, TopicCard, TopicDetail, User, UserDirectory, UserProfile, VideoCard,
 } from "./types";
 import { tr } from "../i18n";
+import { classifyApiError } from "./errorFormat";
 
 /* ── 运行环境 ───────────────────────────────────────────── */
 
@@ -19,28 +20,29 @@ export const isIos =
   // iPadOS 13+ 默认把自己报成 MacIntel，只能靠触点数认
   (typeof navigator.platform === "string" && navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 export const isMacos = !isIos && /Macintosh|Mac OS X/i.test(ua);
+export const isHarmony = /OpenHarmony|HarmonyOS|ArkWeb/i.test(ua);
 /** Linux 桌面：webkit2gtk 的 UA 是「X11; Linux x86_64」。必须排在 Windows 之前判断，
- *  否则会被当成 Windows；而 Android 的 UA 里同样带「Linux」，所以必须先排除安卓。 */
-export const isLinux = !isAndroid && !isIos && !isMacos && /Linux|X11/i.test(ua);
+ *  否则会被当成 Windows；而 Android / OpenHarmony 的 UA 里同样可能带「Linux」，必须先排除。 */
+export const isLinux = !isAndroid && !isIos && !isMacos && !isHarmony && /Linux|X11/i.test(ua);
 /** Linux 桌面 WebKitGTK 宿主（区别于 Linux 下的 Chromium 自动化测试环境）。 */
 export const isLinuxWebKit = isLinux && !/Chrome|Chromium|Edg\//i.test(ua);
-export const platform: "android" | "ios" | "windows" | "macos" | "linux" =
-  isAndroid ? "android" : isIos ? "ios" : isMacos ? "macos" : isLinux ? "linux" : "windows";
+export const platform: "android" | "ios" | "windows" | "macos" | "linux" | "harmony" =
+  isAndroid ? "android" : isIos ? "ios" : isHarmony ? "harmony" : isMacos ? "macos" : isLinux ? "linux" : "windows";
 /** WebView 内核版本：能不能走 MSE、能解哪些封装，是「无法播放」的首要判据。
  *  安卓取 Chrome/xxx（System WebView），Linux/macOS 取 WebKit 的 Version/xxx。 */
 export const webviewVersion =
   /Chrome\/([\d.]+)/.exec(ua)?.[1] || /Version\/([\d.]+)/.exec(ua)?.[1] || "?";
-/** 移动端（安卓 / iOS）共用触屏界面 */
-export const isMobile = isAndroid || isIos;
+/** 移动端（安卓 / iOS / 鸿蒙手持设备）共用触屏界面 */
+export const isMobile = isAndroid || isIos || (isHarmony && !/\bPC\b/i.test(ua));
 
 /** 媒体基址随平台不同（Rust 侧对应 `media::LOCAL_ORIGIN`，两边必须一致）：
  *  Windows / Android → `http://<scheme>.localhost`（自定义协议，WebView 自己加载）
- *  macOS / iOS → `hg://localhost`（WebKit 的 scheme handler）
+ *  macOS / iOS / HarmonyOS → `hg://localhost`（原生 scheme handler）
  *  Linux → `http://127.0.0.1:17650`：WebKitGTK 的 <video> 由 GStreamer 播放，
  *          它拿不到自定义 scheme，所以由 Rust 侧在 loopback 上起 HTTP 代理
  *          （`src-tauri/src/linux_http.rs`，端口必须与此一致）。 */
 export const LOCAL =
-  isMacos || isIos ? "hg://localhost" : isLinux ? "http://127.0.0.1:17650" : "http://hg.localhost";
+  isMacos || isIos || isHarmony ? "hg://localhost" : isLinux ? "http://127.0.0.1:17650" : "http://hg.localhost";
 
 const SAFE_INLINE_IMAGE = /^data:image\/(?:svg\+xml|png|jpeg|webp|gif)(?:;charset=[^;,]+)?(?:;base64)?,/i;
 
@@ -56,11 +58,9 @@ export const playlist = (url: string) => `${LOCAL}/hls?u=${encodeURIComponent(ur
 /** 写一行到应用数据目录 debug.log（用户反馈「打不开」时要的就是它） */
 export const logLine = (msg: string) => invoke("debug_log", { msg }).catch(() => {});
 
-/** 网络类失败的样子：没有 HTTP 状态码，纯链路层（DNS / 连接 / 超时 / TLS） */
-const NET_FAIL = /dns|timed? ?out|timeout|connection|refused|reset|unreachable|broken pipe|tls|ssl|handshake|证书|网络|连接/i;
 /** 只读命令：链路抖动时可以安全重试一次；写操作绝不重试（避免重复提交） */
 const READ_ONLY = new Set([
-  "api_me", "api_feed", "api_original_videos", "api_category", "api_rank", "api_search",
+  "api_me", "api_account_history", "api_feed", "api_original_videos", "api_category", "api_rank", "api_search",
   "api_posts", "api_post", "api_post_comments", "api_video", "api_play", "api_comments",
   "api_topics", "api_topic", "api_tags", "api_hot_tags", "api_tag_videos", "api_search_hot",
   "api_post_playback", "api_post_categories", "api_post_category", "api_post_tag", "api_related", "api_following", "api_user", "api_user_stats", "api_user_videos", "api_popular_authors",
@@ -72,10 +72,6 @@ export const setNetObserver = (fn: NetObserver | null) => { netObserver = fn; };
 const notifyNet = (r: Parameters<NetObserver>[0]) => {
   try { netObserver?.(r); } catch { /* 观察者不能影响请求本身 */ }
 };
-const failMessage = (msg: string, status?: string) =>
-  status
-    ? tr("服务器请求失败（HTTP {0}），请稍后重试或在设置中切换线路", status)
-    : msg.length > 140 ? `${msg.slice(0, 140)}…` : msg;
 
 async function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   const once = () => invoke(cmd, args) as Promise<T>;
@@ -84,17 +80,15 @@ async function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T> 
     notifyNet({ ok: true, cmd });
     return r;
   } catch (e) {
-    const msg = typeof e === "string" ? e : tr("请求失败，请检查网络");
-    const status = /^HTTP (\d{3})\b/.exec(msg)?.[1];
-    const networkish = !status && NET_FAIL.test(msg);
-    // 落盘完整错误链（dns error / connection refused / 证书错误…），toast 只显示截断版
-    logLine(`[api] ${cmd} → ${msg}`);
-    tracePlayback("api.fail", { cmd, err: msg, status: status ?? null, networkish });
-    notifyNet({ ok: false, cmd, msg, networkish: networkish || status === "403" });
+    const first = classifyApiError(e);
+    // 完整底层原因写入 debug.log；诊断日志记录代号与脱敏摘要；界面统一展示代号与原因
+    logLine(`[api] ${cmd} [${first.code}] → ${typeof e === "string" ? e : first.logSummary}`);
+    tracePlayback("api.fail", { cmd, code: first.code, err: first.logSummary, status: first.status, networkish: first.networkish });
+    notifyNet({ ok: false, cmd, msg: first.message, networkish: first.networkish || first.status === "403" });
     // 线路可能正被自动切走：给切换留一点时间，只读请求重试一次，用户就不用看见这条错误
-    if (networkish && READ_ONLY.has(cmd)) {
-      logLine(`[api] ${cmd} 链路异常，1.2s 后重试一次`);
-      tracePlayback("api.retry", { cmd, err: msg });
+    if (first.networkish && READ_ONLY.has(cmd)) {
+      logLine(`[api] ${cmd} [${first.code}] 链路异常，1.2s 后重试一次`);
+      tracePlayback("api.retry", { cmd, code: first.code, err: first.logSummary });
       await new Promise((r) => setTimeout(r, 1200));
       try {
         const r = await once();
@@ -103,14 +97,13 @@ async function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T> 
         notifyNet({ ok: true, cmd });
         return r;
       } catch (e2) {
-        const again = typeof e2 === "string" ? e2 : msg;
-        const againStatus = /^HTTP (\d{3})\b/.exec(again)?.[1];
-        logLine(`[api] ${cmd} 重试仍失败 → ${again}`);
-        tracePlayback("api.retry_failed", { cmd, err: again, status: againStatus ?? null });
-        throw new Error(failMessage(again, againStatus));
+        const second = classifyApiError(e2 ?? e);
+        logLine(`[api] ${cmd} [${second.code}] 重试仍失败 → ${typeof e2 === "string" ? e2 : second.logSummary}`);
+        tracePlayback("api.retry_failed", { cmd, code: second.code, err: second.logSummary, status: second.status });
+        throw new Error(second.message);
       }
     }
-    throw new Error(failMessage(msg, status));
+    throw new Error(first.message);
   }
 }
 

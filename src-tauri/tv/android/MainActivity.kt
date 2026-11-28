@@ -156,11 +156,25 @@ class MainActivity : TauriActivity() {
     }
   }
 
+  inner class TvAppBridge {
+    @JavascriptInterface
+    fun moveToBackground(): Boolean {
+      if (isFinishing || isDestroyed) return false
+      runOnUiThread {
+        try {
+          if (!isFinishing && !isDestroyed) moveTaskToBack(true)
+        } catch (_: Throwable) {}
+      }
+      return true
+    }
+  }
+
   override fun onWebViewCreate(webView: WebView) {
     super.onWebViewCreate(webView)
     mainWebView = webView
     webView.addJavascriptInterface(TvApkInstaller(), "HGhubXTvInstaller")
     webView.addJavascriptInterface(TvCacheBridge(webView), "__HG_CACHE__")
+    webView.addJavascriptInterface(TvAppBridge(), "__HG_ANDROID__")
     deliverDeepLink()
   }
 

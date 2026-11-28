@@ -364,11 +364,11 @@ export default function FeedItemChrome({
         <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none"><Loader className="w-9 h-9 spinner" /></div>
       )}
       {isActive && err && (
-        <div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none">
-          <div className="rounded-xl p-5 flex flex-col items-center gap-3 text-[14px] hg-ink-2 pointer-events-auto" style={{ background: "rgba(0,0,0,.7)" }}>
-            <span>{tr("视频暂时无法加载")}</span>
-            <span className="text-[12px] hg-ink-4 max-w-[240px] text-center break-all">{err}</span>
-            <Button className="hg-link text-[14px]" onClick={onRetryStream}>{tr("重试")}</Button>
+        <div className="absolute inset-0 z-20 flex items-center justify-center pb-[18%] pointer-events-none">
+          <div className="rounded-[22px] px-6 py-5 flex flex-col items-center gap-3 text-[14px] text-white/95 border border-white/15 backdrop-blur-md shadow-2xl pointer-events-auto" style={{ background: "rgba(24,24,28,.82)" }}>
+            <span className="font-semibold">{tr("视频暂时无法加载")}</span>
+            <span className="text-[12px] text-white/70 max-w-[240px] text-center break-all">{err}</span>
+            <Button className="mt-1 min-h-10 px-6 rounded-full bg-white text-[#191919] text-[13.5px] font-semibold pressable" onClick={onRetryStream}>{tr("重试")}</Button>
           </div>
         </div>
       )}

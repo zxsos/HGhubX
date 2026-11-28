@@ -312,7 +312,9 @@ fn asset_rank(name: &str) -> u8 {
         if n.ends_with(".dmg") { 3 } else { 0 }
     } else if cfg!(target_os = "ios") {
         if n.ends_with(".ipa") { 3 } else { 0 }
-    } else if cfg!(target_os = "linux") {
+    } else if cfg!(target_env = "ohos") {
+        if n.ends_with(".hap") { 3 } else { 0 }
+    } else if cfg!(all(target_os = "linux", not(target_env = "ohos"))) {
         let prefer_rpm = linux_prefers_rpm();
         if n.ends_with(".rpm") {
             if prefer_rpm { 4 } else { 2 }
@@ -329,7 +331,7 @@ fn asset_rank(name: &str) -> u8 {
 }
 
 fn linux_prefers_rpm() -> bool {
-    if !cfg!(target_os = "linux") {
+    if !cfg!(all(target_os = "linux", not(target_env = "ohos"))) {
         return false;
     }
     if let Ok(content) = std::fs::read_to_string("/etc/os-release") {

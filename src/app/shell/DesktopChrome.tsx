@@ -47,7 +47,7 @@ export function DesktopTitleBar({ collapsed, onToggle }: { collapsed: boolean; o
       <Button className="win-caption-tool" aria-label={tr("切换外观")} onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>
         {theme === "dark" ? <ISun size={17} strokeWidth={1.7} /> : <IMoon size={17} strokeWidth={1.7} />}
       </Button>
-      {capabilities.search && (
+      {capabilities.search && theater && (
         <Button className="win-caption-tool" aria-label={tr("搜索")} onClick={() => setTab("search")}>
           <ISearch size={17} strokeWidth={1.7} />
         </Button>
@@ -73,6 +73,7 @@ export function DesktopRail({ collapsed }: { collapsed: boolean }) {
   const railPage: "ranks" | "settings" | null =
     root?.kind === "settings" ? "settings" : root?.kind === "ranks" ? "ranks" : null;
   const onTab = (key: Tab | "search") => !stack.length && tab === key;
+  const onOriginTab = (key: Tab | "search") => stack.length > 0 && railPage === null && tab === key;
   const canCategory = capabilities.catalog.categories || capabilities.catalog.tags || capabilities.catalog.rankings || capabilities.catalog.authors || capabilities.posts || Boolean(activeSource?.catalog?.channels?.some((c) => (c.kind === "post" ? capabilities.posts : capabilities.catalog.categories)));
   const items: { key: Tab; label: string; Icon: typeof IHome; Filled: typeof IHomeF }[] = [
     ...(capabilities.home ? [{ key: "home" as const, label: tr("首页"), Icon: IHome, Filled: IHomeF }] : []),
@@ -83,28 +84,32 @@ export function DesktopRail({ collapsed }: { collapsed: boolean }) {
     <nav className={`win-sidebar ${collapsed ? "is-compact" : ""}`} aria-label={tr("主导航")}>
       <div className="win-sidebar-inner">
         {capabilities.search && (
-          <Button className={`win-search-launch ${onTab("search") ? "is-selected" : ""}`}
+          <Button className={`win-search-launch ${onTab("search") ? "is-selected" : onOriginTab("search") ? "is-ancestor" : ""}`}
             onClick={() => setTab("search")} aria-label={tr("搜索")}>
-            <span className="win-nav-symbol"><ISearch size={19} strokeWidth={1.7} /></span>
+            <span className="win-nav-symbol"><ISearch size={18} strokeWidth={1.7} /></span>
             <span className="win-nav-copy">{tr("搜索")}</span>
             <kbd className="win-nav-key">/</kbd>
           </Button>
         )}
         <div className="win-nav-items">
-          {items.map(({ key, label, Icon, Filled }) => (
-            <Button key={key} aria-label={label} aria-current={onTab(key) ? "page" : undefined}
-              className={`win-nav-item ${onTab(key) ? "is-selected" : ""}`}
-              onClick={() => {
-                if (onTab(key) && key === "home") {
-                  window.dispatchEvent(new Event("hg:home-refresh"));
-                  return;
-                }
-                setTab(key);
-              }}>
-              <span className="win-nav-symbol">{onTab(key) ? <Filled size={21} /> : <Icon size={21} strokeWidth={1.7} />}</span>
-              <span className="win-nav-copy">{label}</span>
-            </Button>
-          ))}
+          {items.map(({ key, label, Icon, Filled }) => {
+            const selected = onTab(key);
+            const ancestor = onOriginTab(key);
+            return (
+              <Button key={key} aria-label={label} aria-current={selected ? "page" : undefined}
+                className={`win-nav-item ${selected ? "is-selected" : ancestor ? "is-ancestor" : ""}`}
+                onClick={() => {
+                  if (selected && key === "home") {
+                    window.dispatchEvent(new Event("hg:home-refresh"));
+                    return;
+                  }
+                  setTab(key);
+                }}>
+                <span className="win-nav-symbol">{selected || ancestor ? <Filled size={20} /> : <Icon size={20} strokeWidth={1.7} />}</span>
+                <span className="win-nav-copy">{label}</span>
+              </Button>
+            );
+          })}
           {capabilities.catalog.rankings && (
             <Button aria-label={tr("排行榜")} className={`win-nav-item ${railPage === "ranks" ? "is-selected" : ""}`}
               aria-current={railPage === "ranks" ? "page" : undefined}

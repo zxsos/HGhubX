@@ -1,7 +1,7 @@
 import { Button, Surface } from "../../shared/ui/ios/controls";
 import { Loader } from "../../shared/ui/ios/effects";
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
-import { api, fmt } from "../../shared/api/api";
+import { api, fmt, isMobile } from "../../shared/api/api";
 import type { Post, TagGroup, TopicCard, TopicDetail, VideoCard } from "../../shared/api/types";
 import { ACTION_TOAST_SLOT, useStore } from "../../shared/model/store";
 import { MAX_BLOCKED_TAGS, MAX_PINNED_TAGS, MAX_TAG_LENGTH, useContentPreferences } from "../../shared/model/contentPreferences";
@@ -410,7 +410,10 @@ function TagPinChip({ name, hotScore, pinned, board = false, onOpen, onTogglePin
   return <Button type="button" aria-label={pinned ? tr("长按取消置顶：{0}", name) : tr("长按置顶：{0}", name)}
     data-tag-name={name} data-pinned={pinned ? "true" : undefined} data-pin-surface={board ? "board" : "group"} data-pressing={pressing ? "true" : undefined}
     onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={pointerCancel}
-    onPointerLeave={cancelHold} onClick={click} onContextMenu={event => event.preventDefault()}
+    onPointerLeave={cancelHold} onClick={click} onContextMenu={event => {
+      event.preventDefault();
+      if (!isMobile) onTogglePin(name);
+    }}
     className="ios-filter-pill tag-pin-pill max-w-full min-w-0 gap-1.5 text-left">
     <span className="min-w-0 whitespace-normal break-words text-on/95">{name}</span>
     {!!hotScore && <span aria-label={tr("热度 {0}", fmt(hotScore))} className="shrink-0 inline-flex items-center gap-0.5 text-[11.5px] font-medium text-dim tabular-nums"><IFireF size={11} className="text-primary/85" />{fmt(hotScore)}</span>}
@@ -526,7 +529,7 @@ export function TagsPage({ onBack, wide }: { onBack: () => void; wide: boolean }
         ) : err && !groups.length ? (
           <Empty icon={<TagIcon size={26} />} title={tr("标签加载失败")} sub={err} action={tr("重试")} onAction={() => void refresh()} />
         ) : groups.length ? (
-          <div className={`grid gap-3.5 ${wide ? "grid-cols-2" : "grid-cols-1"}`}>{groups.map((g) => (
+          <div className={`grid gap-3.5 ${wide && groups.length > 1 ? "grid-cols-2" : "grid-cols-1"}`}>{groups.map((g) => (
             <Surface key={g.name} className="rounded-[22px] bg-s1 p-4 a-rise">
               <div className="flex items-baseline justify-between gap-2 mb-3">
                 <h2 className="text-[14.5px] font-bold text-on">{g.name}</h2>
@@ -841,12 +844,12 @@ export function TagPage({ tag, name, onBack, wide }: { tag: string; name: string
         <Surface className="mb-4 rounded-[20px] px-3.5 py-2.5">
           <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
             <p className="min-w-0 text-[13px] text-mut">{tagBlocked ? tr("此标签已加入屏蔽列表") : tr("标签筛选偏好")}</p>
-            <div className="flex items-center gap-1.5 ml-auto">
+            <div className="flex items-center gap-2 ml-auto">
               <Button className="inline-flex items-center min-h-10 px-2.5 text-[12.5px] font-medium text-mut hover:text-on"
                 onClick={() => push({ kind: "settings", section: "内容偏好" })}>{tr("管理屏蔽标签")}</Button>
-              <Button style={{ minBlockSize: 40 }} disabled={!tagBlocked && cannotAdd} aria-pressed={tagBlocked}
+              <Button style={{ minBlockSize: 38 }} disabled={!tagBlocked && cannotAdd} aria-pressed={tagBlocked}
                 onClick={() => tagBlocked ? unblockTag(name) : blockTags([name])}
-                className={`inline-flex items-center justify-center min-h-10 rounded-(--r-ctl) px-3.5 text-[13px] font-semibold ${tagBlocked ? "bg-pc text-on-pc" : "bg-s3 text-primary"}`}>{tagBlocked ? tr("取消屏蔽此标签") : tr("屏蔽此标签")}</Button>
+                className={`inline-flex items-center justify-center rounded-(--r-ctl) px-3.5 text-[13px] font-semibold border ${tagBlocked ? "bg-pc text-on-pc border-transparent" : "bg-s1 text-on border-[var(--ios-edge)] shadow-xs"}`}>{tagBlocked ? tr("取消屏蔽此标签") : tr("屏蔽此标签")}</Button>
             </div>
           </div>
           {preferences.paused && <p role="status" className="mt-2 text-[12px] text-mut">{tr("屏蔽已暂停，新增标签会保存，恢复后生效。")}</p>}

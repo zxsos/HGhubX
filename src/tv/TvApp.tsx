@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import { api } from "../shared/api/api";
+import { exitApp } from "../shared/lib/appLifecycle";
 import { IHome, IGrid, ISearch, IStar, ISettings, Logo } from "../shared/ui/icons";
 import { useContentPreferences } from "../shared/model/contentPreferences";
 import { contentKey, type TvContent } from "./model";
@@ -79,7 +79,7 @@ export default function TvApp(){
     rememberFocus(page);
     if(stack.length){setStack(s=>s.slice(0,-1));return;}
     if(tab!==defaultTab){setTab(defaultTab);return;}
-    void invoke("plugin:app|exit",{code:0});
+    void exitApp().catch(() => {});
   };
   useRemoteScope({id:"app",priority:0,onKey:key=>{if(key==="back"){back();return true;}}});
   const open=(content:TvContent)=>{rememberFocus(page);setStack(s=>[...s,{kind:"detail",content}]);};

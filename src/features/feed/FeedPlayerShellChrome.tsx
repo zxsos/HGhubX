@@ -369,13 +369,13 @@ export function FeedPlayerShellChrome({
                 )}
                 <Button onClick={() => setPanel(null)} aria-label={tr("关闭")}
                   className="ios-icon-button">
-                  <IClose size={14} />
+                  <IClose size={15} />
                 </Button>
               </div>
 
               {panel === "detail" || (panel === "episodes" && capabilities.detail.episodes) ? (
                 capabilities.detail.episodes ? (
-                  <PanelSwipeArea panel={panel} onChange={setPanel}>
+                  <PanelSwipeArea panel={panel} onChange={setPanel} rotated={rotated} allowPullDownClose={!landscapeStage}>
                     <Suspense fallback={<PanelFallback />}>
                       {panel === "episodes" ? (
                         <EpisodesPanel bare videoId={curId} episodes={episodes} current={curEp} onPick={pickEp} onClose={() => setPanel(null)} />

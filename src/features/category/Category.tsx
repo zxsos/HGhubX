@@ -11,7 +11,7 @@ import { AUTO_LOAD_EMPTY_PAGE_LIMIT, useAutoLoadMore } from "../../shared/lib/us
 import { CollectionLink, CollectionLinks } from "../../shared/ui/CollectionLink";
 import { InplaceSearch } from "../search/InplaceSearch";
 import { Empty } from "../../shared/ui/ui";
-import { IAward, IBack, IChevR, IClock, IFilm, IFlame, ILayers, ISearch, ISpark, IStar, ITag, ITrophy, IUserF } from "../../shared/ui/icons";
+import { IAward, IBack, IChevR, IClock, IFilm, IFlame, ILayers, ISearch, ISpark, IStar, ITag, ITrophy, IUser } from "../../shared/ui/icons";
 import { tr } from "../../shared/i18n";
 import { useTabSwipe } from "../../shared/ui/hooks/useTabSwipe";
 import { VideoSortMenu } from "../../shared/ui/VideoSortMenu";
@@ -37,9 +37,57 @@ function resolveCatalogIcon(icon?: string, fallback: typeof IFilm = IFilm): type
 function CompactCollectionLink({ icon, title, onClick }: { icon: ReactNode; title: string; onClick: () => void }) {
   return <Button onClick={onClick} aria-label={title}
     className="ios-collection-link ios-compact-collection-link flex w-full h-full min-w-0 items-center justify-center gap-1.5 rounded-[20px] px-2 py-2 text-center overflow-hidden pressable">
-    <span aria-hidden="true" className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[9px] bg-pc text-on-pc">{icon}</span>
-    <span className="inline-flex items-center whitespace-nowrap text-[12.5px] font-semibold leading-[1.2] text-on">{title}</span>
+    <span aria-hidden="true" className="ios-collection-icon flex h-7 w-7 shrink-0 items-center justify-center rounded-[9px] bg-pc text-on-pc">{icon}</span>
+    <span className="ios-collection-title inline-flex items-center whitespace-nowrap text-[12.5px] font-semibold leading-[1.2] text-on">{title}</span>
   </Button>;
+}
+
+/** Horizontal shelf with edge-to-edge mobile bleed and hover chevrons + fade masks on desktop. */
+function ShelfRow({ label, children }: { label: string; children: ReactNode }) {
+  const railRef = useRef<HTMLDivElement>(null);
+  const [fade, setFade] = useState({ left: false, right: false });
+  const sync = useCallback(() => {
+    const el = railRef.current;
+    if (!el) return;
+    const left = el.scrollLeft > 4;
+    const right = el.scrollLeft + el.clientWidth < el.scrollWidth - 4;
+    setFade(prev => (prev.left === left && prev.right === right ? prev : { left, right }));
+  }, []);
+  useEffect(() => {
+    sync();
+    const el = railRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(sync);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [sync, children]);
+  const step = (dir: -1 | 1) => {
+    const el = railRef.current;
+    if (!el) return;
+    el.scrollBy({ left: dir * Math.max(240, Math.round(el.clientWidth * 0.78)), behavior: "smooth" });
+  };
+  return (
+    <div className="ios-shelf-wrap">
+      <div ref={railRef} className="scroll-x ios-shelf-rail snap-x" role="group" aria-label={label}
+        data-fade-left={fade.left ? "true" : undefined} data-fade-right={fade.right ? "true" : undefined}
+        onScroll={sync}
+        onWheel={(e) => {
+          const el = railRef.current;
+          if (!el || !e.shiftKey || !e.deltaY || el.scrollWidth <= el.clientWidth) return;
+          el.scrollLeft += e.deltaY;
+        }}>
+        {children}
+      </div>
+      <Button type="button" aria-label={tr("向左滚动")} onClick={() => step(-1)} tabIndex={fade.left ? 0 : -1}
+        className={`ios-icon-button ios-shelf-arrow is-prev ${fade.left ? "is-visible" : ""}`}>
+        <IBack size={16} />
+      </Button>
+      <Button type="button" aria-label={tr("向右滚动")} onClick={() => step(1)} tabIndex={fade.right ? 0 : -1}
+        className={`ios-icon-button ios-shelf-arrow is-next ${fade.right ? "is-visible" : ""}`}>
+        <IChevR size={16} />
+      </Button>
+    </div>
+  );
 }
 
 /** Section heading with a dedicated "all" hit target; the row itself must stay inert for vertical scrolling. */
@@ -177,17 +225,18 @@ export default function Category({ wide, active }: { wide: boolean; active: bool
 
   const totalChannels = channels.length + (showDefaultPosts ? 1 : 0);
   const hasShortcuts = declaredShortcuts.length > 0 || capabilities.catalog.categories || capabilities.catalog.tags || capabilities.catalog.authors;
+  const [scrolled, setScrolled] = useState(false);
 
   return (
     <div className="ios-page absolute inset-0 bg-bg flex flex-col">
-      <div className="ios-page-heading shrink-0">
+      <div className={`ios-page-heading shrink-0 ${scrolled ? "is-scrolled" : ""}`}>
         <div className="flex items-baseline gap-2.5">
           <h1 className="ios-page-title text-on">{tr("分类")}</h1>
           <span className="text-[13px] font-medium text-mut">{tr("{0} 个频道", totalChannels)}</span>
         </div>
       </div>
 
-      <div className="flex-1 scroll-y pb-24 pt-2">
+      <div className="flex-1 scroll-y pb-24 pt-2" onScroll={(e) => setScrolled(e.currentTarget.scrollTop > 4)}>
         {hasShortcuts && (
           <CollectionLinks className="ios-category-links mb-6">
             {declaredShortcuts.map((sc, idx) => {
@@ -205,14 +254,14 @@ export default function Category({ wide, active }: { wide: boolean; active: bool
               <div className="ios-compact-collection-group grid min-w-0 h-full grid-cols-2 gap-2">
                 <CompactCollectionLink icon={<ITag size={15} />} title={tr("标签")}
                   onClick={() => push({ kind: "tags" })} />
-                <CompactCollectionLink icon={<IUserF size={15} />} title={tr("作者")}
+                <CompactCollectionLink icon={<IUser size={15} />} title={tr("作者")}
                   onClick={() => push({ kind: "authors" })} />
               </div>
             ) : capabilities.catalog.tags ? (
               <CollectionLink icon={<ITag size={18} />} title={tr("标签")}
                 onClick={() => push({ kind: "tags" })} />
             ) : capabilities.catalog.authors ? (
-              <CollectionLink icon={<IUserF size={18} />} title={tr("作者")}
+              <CollectionLink icon={<IUser size={18} />} title={tr("作者")}
                 onClick={() => push({ kind: "authors" })} />
             ) : null}
           </CollectionLinks>
@@ -226,13 +275,13 @@ export default function Category({ wide, active }: { wide: boolean; active: bool
               <section key={c.id} aria-label={c.label} className="mb-6 a-rise" style={{ animationDelay: `${Math.min(ci * 50, 300)}ms` }}>
                 <ChannelHeading icon={<ChannelIcon size={18} strokeWidth={1.9} />} label={c.label}
                   onOpenAll={() => push({ kind: "posts" })} />
-                <FilteredContent items={list} scopeKey={`posts:${c.id}`}>{visible => <div className="scroll-x flex gap-3 snap-x" role="group" aria-label={tr("{0}内容预览", c.label)}>
+                <FilteredContent items={list} scopeKey={`posts:${c.id}`}>{visible => <ShelfRow label={tr("{0}内容预览", c.label)}>
                   {visible.map((post) => (
                     <div key={post.id} className="ios-row-card"><MediaCard title={post.title} cover={post.cover}
                       subtitle={tr("{0} 次浏览", fmt(post.hot))} onOpen={() => push({ kind: "post", id: post.id })} /></div>
                   ))}
                   {!list.length && <PreviewStatus name={c.label} loading={loading[c.id] !== false} error={errors[c.id]} onRetry={() => void loadPreview(c.id, c)} />}
-                </div>}</FilteredContent>
+                </ShelfRow>}</FilteredContent>
               </section>
             );
           }
@@ -241,12 +290,12 @@ export default function Category({ wide, active }: { wide: boolean; active: bool
             <section key={c.id} aria-label={c.label} className="mb-6 a-rise" style={{ animationDelay: `${Math.min(ci * 50, 300)}ms` }}>
               <ChannelHeading icon={<ChannelIcon size={18} strokeWidth={1.9} />} label={c.label}
                 onOpenAll={() => push({ kind: "channel", cate: c.id, name: c.label })} />
-              <FilteredContent items={list} scopeKey={c.id}>{visible => <div className="scroll-x flex gap-3 snap-x" role="group" aria-label={tr("{0}影片预览", c.label)}>
+              <FilteredContent items={list} scopeKey={c.id}>{visible => <ShelfRow label={tr("{0}影片预览", c.label)}>
                 {visible.map((v) => (
                   <RowCard key={v.id} v={v} onOpen={() => push({ kind: "feed", videoIds: visible.map((x) => x.id), index: visible.findIndex((x) => x.id === v.id), title: c.label })} />
                 ))}
                 {!list.length && <PreviewStatus name={c.label} loading={loading[c.id] !== false} error={errors[c.id]} onRetry={() => void loadPreview(c.id, c)} />}
-              </div>}</FilteredContent>
+              </ShelfRow>}</FilteredContent>
             </section>
           );
         })}
@@ -255,13 +304,13 @@ export default function Category({ wide, active }: { wide: boolean; active: bool
           <section aria-label={tr("图文帖子")} className="mb-5 a-rise">
             <ChannelHeading icon={<IFlame size={18} strokeWidth={1.9} />} label={tr("图文帖子")}
               onOpenAll={() => push({ kind: "posts" })} />
-            <FilteredContent items={postRows.__posts__ || []} scopeKey="posts">{visible => <div className="scroll-x flex gap-3 snap-x" role="group" aria-label={tr("帖子内容预览")}>
+            <FilteredContent items={postRows.__posts__ || []} scopeKey="posts">{visible => <ShelfRow label={tr("帖子内容预览")}>
               {visible.map((post) => (
                 <div key={post.id} className="ios-row-card"><MediaCard title={post.title} cover={post.cover}
                   subtitle={tr("{0} 次浏览", fmt(post.hot))} onOpen={() => push({ kind: "post", id: post.id })} /></div>
               ))}
               {!(postRows.__posts__ || []).length && <PreviewStatus name={tr("图文帖子")} loading={loading.__posts__ !== false} error={errors.__posts__} onRetry={() => void loadPreview("__posts__")} />}
-            </div>}</FilteredContent>
+            </ShelfRow>}</FilteredContent>
           </section>
         )}
 

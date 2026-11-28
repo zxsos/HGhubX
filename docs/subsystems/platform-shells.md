@@ -118,8 +118,17 @@ loopback、Windows 的自定义标题栏与注册表代理判断、Android 的 W
    已同意协议的老用户在动画期间就挂载 App（冷启动优化），此时返回只归动画（跳过动画）：
    `StartupGate` 在覆盖层分支持有 `holdBackForStartup()`，`runBack()` 见门直接消费不导航，
    覆盖层卸载时释放（引用计数 + 幂等释放，StrictMode 安全）。动画结束后只剩 App 监听，
-   顺序恢复为 面板/弹层 → 全屏 → 登录框 → 页面栈 → 回首页 → 退出。未同意首启不持门。
+   顺序恢复为 面板/弹层 → 全屏 → 登录框 → 页面栈 → 回首页 → 退至后台。未同意首启不持门。
    TV 版走 `registerBack`（remote.ts 的 scope 分发），不经 `runBack()`，门对 TV 无影响。
+   Android 端的根页返回、协议页退出及 TV 端 PIN/首页退出统一经
+   [`src/shared/lib/appLifecycle.ts`](../../src/shared/lib/appLifecycle.ts) 的 `exitApp()` 调用原生
+   WebView 桥接 `window.__HG_ANDROID__.moveToBackground()`（标准版由
+   [`scripts/patch-android-splash.mjs`](../../scripts/patch-android-splash.mjs) 写入 `AppBridge`，
+   TV 版由 [`src-tauri/tv/android/MainActivity.kt`](../../src-tauri/tv/android/MainActivity.kt) 提供
+   `TvAppBridge`，在 UI 线程执行 `moveTaskToBack(true)`），仅在非 Android 或无桥接时回退
+   `plugin:app|exit`；由此避免 Tauri `AppPlugin.exit` 调 `activity.finishAffinity()` 后，旧
+   `MainActivity` 延迟 `onDestroy()` 结束 `tao` 事件循环并触发 `std::process::exit(0)`，把用户紧接着
+   重新点开的新前台 `MainActivity` 一并杀掉。
 6. 老 WebView（Chromium 66 车机/电视、旧 iOS WKWebView）启动支持分三层：
    `index.html` 内嵌 ES5 启动看门狗（模块图之外的 error/unhandledrejection 监听 +
    15s 超时，失败渲染可复制诊断的 `#hg-startup-error` 面板）；`src/legacyRuntime.ts`
@@ -154,6 +163,12 @@ loopback、Windows 的自定义标题栏与注册表代理判断、Android 的 W
    `HGhubXTvInstaller.installCachedUpdate()`，Android 8.0+ 未授权时跳转 `ACTION_MANAGE_UNKNOWN_APP_SOURCES`
    并在 `onResume` 返回后自动调起系统安装器。前端状态与交互见 [`src/tv/updater.ts`](../../src/tv/updater.ts)、
    [`src/tv/TvApp.tsx`](../../src/tv/TvApp.tsx) 与 [`src/tv/SettingsPage.tsx`](../../src/tv/SettingsPage.tsx)「关于」分组。
+
+### HarmonyOS（自签版）
+
+1. Rust 侧通过 `#[cfg(all(target_os = "linux", not(target_env = "ohos")))]` 排除桌面 WebKitGTK、GStreamer loopback、GNOME `gsettings` 代理与桌面深链/单实例依赖，通过 `#[cfg_attr(target_env = "ohos", tauri::ohos::entry_point)]` 注册入口并在 `api/update.rs` 的 `open_url` 中 `await` 异步 opener；媒体 `LOCAL_ORIGIN` 与前端 `LOCAL` 对齐为 `hg://localhost`，更新检查 `asset_rank` 匹配 `.hap`。
+2. 前端 `src/shared/api/api.ts` 按 `OpenHarmony|HarmonyOS|ArkWeb` 识别 `isHarmony` / `platform = "harmony"`，手持设备共用移动端触屏界面，且首启协议页隐藏退出按钮（与 iOS 一致）。
+3. 主线 `src-tauri/Cargo.toml` 与 `Cargo.lock` 保持官方 crates.io Tauri 2 稳定依赖；仅在 [`.github/workflows/release.yml`](../../.github/workflows/release.yml) 的 `harmonyos` job 中由 [`scripts/patch-ohos-cargo.mjs`](../../scripts/patch-ohos-cargo.mjs) 临时切换 OpenHarmony Tauri 分支与锁定 `ohos-*` 绑定 crate，构建未签名 `HGhubX_<ver>_ohos_arm64_unsigned.hap` 随标准版 Release 一并发布（由用户自签侧载安装）。
 
 ### 共享页面壳几何
 

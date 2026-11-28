@@ -23,7 +23,7 @@ export function Avatar({ hue = 250, icon, name, size = 40, ring = false, classNa
   );
   return (
     <div className={`shrink-0 ${className}`} style={{ width: size, height: size }}>
-      {ring ? <div className="w-full h-full rounded-full p-[2px] bg-primary"><div className="w-full h-full rounded-full bg-bg p-[2px]">{inner}</div></div> : inner}
+      {ring ? <div className="w-full h-full rounded-full p-[2px]" style={{ background: "linear-gradient(135deg, var(--p-accent), color-mix(in srgb, var(--p-accent) 36%, var(--ios-edge)))" }}><div className="w-full h-full rounded-full bg-bg p-[2px]">{inner}</div></div> : inner}
     </div>
   );
 }

@@ -23,7 +23,7 @@
 .video-details-description { color:var(--p-mut); font-size:13px; line-height:1.8; white-space:pre-wrap; overflow-wrap:anywhere; }
 .video-details-sheet { display:flex; flex-direction:column; height:min(72dvh,680px); min-height:0; }
 .feed-comments-sheet { display:flex; flex-direction:column; height:72dvh; min-height:0; }
-.ios-overlay-sheet.feed-panel-overlay .ios-dialog { background:var(--glass-bg-strong); padding-bottom:0; }
+.ios-overlay-sheet.feed-panel-overlay .ios-dialog { background:var(--glass-bg-strong); padding-bottom:0; overflow:hidden; }
 .comment-composer-form.ios-form.flex { min-height:44px; background:var(--p-s3); border:1px solid var(--ios-edge); border-radius:999px; }
 .comment-composer-form.ios-form.flex>.ios-button.comment-send-btn { width:32px; height:32px; min-width:32px; min-height:32px; padding:0; }
 .comment-composer-form.ios-form.flex>.ios-button.comment-send-btn:disabled { opacity:.72; }
@@ -32,6 +32,7 @@
 .mobile-video-author { margin-bottom:3px; color:rgb(255 255 255 / .76); font-size:12px; line-height:1.4; text-shadow:0 2px 8px rgb(0 0 0 / .65); }
 .mobile-video-episode { margin-top:1px; color:rgb(255 255 255 / .64); font-size:12px; font-weight:600; line-height:1.5; text-shadow:0 2px 8px rgb(0 0 0 / .7); }
 .current-video-tags { display:flex; gap:10px; max-width:100%; margin-top:6px; overflow-x:auto; overscroll-behavior-x:contain; scrollbar-width:none; pointer-events:auto; }
+.fs-landscape .current-video-tags { overscroll-behavior-x:auto; overscroll-behavior-y:contain; }
 .current-video-tags::-webkit-scrollbar { display:none; }
 .current-video-tag.ios-button { display:inline-flex; flex:none; align-items:center; gap:2px; min-height:34px !important; min-width:0 !important; max-width:160px; padding:4px 0; border:0; border-radius:0; background:transparent; box-shadow:none; color:rgb(255 255 255 / .9); font-size:12px; font-weight:600; line-height:1.3; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-shadow:0 2px 8px rgb(0 0 0 / .7); backdrop-filter:none; }
 .current-video-tag>span { color:var(--p-accent,#a8c7fa); }

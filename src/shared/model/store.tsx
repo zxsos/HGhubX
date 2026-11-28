@@ -9,7 +9,7 @@ import { pickGuestData, useAccountData, type GuestData } from "./accountData";
 import { runSilentSourceUpdate } from "./sourceAutoUpdate";
 import { tr } from "../i18n";
 
-export type Platform = "android" | "ios" | "windows" | "macos" | "linux";
+export type Platform = "android" | "ios" | "windows" | "macos" | "linux" | "harmony";
 export type Theme = "dark" | "light";
 export type ThemePreference = Theme | "system";
 export type Tab = "home" | "search" | "category" | "profile";

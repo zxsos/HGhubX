@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { addPluginListener, invoke } from "@tauri-apps/api/core";
+import { addPluginListener } from "@tauri-apps/api/core";
 import { platform } from "../api/api";
+import { exitApp } from "../lib/appLifecycle";
 import { acceptUsageAgreement, USAGE_AGREEMENT_VERSION } from "../storage/usageAgreement";
 import "../../styles/usage-agreement.css";
 import type { RegisterStartupBack } from "../lib/back";
@@ -70,7 +71,7 @@ export default function UsageAgreement({ onAccept, registerBack, active = true }
 
   const exit = () => {
     setExiting(true);
-    void invoke("plugin:app|exit", { code: 0 }).catch(() => setError(tr("应用尚未进入主界面，你可以直接关闭窗口。"))).finally(() => setExiting(false));
+    void exitApp().catch(() => setError(tr("应用尚未进入主界面，你可以直接关闭窗口。"))).finally(() => setExiting(false));
   };
 
   return <div className="hg-agreement" inert={!active} data-tv-modal={active ? "agreement" : undefined} role="dialog" aria-modal="true" aria-labelledby="hg-agreement-title" aria-describedby="hg-agreement-summary">
@@ -89,7 +90,7 @@ export default function UsageAgreement({ onAccept, registerBack, active = true }
         </label>}
         <div className="hg-agreement-actions">
           {declined ? <>
-            {platform !== "ios" && <button data-tv-focus="agreement-exit" type="button" className="hg-agreement-exit" onClick={exit} disabled={exiting}>{tr("退出应用")}</button>}
+            {platform !== "ios" && platform !== "harmony" && <button data-tv-focus="agreement-exit" type="button" className="hg-agreement-exit" onClick={exit} disabled={exiting}>{tr("退出应用")}</button>}
             <button data-tv-focus="agreement-read" type="button" className="hg-agreement-accept" onClick={() => { setDeclined(false); setConfirmed(false); setError(""); }}>{tr("返回阅读")}</button>
           </> : <>
             <button data-tv-focus="agreement-decline" type="button" className="hg-agreement-exit" onClick={() => { setDeclined(true); setConfirmed(false); }}>{tr("不同意")}</button>

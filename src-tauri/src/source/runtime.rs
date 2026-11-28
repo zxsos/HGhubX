@@ -504,7 +504,9 @@ const HOST_SHIM_JS: &str = r#"
   function unwrap(jsonStr) {
     const res = JSON.parse(jsonStr);
     if (res && res.__hostError) {
-      throw new Error(String(res.__hostError));
+      const err = new Error(String(res.__hostError));
+      err.__isHostError = true;
+      throw err;
     }
     return res;
   }
@@ -777,7 +779,13 @@ pub async fn invoke_source_with_ctx(
                     if (/^HTTP \d{3}\b/.test(trimmed)) {
                       return JSON.stringify({ __httpError: trimmed });
                     }
-                    throw err;
+                    if (err && typeof err === "object" && err.__isHostError) {
+                      return JSON.stringify({ __hostError: trimmed });
+                    }
+                    const name = err && typeof err === "object" && "name" in err && err.name && err.name !== "Error"
+                      ? String(err.name) + ": "
+                      : "";
+                    return JSON.stringify({ __sourceError: (name + trimmed).trim() || "未知脚本异常" });
                   }
                 })()
             "#;
@@ -790,7 +798,8 @@ pub async fn invoke_source_with_ctx(
                     if msg.contains("interrupted") {
                         "视频源脚本执行超时，已强制中止".to_string()
                     } else {
-                        format!("视频源执行失败：{msg}")
+                        let first_line = msg.lines().next().unwrap_or(&msg).trim();
+                        format!("视频源执行失败：{first_line}")
                     }
                 })?;
 
@@ -801,6 +810,12 @@ pub async fn invoke_source_with_ctx(
             }
             if let Some(http_err) = parsed.get("__httpError").and_then(Value::as_str) {
                 return Err(http_err.to_string());
+            }
+            if let Some(host_err) = parsed.get("__hostError").and_then(Value::as_str) {
+                return Err(host_err.to_string());
+            }
+            if let Some(source_err) = parsed.get("__sourceError").and_then(Value::as_str) {
+                return Err(format!("视频源执行失败：{source_err}"));
             }
             if parsed.get("__unsupported").and_then(Value::as_bool) == Some(true) {
                 return Err(format!(

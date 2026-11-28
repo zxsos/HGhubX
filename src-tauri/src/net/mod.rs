@@ -60,7 +60,10 @@ static MEDIA_CONFIG_GENERATION: AtomicU64 = AtomicU64::new(0);
 static MEDIA_CONFIG_FINGERPRINT: Lazy<Mutex<Option<u64>>> = Lazy::new(|| Mutex::new(None));
 const CLIENT_TTL: Duration = Duration::from_secs(180);
 type ClientCache = HashMap<String, (Instant, Arc<reqwest::Client>)>;
+type ClientFlight = tokio::sync::OnceCell<Result<Arc<reqwest::Client>, String>>;
 static CLIENTS: Lazy<Mutex<ClientCache>> = Lazy::new(|| Mutex::new(HashMap::new()));
+static CLIENT_BUILDING: Lazy<Mutex<HashMap<String, std::sync::Weak<ClientFlight>>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
 static MEDIA_DNS_ROUTES: Lazy<Mutex<crate::media_dns::Routes>> =
     Lazy::new(|| Mutex::new(crate::media_dns::Routes::default()));
 static LAST_HEAL: Lazy<Mutex<Option<Instant>>> = Lazy::new(|| Mutex::new(None));

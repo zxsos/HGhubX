@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "HGhubX",
-  "version": "3.1.1",
+  "version": "3.1.2",
   "identifier": "com.hghubx.app",
   "build": {
     "beforeDevCommand": "pnpm dev",
@@ -44,7 +44,7 @@
     ],
     "android": {
       "minSdkVersion": 24,
-      "versionCode": 3001001
+      "versionCode": 3001002
     }
   },
   "plugins": {

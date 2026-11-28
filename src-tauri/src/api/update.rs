@@ -26,7 +26,8 @@ pub fn cancel_tv_update() {
 pub async fn open_url(app: tauri::AppHandle, url: String) -> Result<(), String> {
     let target = crate::network_policy::parse_target(&url)?;
     // 固定使用默认处理器；不向前端暴露可指定程序的 opener 命令。
-    app.opener()
-        .open_url(target.as_str(), None::<&str>)
-        .map_err(|e| e.to_string())
+    #[cfg(target_env = "ohos")]
+    { app.opener().open_url(target.as_str(), None::<&str>).await.map_err(|e| e.to_string()) }
+    #[cfg(not(target_env = "ohos"))]
+    { app.opener().open_url(target.as_str(), None::<&str>).map_err(|e| e.to_string()) }
 }

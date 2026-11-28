@@ -16,6 +16,7 @@ pub(crate) use response::fixture_response;
 use hls::{dec, load_playlist};
 use image::load_image;
 use segment::load_segment;
+pub(crate) use segment::{is_cached_segment, load_segment_raw};
 use response::{apply_byte_range, respond, segment_response, PROXIED_IMAGE_CACHE_CONTROL};
 
 /// 本平台自定义协议的完整基址。
@@ -26,13 +27,14 @@ use response::{apply_byte_range, respond, segment_response, PROXIED_IMAGE_CACHE_
 #[cfg(any(target_os = "windows", target_os = "android"))]
 pub const LOCAL_ORIGIN: &str = "http://hg.localhost";
 /// Linux 走 loopback HTTP：WebKitGTK 的播放器是 GStreamer，它拿不到自定义 scheme。
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", not(target_env = "ohos")))]
 pub const LOCAL_ORIGIN: &str = crate::linux_http::ORIGIN;
-#[cfg(not(any(target_os = "windows", target_os = "android", target_os = "linux")))]
+#[cfg(not(any(target_os = "windows", target_os = "android", all(target_os = "linux", not(target_env = "ohos")))))]
 pub const LOCAL_ORIGIN: &str = "hg://localhost";
 
 /// 清空封面 / 播放列表 / Key / 分片内存缓存
 pub fn clear_caches() {
+    crate::media_prefetch::clear();
     image::clear_cache();
     hls::clear_cache();
     segment::clear_cache();

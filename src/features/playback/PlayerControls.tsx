@@ -4,6 +4,7 @@ import { fmtTime } from "../../shared/api/api";
 import { useSeekInput } from "./useSeekInput";
 import { ICheck, ICompress, IExpand, ILockF, INext, IPauseF, IPip, IPlayF, ITheater, IVertSwap, IVol, IVolMute } from "../../shared/ui/icons";
 import type { PlaybackClock } from "./playbackClock";
+import { registerOverlayBack } from "../../shared/lib/back";
 import { tr } from "../../shared/i18n";
 
 type Props = {
@@ -52,11 +53,37 @@ export default function PlayerControls({
 
   useEffect(() => {
     if (!speedOpen) return;
+    const closeMenu = () => {
+      setSpeedOpen(false);
+      boxRef.current?.querySelector<HTMLButtonElement>(".player-speed")?.focus();
+    };
     const frame = requestAnimationFrame(() => boxRef.current?.querySelector<HTMLElement>('[role="menuitemradio"][aria-checked="true"]')?.focus());
     const outside = (e: PointerEvent) => { if (!boxRef.current?.contains(e.target as Node)) setSpeedOpen(false); };
-    document.addEventListener("pointerdown", outside);
-    return () => { cancelAnimationFrame(frame); document.removeEventListener("pointerdown", outside); };
+    const isCovered = () => !boxRef.current || Boolean(boxRef.current.closest("[inert]"));
+    const onEscape = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.isComposing || isCovered()) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      closeMenu();
+    };
+    const removeBack = registerOverlayBack(() => {
+      if (isCovered()) return false;
+      closeMenu();
+      return true;
+    });
+    document.addEventListener("pointerdown", outside, true);
+    document.addEventListener("keydown", onEscape, true);
+    return () => {
+      cancelAnimationFrame(frame);
+      removeBack();
+      document.removeEventListener("pointerdown", outside, true);
+      document.removeEventListener("keydown", onEscape, true);
+    };
   }, [speedOpen]);
+
+  useEffect(() => {
+    if (!visible) setSpeedOpen(false);
+  }, [visible]);
 
   return (
     <div ref={boxRef} className={`desktop-controls ${fullscreen ? "is-fullscreen" : ""} ${visible ? "" : "is-hidden"}`}

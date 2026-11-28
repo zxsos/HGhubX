@@ -137,8 +137,15 @@ where
     result
 }
 
-/// 分片 / AES Key 带内存缓存：拖动进度条时避免重复拉取同一片造成卡顿。
+pub(crate) fn is_cached_segment(url: &str) -> bool { cached_segment(segment_scope(), url).is_some() }
+
+/// 分片 / AES Key 带内存缓存：拖动进度条时避免重复拉取同一片造成卡顿；同时触发滑窗并发预读。
 pub async fn load_segment(url: &str) -> SegmentResult {
+    crate::media_prefetch::on_segment_access(url);
+    load_segment_raw(url).await
+}
+
+pub(crate) async fn load_segment_raw(url: &str) -> SegmentResult {
     let scope = segment_scope();
     if let Some((ctype, hit)) = cached_segment(scope, url) {
         return Ok((Some(ctype), hit));
@@ -179,15 +186,9 @@ async fn download_segment(url: &str, scope: SegmentScope) -> SegmentResult {
 
 pub(super) fn clear_cache() {
     SEG_CACHE_GENERATION.fetch_add(1, Ordering::AcqRel);
-    if let Ok(mut g) = KEY_CACHE.lock() {
-        g.clear();
-    }
-    if let Ok(mut g) = SEG_CACHE.lock() {
-        g.clear();
-    }
-    if let Ok(mut g) = SEG_LOADING.lock() {
-        g.clear();
-    }
+    if let Ok(mut g) = KEY_CACHE.lock() { g.clear(); }
+    if let Ok(mut g) = SEG_CACHE.lock() { g.clear(); }
+    if let Ok(mut g) = SEG_LOADING.lock() { g.clear(); }
 }
 
 pub(super) fn stats() -> (usize, usize, usize) {

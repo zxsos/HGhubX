@@ -1,6 +1,7 @@
 import { useContext, useEffect, useLayoutEffect, useImperativeHandle, useRef, forwardRef, useState, type MutableRefObject } from "react";
 import Hls from "hls.js";
 import { isMobile, platform } from "../../shared/api/api";
+import { formatErrorWithCode } from "../../shared/api/errorFormat";
 import { PageCoveredContext } from "../../shared/model/pageVisibility";
 import { connectNativeMedia, playbackSource } from "./mediaTransport";
 import { mediaErrorMessage } from "./mediaErrors";
@@ -274,10 +275,10 @@ const VideoSurface = forwardRef<VideoHandle, Props>(function VideoSurface(
           const detail = `${data.type}/${data.details}/${data.response?.code ?? ""}/${String(data.reason ?? "").slice(0, 80)}`;
           (window as unknown as { __hlsErr?: string }).__hlsErr = detail;
           const readable = data.type === Hls.ErrorTypes.NETWORK_ERROR
-            ? tr("视频网络加载失败，请检查线路或重试")
+            ? formatErrorWithCode(tr("视频网络加载失败，请检查线路或重试"), "MEDIA_NET")
             : data.type === Hls.ErrorTypes.MEDIA_ERROR
-              ? tr("视频解码异常，请重试")
-              : tr("视频暂时无法播放，请重试");
+              ? formatErrorWithCode(tr("视频解码异常，请重试"), "MEDIA_DECODE")
+              : formatErrorWithCode(tr("视频暂时无法播放，请重试"), "MEDIA_ERR");
           onError?.(readable);
           if (data.type !== Hls.ErrorTypes.NETWORK_ERROR && data.type !== Hls.ErrorTypes.MEDIA_ERROR) {
             hls.destroy(); hlsRef.current = null;
@@ -324,7 +325,7 @@ const VideoSurface = forwardRef<VideoHandle, Props>(function VideoSurface(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [src, proxyRecovery.revision, suspended]);
 
-  useLayoutEffect(() => { recoveryRef.current?.activityChanged(); }, [active]);
+  useLayoutEffect(() => { recoveryRef.current?.activityChanged(); }, [activity.active]);
 
   // iOS 内联播放：部分 WKWebView 只认 HTML 属性
   useEffect(() => {

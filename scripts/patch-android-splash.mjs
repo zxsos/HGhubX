@@ -264,11 +264,25 @@ class MainActivity : TauriActivity() {
     }
   }
 
+  private inner class AppBridge {
+    @JavascriptInterface
+    fun moveToBackground(): Boolean {
+      if (isFinishing || isDestroyed) return false
+      runOnUiThread {
+        try {
+          if (!isFinishing && !isDestroyed) moveTaskToBack(true)
+        } catch (_: Throwable) {}
+      }
+      return true
+    }
+  }
+
   override fun onWebViewCreate(webView: WebView) {
     super.onWebViewCreate(webView)
     try {
       webView.addJavascriptInterface(HapticBridge(applicationContext), "__HG_HAPTIC__")
       webView.addJavascriptInterface(CacheBridge(webView), "__HG_CACHE__")
+      webView.addJavascriptInterface(AppBridge(), "__HG_ANDROID__")
     } catch (_: Throwable) {}
   }
 
@@ -335,6 +349,7 @@ class MainActivity : TauriActivity() {
       try {
         wv.addJavascriptInterface(HapticBridge(applicationContext), "__HG_HAPTIC__")
         wv.addJavascriptInterface(CacheBridge(wv), "__HG_CACHE__")
+        wv.addJavascriptInterface(AppBridge(), "__HG_ANDROID__")
       } catch (_: Throwable) {}
       for (delay in longArrayOf(150L, 600L, 1500L)) {
         wv.postDelayed({ pushInsets(content) }, delay)
@@ -387,6 +402,7 @@ class MainActivity : TauriActivity() {
     "52a0435284e8cd76196b4e73ab2f8394f041675f7736af31e6c083aae4e72c31",
     "fd5f83e7377db5344964105d5a5eeaf332c598080ac1820c07e596c65b9f60e4",
     "875364ca6c68491074b33fb2eb1f222432d312c432a90972e949d0f0b2a76a92",
+    "9abb4b0208333437310900b1fc5b1bf19d83db44d77dcdd14ae0158f2b9b4ff0",
   ]);
   if (![templateActivity, patchedActivity].some((expected) => normalize(expected) === normalized) &&
       !previousPatchedHashes.has(createHash("sha256").update(normalized).digest("hex"))) {

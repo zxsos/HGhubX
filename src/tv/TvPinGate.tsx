@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { exitApp } from "../shared/lib/appLifecycle";
 import { Logo } from "../shared/ui/icons";
 import { disableTvPin, enableTvPin, unlockTvSession, useTvPin, verifyTvPin } from "./pinLock";
 import { focusElement, useRemoteScope, type RemoteKey } from "./remote";
@@ -290,7 +290,7 @@ export default function TvPinGate({ children }: { children: ReactNode }) {
           error={error}
           cooldownLeft={cooldownLeft}
           onClearError={() => setError("")}
-          onBackEmpty={() => { void invoke("plugin:app|exit", { code: 0 }).catch(() => {}); }}
+          onBackEmpty={() => { void exitApp().catch(() => {}); }}
           onComplete={code => {
             if (unlockTvSession(code)) {
               resetFailures();

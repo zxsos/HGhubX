@@ -370,7 +370,7 @@ pub async fn clear_all(webview: &tauri::Webview) -> Result<CacheClearReport, Str
         crate::updater::cleanup_tv_updates(&cache_dir);
     }
 
-    #[cfg(target_os = "linux")]
+    #[cfg(all(target_os = "linux", not(target_env = "ohos")))]
     let web_cache = {
         linux::clear(webview).await?;
         if let Ok(cache_dir) = app.path().app_cache_dir() {
@@ -413,7 +413,7 @@ pub async fn clear_all(webview: &tauri::Webview) -> Result<CacheClearReport, Str
     };
 
     #[cfg(not(any(
-        target_os = "linux",
+        all(target_os = "linux", not(target_env = "ohos")),
         target_os = "macos",
         target_os = "ios",
         target_os = "windows",
@@ -446,7 +446,7 @@ mod apple {
     }
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", not(target_env = "ohos")))]
 mod linux {
     use std::time::Duration;
     use webkit2gtk::{WebViewExt, WebsiteDataManagerExtManual, WebsiteDataTypes};

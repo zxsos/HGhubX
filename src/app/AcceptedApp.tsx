@@ -1,8 +1,9 @@
 import { lazy, Suspense, useEffect, useRef, useState, type CSSProperties } from "react";
-import { addPluginListener, invoke } from "@tauri-apps/api/core";
+import { addPluginListener } from "@tauri-apps/api/core";
 import App from "./App";
 import SourceOnboarding from "./startup/SourceOnboarding";
 import { api, isMobile, platform } from "../shared/api/api";
+import { exitApp } from "../shared/lib/appLifecycle";
 import { runBack } from "../shared/lib/back";
 import { usePendingDeepLink } from "../shared/lib/deepLink";
 import { AppProvider, useStore } from "../shared/model/store";
@@ -110,7 +111,7 @@ function SourceGate() {
       return;
     }
     if (platform === "android") {
-      invoke("plugin:app|exit", { code: 0 }).catch(() => {});
+      exitApp().catch(() => {});
     }
   };
 

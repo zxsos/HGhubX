@@ -32,7 +32,7 @@ make check
 - 完整播放回归用 `pnpm test:playback`；它需要 FFmpeg 和 Chromium，属于手动诊断而非 PR smoke。
 
 CI 是验证记录。命令写了不等于已经运行；报告里必须写清命令、输入、字面结果和退出状态。
-维护者指定的构建、测试依赖镜像不得擅自替换，也不得新增自动换源回退。镜像请求失败时，
+维护者指定的构建、测试依赖镜像（清单见 [`docs/subsystems/build-release.md`](docs/subsystems/build-release.md)）不得擅自替换，也不得新增自动换源回退。镜像请求失败时，
 记录失败步骤、原始错误、退出状态与 Actions 链接；可在同一镜像重跑，换源前须获维护者明确同意。
 
 ## 一屏架构

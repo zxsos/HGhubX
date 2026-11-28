@@ -54,9 +54,11 @@
 3. hls.js 使用 `autoStartLoad: false`，在 `MANIFEST_PARSED` 后按
    `startPosition`/`resume` 调 `startLoad`。`FRAG_BUFFERED` 清空恢复计数和错误；
    `ERROR` 只把 fatal network/media 交给 `createHlsRecovery`。
-4. `usePlaybackActivity` 在页面失活时暂停并 `stopLoad()`（处于画中画 `pictureInPictureElement`
-   时保持播放，退出画中画且页面仍失活时再暂停），在重新激活时按 `wanted` 与 `startPosition`
-   恢复；`play()` 的 Promise 返回后会再次检查页面是否仍激活。被页面栈覆盖的底层播放页（经
+4. `usePlaybackActivity` 在页面失活或应用切至后台（`document.hidden`）时同步暂停并 `stopLoad()`
+   （处于画中画 `pictureInPictureElement` 时保持播放，退出画中画且页面仍失活/后台时再暂停），
+   并驱动 `hlsRecovery.activityChanged()` 取消后台重试计时；后台挂起不读取已被系统原生暂停的
+   `v.paused` 覆盖 `wanted`，在重新激活或回到前台时按 `wanted` 与 `startPosition` 恢复（保留用户
+   显式暂停意图）；`play()` 的 Promise 返回后会再次检查页面是否仍激活且处于前台。被页面栈覆盖的底层播放页（经
    [`src/shared/model/pageVisibility.ts`](../../src/shared/model/pageVisibility.ts) 的 `PageCoveredContext` 感知，
    且未处于画中画时），`VideoSurface` 通过 `useProxyPlaybackRecovery.stash()` 暂存当前进度、倍速与播放/暂停意图后
    销毁 `hls.js` 并清空 `<video>` 源以释放硬件解码器，返回顶层时按暂存状态自动续播或保持暂停；非活跃态同时卸载
@@ -85,10 +87,10 @@
   manifest/metadata → `playing`、`paused` 或 `error`。
 - HLS 故障：fatal network/media → `pending` → 250ms × (attempt+1) 后尝试 →
   成功缓冲回到正常；第 4 次后交给 `onFatal`。非 network/media fatal 立即结束。
-- 页面失活：`active=false` → 暂停 + `stopLoad()`；被标签门/教程覆盖也走同一条
-  active 边界，不启动后台恢复。
-- 页面恢复：只有 `wanted=true` 才恢复；原生控件造成的暂停也要被记住，不能凭
-  “之前自动播放过”强行继续。
+- 页面失活/后台：`active=false` 或 `document.hidden=true`（非画中画）→ 同步暂停 + `stopLoad()`
+  并取消在途 HLS 恢复计时；被标签门/教程覆盖也走同一条 active 边界，不启动后台恢复。
+- 页面恢复：回到活跃且前台时恢复 HLS 加载，且只有 `wanted=true` 才续播；页内失活时原生控件造成的暂停
+  也要被记住，切后台时不因系统原生预暂停覆盖 `wanted`，也不能凭“之前自动播放过”强行打断用户显式暂停。
 - seek：preview → commit → `seeking` → `seeked`/`playing`；拖动取消、
   页面失活或换源不会提交旧目标。移动端画面横拖（`scrub`）与底栏直拖（`barPct`）统一在底部进度条上
   加粗高亮预览并展示「目标时间 / 总时长」胶囊，不在屏幕中央叠加进度条；全屏闲置隐藏期间横拖画面会
@@ -121,8 +123,9 @@
   （慢放/加速两态平滑过渡色标与箭头方向）。长按加速/减速只临时改变倍速，松手恢复原速度；不提供拖动到顶部胶囊
   的持久锁定，持久倍速统一通过全屏倍速按钮或「更多」里的倍速选项设置。全屏 overlay 的 touch-action
   固定为 none，避免原生 pan-y 把视觉横滑取消掉。
-- 媒体错误：hls fatal 显示 `type/details/status`，原生错误走
-  `mediaErrorMessage`；手动重试走同一个 `useProxyPlaybackRecovery` 路径。
+- 媒体错误：hls fatal 与原生 `mediaErrorMessage` 均经 `formatErrorWithCode` 输出统一媒体代号
+  （`MEDIA_NET`/`MEDIA_DECODE`/`MEDIA_UNSUPPORTED`/`MEDIA_ERR`），诊断细节写入 `window.__hlsErr` 与日志；
+  手动重试走同一个 `useProxyPlaybackRecovery` 路径。
 - 移动端「平衡音量」（`balanceVolume.ts`，`hghubx_app_v1.balanceVolume`，默认 `false`）：仅在支持 MSE + Web Audio 的移动端环境展示入口并启用；首次显式手势解锁 `AudioContext` 后挂接输入侧原始 RMS 分析、扣除 `video.volume` 偏移的慢速 AGC 与峰值限幅器；跨源无 CORS / 原生非 `blob:` 源不挂接 `MediaElementAudioSourceNode`（标记 `unsupported`），页面失活或暂停时停止采样定时器并在无在播元素时挂起 `AudioContext`。
 
 ## 约束与失败行为

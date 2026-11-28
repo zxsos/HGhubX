@@ -12,10 +12,11 @@ import { Avatar, Empty, Modal } from "../../shared/ui/ui";
 import { MediaCard } from "../../shared/ui/cards";
 import { useContentPreferences } from "../../shared/model/contentPreferences";
 import { CollectionLink, CollectionLinks } from "../../shared/ui/CollectionLink";
-import { IChevR, IClock, IHeart, ILogout, IRefresh, IScan, ISettings, IStar, IUser, IUserF, IFilter } from "../../shared/ui/icons";
+import { ICheck, IChevR, IClock, IHeart, ILogout, IRefresh, IScan, ISettings, IStar, IUser, IFilter } from "../../shared/ui/icons";
 import { tr } from "../../shared/i18n";
 import { triggerHaptic } from "../../shared/lib/haptics";
 import { useTabSwipe } from "../../shared/ui/hooks/useTabSwipe";
+import { registerOverlayBack } from "../../shared/lib/back";
 import TvQrSyncModal from "../settings/TvQrSyncModal";
 
 const FAVORITE_REFRESH_TOAST_TAG = "favorite-refresh";
@@ -40,6 +41,7 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
   const [favFilter, setFavFilter] = useState<FavoriteWatchFilter>("all");
   const [favSeriesFilter, setFavSeriesFilter] = useState<FavoriteSeriesFilter>("all");
   const [filterMenuOpen, setFilterMenuOpen] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
   const filterMenuRef = useRef<HTMLDivElement>(null);
   const filterButtonRef = useRef<HTMLButtonElement>(null);
   const [videoCache, setVideoCache] = useState<Record<number, Detail>>({});
@@ -206,16 +208,24 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
     const closeOnOutsidePress = (event: PointerEvent) => {
       if (!filterMenuRef.current?.contains(event.target as Node)) setFilterMenuOpen(false);
     };
+    const isCovered = () => !filterMenuRef.current || Boolean(filterMenuRef.current.closest("[inert]"));
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
+      if (event.key !== "Escape" || event.isComposing || isCovered()) return;
       event.preventDefault();
-      event.stopPropagation();
+      event.stopImmediatePropagation();
       setFilterMenuOpen(false);
       filterButtonRef.current?.focus();
     };
+    const removeBack = registerOverlayBack(() => {
+      if (isCovered()) return false;
+      setFilterMenuOpen(false);
+      filterButtonRef.current?.focus();
+      return true;
+    });
     document.addEventListener("pointerdown", closeOnOutsidePress, true);
     document.addEventListener("keydown", closeOnEscape, true);
     return () => {
+      removeBack();
       document.removeEventListener("pointerdown", closeOnOutsidePress, true);
       document.removeEventListener("keydown", closeOnEscape, true);
     };
@@ -223,7 +233,7 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
 
   useEffect(() => {
     setFilterMenuOpen(false);
-  }, [tab, favKind]);
+  }, [tab, favKind, active]);
 
   useEffect(() => {
     if (!capabilities.posts && favKind === "post") setFavKind("video");
@@ -329,7 +339,14 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
       }
     };
 
+    const clearClickSuppression = () => {
+      window.clearTimeout(suppressTimer);
+      suppressTimer = 0;
+      suppressClick = false;
+    };
+
     const onTouchStart = (event: TouchEvent) => {
+      clearClickSuppression();
       if (pullRefreshingRef.current || event.touches.length !== 1 || scroller.scrollTop > 1 || !inRefreshRegion(event.target)) {
         tracking = false;
         return;
@@ -354,7 +371,13 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
       finishGesture(false);
     };
 
+    const onTouchCancel = () => {
+      if (activePointerId !== null) return;
+      finishGesture(true);
+    };
+
     const onPointerDown = (event: PointerEvent) => {
+      clearClickSuppression();
       if (event.pointerType === "touch" || !event.isPrimary || event.button !== 0) return;
       if (pullRefreshingRef.current || scroller.scrollTop > 1 || !inRefreshRegion(event.target)) return;
       tracking = true;
@@ -396,7 +419,7 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
     region.addEventListener("touchstart", onTouchStart, { passive: true });
     region.addEventListener("touchmove", onTouchMove, { passive: false });
     region.addEventListener("touchend", onTouchEnd, { passive: true });
-    region.addEventListener("touchcancel", onTouchEnd, { passive: true });
+    region.addEventListener("touchcancel", onTouchCancel, { passive: true });
     region.addEventListener("pointerdown", onPointerDown);
     region.addEventListener("click", onClickCapture, true);
     return () => {
@@ -405,7 +428,7 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
       region.removeEventListener("touchstart", onTouchStart);
       region.removeEventListener("touchmove", onTouchMove);
       region.removeEventListener("touchend", onTouchEnd);
-      region.removeEventListener("touchcancel", onTouchEnd);
+      region.removeEventListener("touchcancel", onTouchCancel);
       region.removeEventListener("pointerdown", onPointerDown);
       region.removeEventListener("click", onClickCapture, true);
     };
@@ -645,7 +668,7 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
 
   return (
     <div className="ios-page absolute inset-0 bg-bg flex flex-col">
-      <div className="ios-page-heading shrink-0 flex items-center">
+      <div className={`ios-page-heading shrink-0 flex items-center ${scrolled ? "is-scrolled" : ""}`}>
         <h1 className="ios-page-title text-on">{tr("我的")}</h1>
         {isMobile && (
           <div className="ml-auto flex items-center gap-2">
@@ -662,6 +685,7 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
       </div>
 
       <div ref={scrollRef} {...tabSwipe} style={{ touchAction: "pan-y" }}
+        onScroll={(e) => setScrolled(e.currentTarget.scrollTop > 4)}
         className="ios-page-body flex-1 scroll-y pt-2 pb-24">
         <div className="min-h-full flex flex-col">
         {/* 资料卡：已登录 / 未登录（点开登录抽屉） */}
@@ -681,10 +705,10 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
                 <ILogout size={17} />
               </Button>
             </div>
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-mut">
-              <span className="whitespace-nowrap">{tr("点赞")}{" "}<b className="text-on">{fmt(user.counts?.like)}</b></span>
-              <span className="whitespace-nowrap">{tr("收藏")}{" "}<b className="text-on">{fmt(user.counts?.collect)}</b></span>
-              <span className="whitespace-nowrap">{tr("关注")}{" "}<b className="text-on">{fmt(user.counts?.following)}</b></span>
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-[13px] text-mut tabular-nums">
+              <span className="whitespace-nowrap">{tr("点赞")}{" "}<b className="text-on font-semibold">{fmt(user.counts?.like)}</b></span>
+              <span className="whitespace-nowrap">{tr("收藏")}{" "}<b className="text-on font-semibold">{fmt(user.counts?.collect)}</b></span>
+              <span className="whitespace-nowrap">{tr("关注")}{" "}<b className="text-on font-semibold">{fmt(user.counts?.following)}</b></span>
             </div>
           </Surface>
         ) : capabilities.account ? (
@@ -733,7 +757,7 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
           <CollectionLinks className="ios-profile-links mt-4 shrink-0">
             <CollectionLink icon={<IHeart size={18} />} title={tr("我的关注")}
               onClick={() => push({ kind: "following" })} />
-            <CollectionLink icon={<IUserF size={18} />} title={tr("我的主页")}
+            <CollectionLink icon={<IUser size={18} />} title={tr("我的主页")}
               onClick={() => push({ kind: "user", id: user.id, name: user.nickname })} />
           </CollectionLinks>
         )}
@@ -748,12 +772,15 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
         {tab === "fav" && !favoriteStateUnknown && (favs.length > 0 || (capabilities.posts && (postFavs.length > 0 || favKind === "post"))) && (
           <div className="mt-2.5 shrink-0 flex items-center gap-2" role="group" aria-label={tr("收藏内容类型")}>
             <div className="flex items-center gap-2">
-              <Button aria-pressed={favKind === "video"} onClick={() => { setFavKind("video"); setSelectedIds([]); }} className="inline-flex min-h-9 items-center gap-1.5 px-1.5 text-left pressable">
-                <span className="text-[15px] font-bold text-on">{tr("视频")}</span>
-                <span data-favorite-short-total className="text-[12px] text-mut tabular-nums">{favoriteFilterData.seriesCounts.all}</span>
+              <Button aria-pressed={favKind === "video"} onClick={() => { setFavKind("video"); setSelectedIds([]); }} className="ios-filter-pill gap-1.5">
+                <span>{tr("视频")}</span>
+                <span data-favorite-short-total className="text-[12px] opacity-80 tabular-nums">{favoriteFilterData.seriesCounts.all}</span>
               </Button>
               {capabilities.posts && (
-                <Button aria-pressed={favKind === "post"} onClick={() => { setFavKind("post"); setFavFilter("all"); setFavSeriesFilter("all"); setSelectedIds([]); }} className="ios-filter-pill">{tr("帖子{0}", postFavs.length ? ` ${postFavs.length}` : "")}</Button>
+                <Button aria-pressed={favKind === "post"} onClick={() => { setFavKind("post"); setFavFilter("all"); setFavSeriesFilter("all"); setSelectedIds([]); }} className="ios-filter-pill gap-1.5">
+                  <span>{tr("帖子")}</span>
+                  {postFavs.length > 0 && <span className="text-[12px] opacity-80 tabular-nums">{postFavs.length}</span>}
+                </Button>
               )}
             </div>
             <div className="ml-auto flex items-center gap-1.5">
@@ -800,7 +827,10 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
                       <Button key={`watch-${key}`} data-favorite-watch-filter-option={key} role="menuitemradio" aria-checked={favFilter === key}
                         onClick={() => { setFavFilter(key); setFailedIds([]); setSelectedIds([]); }}>
                         <span>{label}</span>
-                        <span className="ios-filter-menu-count">{count}</span>
+                        <span className="ios-filter-menu-side">
+                          {favFilter === key && <ICheck size={13} strokeWidth={2.2} aria-hidden="true" />}
+                          <span className="ios-filter-menu-count">{count}</span>
+                        </span>
                       </Button>
                     ))}
                     <div className="ios-filter-menu-section" style={{ borderTop: "1px solid var(--ios-edge)", marginTop: 4, paddingTop: 9 }}>
@@ -818,7 +848,10 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
                       <Button key={`series-${key}`} data-favorite-series-filter-option={key} role="menuitemradio" aria-checked={favSeriesFilter === key}
                         onClick={() => { setFavSeriesFilter(key); setSelectedIds([]); }}>
                         <span>{label}</span>
-                        <span className="ios-filter-menu-count">{count}</span>
+                        <span className="ios-filter-menu-side">
+                          {favSeriesFilter === key && <ICheck size={13} strokeWidth={2.2} aria-hidden="true" />}
+                          <span className="ios-filter-menu-count">{count}</span>
+                        </span>
                       </Button>
                     ))}
                     <Button onClick={() => { setFilterMenuOpen(false); filterButtonRef.current?.focus(); }}
@@ -957,7 +990,7 @@ function ProfileContent({ wide, active }: { wide: boolean; active: boolean }) {
           {hasMore && <div ref={sentinelRef} className="h-4" aria-hidden="true" />}
         </div>
 
-        <div className="shrink-0 text-center text-[12px] text-dim mt-5">{tr("HGhubX {0} · {1} 客户端", APP_VERSION, platform === "android" ? "Android" : platform === "ios" ? "iOS" : platform === "macos" ? "macOS" : platform === "linux" ? "Linux" : "Windows")}</div>
+        {isMobile && <div className="shrink-0 text-center text-[12px] text-dim mt-5">{tr("HGhubX {0} · {1} 客户端", APP_VERSION, platform === "android" ? "Android" : platform === "ios" ? "iOS" : platform === "harmony" ? "HarmonyOS" : platform === "macos" ? "macOS" : platform === "linux" ? "Linux" : "Windows")}</div>}
         </div>
       </div>
       <Modal open={removeOpen} onClose={() => { if (!removalPending.current) setRemoveOpen(false); }} label={tr("批量移除")}>

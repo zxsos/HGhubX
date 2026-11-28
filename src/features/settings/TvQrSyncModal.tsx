@@ -28,6 +28,7 @@ function notifySourceChanged() {
 function defaultPhoneName() {
   if (platform === "ios") return "iPhone";
   if (platform === "android") return "Android 手机";
+  if (platform === "harmony") return "HarmonyOS";
   if (platform === "macos") return "Mac";
   if (platform === "windows") return "Windows";
   return "Linux";

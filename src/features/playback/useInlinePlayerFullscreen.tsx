@@ -191,8 +191,9 @@ export function useInlinePlayerFullscreen({ active, src, scopeKey, videoRef, act
     const removeBack = registerOverlayBack(() => { close(); return true; });
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || event.isComposing) return;
-      // A newer dialog owns Escape while its controls have focus.
-      if (event.target instanceof Element && event.target.closest('[role="dialog"]')) return;
+      // A newer dialog or open popup menu owns Escape before fullscreen exits.
+      if (event.target instanceof Element && event.target.closest('[role="dialog"], [role="menu"]')) return;
+      if (wrapRef.current?.querySelector('[role="menu"]')) return;
       event.preventDefault();
       event.stopImmediatePropagation();
       if (!event.repeat) close();

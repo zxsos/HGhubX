@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { Button } from "../../shared/ui/ios/controls";
-import { IChevronDown } from "../../shared/ui/icons";
+import { ICheck, IChevronDown } from "../../shared/ui/icons";
 import { N_, tr } from "../../shared/i18n";
+import { registerOverlayBack } from "../../shared/lib/back";
 
 export type WorkStatus = "all" | "ongoing" | "finished";
 export type WorkStatusCounts = { ongoing: number; finished: number } | null;
@@ -46,9 +47,26 @@ export function TagStatusMenu({ status, counts, total, onChange, className = "" 
     const onPointerDown = (event: PointerEvent) => {
       if (!wrapRef.current?.contains(event.target as Node)) setOpen(false);
     };
-    document.addEventListener("pointerdown", onPointerDown);
-    return () => document.removeEventListener("pointerdown", onPointerDown);
-  }, [open]);
+    const isCovered = () => !wrapRef.current || Boolean(wrapRef.current.closest("[inert]"));
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.isComposing || isCovered()) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      close(true);
+    };
+    const removeBack = registerOverlayBack(() => {
+      if (isCovered()) return false;
+      close(true);
+      return true;
+    });
+    document.addEventListener("pointerdown", onPointerDown, true);
+    document.addEventListener("keydown", onEscape, true);
+    return () => {
+      removeBack();
+      document.removeEventListener("pointerdown", onPointerDown, true);
+      document.removeEventListener("keydown", onEscape, true);
+    };
+  }, [open, close]);
 
   useEffect(() => {
     if (!open) return;
@@ -68,6 +86,7 @@ export function TagStatusMenu({ status, counts, total, onChange, className = "" 
     const index = items.indexOf(document.activeElement as HTMLButtonElement);
     if (event.key === "Escape") {
       event.preventDefault();
+      event.stopPropagation();
       close(true);
     } else if (event.key === "Tab") {
       close();
@@ -98,10 +117,14 @@ export function TagStatusMenu({ status, counts, total, onChange, className = "" 
       <span className="ios-sort-menu-title">{tr("连载状态")}</span>
       {OPTIONS.map(option => {
         const count = option.value === "all" ? total : option.value === "finished" ? counts?.finished : counts?.ongoing;
+        const checked = status === option.value;
         return <button key={option.value} type="button" role="menuitemradio" data-tag-status-option={option.value}
-          aria-checked={status === option.value} onClick={() => select(option.value)}>
+          aria-checked={checked} onClick={() => select(option.value)}>
           <span>{tr(option.label)}</span>
-          {count !== undefined && <span className="ml-auto text-[12px] font-normal text-mut tabular-nums">{count}</span>}
+          <span className="ml-auto inline-flex items-center gap-1.5 tabular-nums">
+            {checked && <ICheck size={13} strokeWidth={2.2} aria-hidden="true" />}
+            {count !== undefined && <span className="text-[12px] font-normal opacity-80">{count}</span>}
+          </span>
         </button>;
       })}
     </div>}

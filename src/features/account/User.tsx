@@ -302,10 +302,10 @@ function UserContent({ id, name, onBack, wide }: { id: number; name?: string; on
           </div>
         </div>
         <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap gap-x-3 gap-y-1 text-[12px] text-mut" aria-busy={infoLoading}>
-            <span className="whitespace-nowrap">{tr("作品")}{" "}<b className="text-on">{stat(stats?.video_count)}</b></span>
-            <span className="whitespace-nowrap">{tr("粉丝")}{" "}<b className="text-on">{stat(stats?.followers)}</b></span>
-            <span className="whitespace-nowrap">{tr("获赞")}{" "}<b className="text-on">{stat(stats?.like_count)}</b></span>
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-[13px] text-mut tabular-nums" aria-busy={infoLoading}>
+            <span className="whitespace-nowrap">{tr("作品")}{" "}<b className="text-on font-semibold">{stat(stats?.video_count)}</b></span>
+            <span className="whitespace-nowrap">{tr("粉丝")}{" "}<b className="text-on font-semibold">{stat(stats?.followers)}</b></span>
+            <span className="whitespace-nowrap">{tr("获赞")}{" "}<b className="text-on font-semibold">{stat(stats?.like_count)}</b></span>
           </div>
           {!isOwnProfile && <Button onClick={() => void onFollow()} disabled={followBusy || actionPending(`follow:${id}`)} aria-busy={followBusy || actionPending(`follow:${id}`)} aria-pressed={following}
             className={`min-h-11 px-3.5 rounded-full text-[13px] font-semibold shrink-0 ${following ? "bg-s3 text-mut" : "bg-primary text-on-primary"}`}>

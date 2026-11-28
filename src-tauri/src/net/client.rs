@@ -1,18 +1,19 @@
 use super::proxy_env::{clear_proxy_env_cache, proxy_override, system_explicit_proxy};
 use super::redact::{err_text, redact_proxy};
 use super::{
-    base, ClientCache, CLIENTS, CLIENT_GENERATION, CLIENT_TTL, MEDIA_CONFIG_FINGERPRINT,
-    MEDIA_CONFIG_GENERATION, MEDIA_DNS_ROUTES,
+    base, ClientCache, ClientFlight, CLIENTS, CLIENT_BUILDING, CLIENT_GENERATION, CLIENT_TTL,
+    MEDIA_CONFIG_FINGERPRINT, MEDIA_CONFIG_GENERATION, MEDIA_DNS_ROUTES,
 };
 use crate::network_policy;
 use once_cell::sync::Lazy;
 use serde_json::json;
 use std::net::SocketAddr;
 use std::sync::atomic::Ordering;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, Weak};
 use std::time::{Duration, Instant};
 
 const SYSTEM_PROXY_TTL: Duration = Duration::from_secs(10);
+const SYSTEM_DNS_RACE_DELAY: Duration = Duration::from_millis(900);
 static SYSTEM_PROXY_MATCHER: Lazy<Mutex<Option<(Instant, Arc<hyper_util::client::proxy::matcher::Matcher>)>>> =
     Lazy::new(|| Mutex::new(None));
 
@@ -141,7 +142,7 @@ fn system_proxy_fingerprint() -> u64 {
         name.hash(&mut hash);
         std::env::var_os(name).hash(&mut hash);
     }
-    #[cfg(target_os = "linux")]
+    #[cfg(all(target_os = "linux", not(target_env = "ohos")))]
     system_explicit_proxy().hash(&mut hash);
     #[cfg(any(target_os = "macos", target_os = "ios"))]
     format!("{:?}", hyper_util::client::proxy::matcher::Matcher::from_system()).hash(&mut hash);
@@ -228,6 +229,86 @@ pub(super) fn client_key(strict: bool, host: &str, port: u16, public_dns: bool, 
     format!("{strict}:{host}:{port}:{public_dns}:{}:{:x}:{}", route.active, route.fingerprint(), route.generation)
 }
 
+async fn resolve_doh_checked(
+    host: &str,
+    port: u16,
+    strict: bool,
+    route: &ProxyRoute,
+) -> Result<(Vec<SocketAddr>, Duration), String> {
+    let resolver = build_client(crate::media_dns::HOST, &crate::media_dns::BOOTSTRAP, route)?;
+    let resolution = crate::media_dns::resolve(&resolver, host, port).await?;
+    network_policy::check_addresses_with_mode(&resolution.addresses, strict)?;
+    Ok((resolution.addresses, CLIENT_TTL.min(resolution.ttl)))
+}
+
+/// Prefer OS DNS so local FakeIP/TUN resolvers answer in <2ms without touching DoH;
+/// only when OS DNS stalls past `SYSTEM_DNS_RACE_DELAY` (or fails fast on an eligible
+/// HTTPS domain) do we race AliDNS DoH in parallel and still enforce full strict IP checks.
+async fn resolve_strict_fast(
+    target: &url::Url,
+    host: &str,
+    port: u16,
+    route: &ProxyRoute,
+) -> Result<(Vec<SocketAddr>, Duration), String> {
+    let can_race_doh =
+        target.scheme() == "https" && matches!(target.host(), Some(url::Host::Domain(_)));
+    if !can_race_doh {
+        return network_policy::resolve_target(target, true)
+            .await
+            .map(|addrs| (addrs, CLIENT_TTL));
+    }
+    let started = Instant::now();
+    let sys_fut = network_policy::resolve_target(target, true);
+    tokio::pin!(sys_fut);
+    let fast = tokio::select! {
+        res = &mut sys_fut => Some(res),
+        _ = tokio::time::sleep(SYSTEM_DNS_RACE_DELAY) => None,
+    };
+    match fast {
+        Some(Ok(addrs)) => return Ok((addrs, CLIENT_TTL)),
+        Some(Err(sys_err)) => {
+            if crate::media_dns::eligible(target, &sys_err) {
+                if let Ok(doh_ok) = resolve_doh_checked(host, port, true, route).await {
+                    crate::playback_log::record(
+                        "network.dns_race_doh",
+                        json!({"reason": "fast_fallback", "elapsed_ms": started.elapsed().as_millis() as u64}),
+                    );
+                    return Ok(doh_ok);
+                }
+            }
+            return Err(sys_err);
+        }
+        None => {}
+    }
+    let doh_fut = resolve_doh_checked(host, port, true, route);
+    tokio::pin!(doh_fut);
+    tokio::select! {
+        sys_res = &mut sys_fut => match sys_res {
+            Ok(addrs) => Ok((addrs, CLIENT_TTL)),
+            Err(sys_err) => match (&mut doh_fut).await {
+                Ok(doh_ok) => {
+                    crate::playback_log::record(
+                        "network.dns_race_doh",
+                        json!({"reason": "system_failed", "elapsed_ms": started.elapsed().as_millis() as u64}),
+                    );
+                    Ok(doh_ok)
+                }
+                Err(_) => Err(sys_err),
+            },
+        },
+        doh_res = &mut doh_fut => match doh_res {
+            Ok(doh_ok) => {
+                crate::playback_log::record(
+                    "network.dns_race_doh",
+                    json!({"reason": "slow_system_dns", "elapsed_ms": started.elapsed().as_millis() as u64}),
+                );
+                Ok(doh_ok)
+            }
+            Err(_) => (&mut sys_fut).await.map(|addrs| (addrs, CLIENT_TTL)),
+        },
+    }
+}
+
 pub(crate) async fn client_for_dns(raw: &str, public_dns: bool) -> Result<(url::Url, Arc<reqwest::Client>), String> {
     let strict = network_policy::strict_security();
     let target = network_policy::parse_target_with_mode(raw, strict)?;
@@ -242,32 +323,68 @@ pub(crate) async fn client_for_dns(raw: &str, public_dns: bool) -> Result<(url::
             return Ok((target, http));
         }
     }
-    let (addrs, ttl) = if proxy {
-        // 有代理：跳过本地解析与 IP 校验，addrs 留空，域名交给代理。
-        (Vec::new(), CLIENT_TTL)
-    } else if public_dns {
-        let resolver = build_client(crate::media_dns::HOST, &crate::media_dns::BOOTSTRAP, &route)?;
-        let resolution = crate::media_dns::resolve(&resolver, host, port).await?;
-        network_policy::check_addresses_with_mode(&resolution.addresses, strict)?;
-        (resolution.addresses, CLIENT_TTL.min(resolution.ttl))
-    } else if strict {
-        (network_policy::resolve_target(&target, strict).await?, CLIENT_TTL)
-    } else {
-        (Vec::new(), CLIENT_TTL)
-    };
-    let http = Arc::new(build_client(host, &addrs, &route)?);
-    let now = Instant::now();
-    let mut cache = CLIENTS.lock().map_err(|_| "HTTP 客户端锁失败")?;
-    // 同时到达的请求可能已完成解析；不延长已有结果的有效期。
-    let http = cached_client(&cache, &key, now).unwrap_or(http);
-    if !cache.get(&key).is_some_and(|(expires, _)| now < *expires) {
-        cache.retain(|_, (expires, _)| now < *expires);
-        if cache.len() >= 64 {
-            cache.clear();
+    // Single-flight per (strict, host, port, dns, proxy, generation) key so concurrent
+    // AES key + first segment requests share one DNS resolution and client build.
+    let flight = {
+        let mut flights = CLIENT_BUILDING.lock().map_err(|_| "HTTP 客户端锁失败")?;
+        flights.retain(|_, w| w.strong_count() > 0);
+        if let Some(existing) = flights.get(&key).and_then(Weak::upgrade) {
+            existing
+        } else {
+            let created = Arc::new(ClientFlight::new());
+            flights.insert(key.clone(), Arc::downgrade(&created));
+            created
         }
-        cache.insert(key, (now + ttl, http.clone()));
+    };
+    let host_owned = host.to_string();
+    let key_owned = key.clone();
+    let target_for_build = target.clone();
+    let result = flight
+        .get_or_init(|| async move {
+            {
+                let cache = CLIENTS.lock().map_err(|_| "HTTP 客户端锁失败".to_string())?;
+                if let Some(http) = cached_client(&cache, &key_owned, Instant::now()) {
+                    return Ok(http);
+                }
+            }
+            let (addrs, ttl) = if proxy {
+                // 有代理：跳过本地解析与 IP 校验，addrs 留空，域名交给代理。
+                (Vec::new(), CLIENT_TTL)
+            } else if public_dns {
+                resolve_doh_checked(&host_owned, port, strict, &route).await?
+            } else if strict {
+                resolve_strict_fast(&target_for_build, &host_owned, port, &route).await?
+            } else {
+                (Vec::new(), CLIENT_TTL)
+            };
+            let http = Arc::new(build_client(&host_owned, &addrs, &route)?);
+            let now = Instant::now();
+            let mut cache = CLIENTS.lock().map_err(|_| "HTTP 客户端锁失败".to_string())?;
+            // 同时到达的请求可能已完成解析；不延长已有结果的有效期。
+            let http = cached_client(&cache, &key_owned, now).unwrap_or(http);
+            if !cache.get(&key_owned).is_some_and(|(expires, _)| now < *expires) {
+                cache.retain(|_, (expires, _)| now < *expires);
+                if cache.len() >= 64 {
+                    cache.clear();
+                }
+                cache.insert(key_owned, (now + ttl, http.clone()));
+            }
+            Ok(http)
+        })
+        .await
+        .clone();
+    if result.is_err() {
+        if let Ok(mut flights) = CLIENT_BUILDING.lock() {
+            if flights
+                .get(&key)
+                .and_then(Weak::upgrade)
+                .is_some_and(|f| Arc::ptr_eq(&f, &flight))
+            {
+                flights.remove(&key);
+            }
+        }
     }
-    Ok((target, http))
+    result.map(|http| (target, http))
 }
 
 pub fn refresh_client() {
@@ -282,6 +399,9 @@ pub fn refresh_client() {
     CLIENT_GENERATION.fetch_add(1, Ordering::AcqRel);
     if let Ok(mut cache) = CLIENTS.lock() {
         cache.clear();
+    }
+    if let Ok(mut flights) = CLIENT_BUILDING.lock() {
+        flights.clear();
     }
     if let Ok(mut routes) = MEDIA_DNS_ROUTES.lock() {
         *routes = crate::media_dns::Routes::default();
