@@ -12,6 +12,7 @@ type MetadataJob = { promise: Promise<void>; currents: Set<() => boolean> };
 const inFlight = new Map<string, MetadataJob>();
 window.addEventListener("hg:line-changed", () => { generation++; });
 window.addEventListener("hg:proxy-changed", () => { generation++; });
+window.addEventListener("hg:source-changed", () => { generation++; });
 function pump() { while (active < 2 && queue.length) queue.shift()!(); }
 
 export function loadLibraryMetadata(content: TvContent, source: string, isCurrent: () => boolean): Promise<void> {

@@ -6,6 +6,7 @@ pub(crate) mod manifest;
 pub(crate) mod peer_store;
 pub(crate) mod runtime;
 pub(crate) mod store;
+pub(crate) mod subscription;
 pub(crate) mod verify;
 
 use once_cell::sync::Lazy;
@@ -89,6 +90,7 @@ mod tests {
                     search: true,
                     catalog: CatalogCapabilities {
                         categories: false,
+                        topics: None,
                         tags: true,
                         rankings: false,
                         authors: false,

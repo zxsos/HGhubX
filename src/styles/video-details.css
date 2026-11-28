@@ -17,8 +17,9 @@
 .content-tag-link>svg { flex:none; color:var(--p-mut); }
 .content-tag-link.ios-button:focus-visible { outline-offset:2px; }
 .video-detail-empty-tags { color:var(--p-mut); font-size:13px; line-height:1.5; }
-.video-details-author { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-top:20px; padding:10px; border-radius:20px; }
-.video-details-author-link.ios-button { display:flex; align-items:center; gap:10px; flex:1; min-width:120px; min-height:44px; text-align:left; }
+.video-details-author { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-top:20px; padding:10px; border-radius:20px; overflow:hidden; }
+.video-details-author-link { display:flex; align-items:center; gap:10px; flex:1 1 0%; min-width:0; max-width:100%; min-height:44px; text-align:left; }
+.video-details-author-link > :first-child { flex:none; }
 .video-details-follow.ios-button { flex:none; min-height:44px; padding:8px 14px; border-radius:999px; font-size:13px; font-weight:600; }
 .video-details-description { color:var(--p-mut); font-size:13px; line-height:1.8; white-space:pre-wrap; overflow-wrap:anywhere; }
 .video-details-sheet { display:flex; flex-direction:column; height:min(72dvh,680px); min-height:0; }

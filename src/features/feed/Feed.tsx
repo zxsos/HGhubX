@@ -140,7 +140,7 @@ export default function Feed({
 
   const {
     idsRef, index, renderIndex, fullscreen, vpLandscape, portraitFit, setPortraitFit,
-    onScroll, go, stepDir, canStep, toggleFull, enterFs, exitFs,
+    onScroll, go, stepDir, canStep, toggleFull, enterFs, exitFs, requestLandscapeOrientation,
   } = useFeedViewport({
     playerRootRef, boxRef, videoRef, pinchRef, videoIds, effectiveVideoIds, startIndex, mode, kind, active,
     isItemAllowed, isDesktop, fs, setFs, setClean, paused, wake, swipeEp, epMap, setEpMap,
@@ -375,12 +375,9 @@ export default function Feed({
 
   /* 若用户在视频首帧宽高解析出来前已点进全屏，解析出横屏后自动补发横屏方向请求 */
   useEffect(() => {
-    if (!active || isDesktop || !fs || !landscapeVideo) return;
-    try { void invoke("set_orientation", { landscape: true }).catch(() => {}); } catch { /* ignore */ }
-    try {
-      (screen.orientation as unknown as { lock?: (o: string) => Promise<void> })?.lock?.("landscape")?.catch(() => {});
-    } catch { /* ignore */ }
-  }, [active, isDesktop, fs, landscapeVideo]);
+    if (!active || isDesktop || !fs || !landscapeVideo || vpLandscape) return;
+    requestLandscapeOrientation();
+  }, [active, isDesktop, fs, landscapeVideo, vpLandscape, requestLandscapeOrientation]);
 
   /* With filtering enabled, details are the gate: no media is requested before tags settle. */
   useEffect(() => {
@@ -652,7 +649,7 @@ export default function Feed({
                       <>
                         {/* 老 WebView 不认识 inset 简写；四边写法保证缩放舞台铺满（#138）。 */}
                     <div style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0, transform: isDesktop || (zoom.s === 1 && zoom.x === 0 && zoom.y === 0) ? undefined : `translate3d(${zoom.x}px, ${zoom.y}px, 0) scale(${zoom.s})`, transformOrigin: "center center", transition: isDesktop || zoom.g ? "none" : "transform .18s ease-out" }}>
-                      <VideoSurface ref={videoRef} src={playUrl} poster={posterUrl} autoPlay active={active && !tagMenu && !showHoldGuide && !searching} muted={muted} balanceVolume={!isDesktop && store.balanceVolume}
+                      <VideoSurface ref={videoRef} src={playUrl} poster={posterUrl} autoPlay active={active && !tagMenu && !showHoldGuide && !searching} muted={muted} balanceVolume={!isDesktop && store.balanceVolume} skipTiming={kind === "video" ? (episodes.some((e) => e.ep_num === curEp + 1) ? "both" : "intro") : undefined}
                         diagnosticContext={{ active: active && !tagMenu && !showHoldGuide && !searching, view: mode, kind, video_id: curId, episode: curEp }}
                         volume={volume} rate={effRate}
                         ambientGlow={ambientGlow}

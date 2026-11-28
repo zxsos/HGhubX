@@ -74,7 +74,7 @@ external store，由多个页面共享，而非设置页私有状态。
 ## Rust 与验证文件
 
 `src-tauri/src/api/`、`net/`、`media/`、`lines/`、`source/` 分别承载命令、网络、媒体协议、
-源驱动线路选择与 QuickJS 视频源沙箱/验签/局域网推源；`authors.rs` 承载作者目录命令。
+源驱动线路选择与 QuickJS 视频源沙箱/验签/订阅列表导入（含通用 MacCMS v10 适配器）/局域网推源；`authors.rs` 承载作者目录命令。
 平台壳、会话、缓存和安全策略仍保留在 `src-tauri/src/` 顶层；没有创建 `platform/` 或
 `state/` 目录。完整调用路径见各子系统页。
 

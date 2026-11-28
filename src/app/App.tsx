@@ -4,8 +4,9 @@ import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type CSSP
 import { useStore, type Page, type Tab } from "../shared/model/store";
 import { PageCoveredContext } from "../shared/model/pageVisibility";
 import { isMobile, selfTest } from "../shared/api/api";
-import { addPluginListener, invoke } from "@tauri-apps/api/core";
-import { runBack } from "../shared/lib/back";
+import { invoke } from "@tauri-apps/api/core";
+import { runBack, subscribeNativeBack, syncOhosBackIntercept, useHasBackConsumer } from "../shared/lib/back";
+import { useEdgeSwipeBack } from "../shared/ui/hooks/useEdgeSwipeBack";
 import { exitApp } from "../shared/lib/appLifecycle";
 import { exitDocumentFullscreen, getFullscreenElement } from "../shared/lib/fullscreen";
 import { initMobileHaptics, triggerHaptic } from "../shared/lib/haptics";
@@ -356,8 +357,8 @@ function StackPageContent({ page, onBack, wide, top, bottomInset, loginOpen }: {
   if (page.kind === "settings") return <SettingsPage onBack={onBack} wide={wide} initialSection={page.section} />;
   if (page.kind === "posts") return capabilities.posts ? <PostsPage onBack={onBack} wide={wide} /> : unsupported;
   if (page.kind === "post") return capabilities.posts ? <PostDetail id={page.id} onBack={onBack} active={top && !loginOpen} /> : unsupported;
-  if (page.kind === "topics") return capabilities.catalog.categories ? <TopicsPage onBack={onBack} wide={wide} /> : unsupported;
-  if (page.kind === "topic") return capabilities.catalog.categories ? <TopicPage slug={page.slug} name={page.name} onBack={onBack} wide={wide} /> : unsupported;
+  if (page.kind === "topics") return capabilities.catalog.topics ? <TopicsPage onBack={onBack} wide={wide} /> : unsupported;
+  if (page.kind === "topic") return capabilities.catalog.topics ? <TopicPage slug={page.slug} name={page.name} onBack={onBack} wide={wide} /> : unsupported;
   if (page.kind === "tags") return capabilities.catalog.tags ? <TagsPage onBack={onBack} wide={wide} /> : unsupported;
   if (page.kind === "tag") return capabilities.catalog.tags ? <TagPage tag={page.tag} name={page.name} onBack={onBack} wide={wide} /> : unsupported;
   if (page.kind === "authors") return capabilities.catalog.authors ? <AuthorsPage onBack={onBack} wide={wide} /> : unsupported;
@@ -368,7 +369,7 @@ function StackPageContent({ page, onBack, wide, top, bottomInset, loginOpen }: {
 
 /** Hide covered pages from the compositor while keeping React state and scroll offsets intact. */
 function LayerBox({
-  hidden, inert, ariaHidden, className, enterClass, style, children,
+  hidden, inert, ariaHidden, className, enterClass, style, swipeBack, children,
 }: {
   hidden: boolean;
   inert: boolean;
@@ -376,9 +377,11 @@ function LayerBox({
   className: string;
   enterClass?: string;
   style?: CSSProperties;
+  swipeBack?: { enabled: boolean; onBack: () => void };
   children: ReactNode;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  useEdgeSwipeBack(ref, !!swipeBack?.enabled && !hidden, swipeBack?.onBack);
   const scrollOffsetsRef = useRef<Map<HTMLElement, number>>(new Map());
   const hiddenRef = useRef(hidden);
   hiddenRef.current = hidden;
@@ -739,7 +742,8 @@ function AppBody() {
               <LayerBox key={p.key} hidden={!top} inert={!top} ariaHidden={!top || loginOpen}
                 className="absolute inset-0 bg-bg isolate"
                 enterClass={platform === "android" && p.kind === "feed" ? undefined : "a-page-in"}
-                style={{ zIndex: 30 + i }}>
+                style={{ zIndex: 30 + i }}
+                swipeBack={p.kind === "feed" ? undefined : { enabled: top && !loginOpen && !fs, onBack: pop }}>
                 <StackPage page={p} onBack={pop} wide={wide} top={top} bottomInset={stackInset} loginOpen={loginOpen} />
               </LayerBox>
             );
@@ -912,9 +916,11 @@ export default function App() {
     };
   }, [platform]);
 
-  /* —— 安卓硬件返回键 ——
-     层级：面板/弹层 → 全屏 → 登录框 → 页面栈 → 回首页 → 退出应用。
-     不注册这个监听，Tauri 会直接 webView.goBack() 或退出，表现就是「任意页面返回都回桌面」。 */
+  /* —— 安卓 / 鸿蒙硬件与系统边缘返回 ——
+     层级：面板/弹层 → 全屏 → 登录框 → 页面栈 → 回首页 → 退出/退后台。
+     不注册这个监听，Android 会直接 webView.goBack() 或退出，HarmonyOS 则被原生默认拦截吞掉。 */
+  const hasBackConsumer = useHasBackConsumer();
+  const canConsumeBack = hasBackConsumer || fs || loginOpen || stack.length > 0 || tab !== defaultTab;
   const backRef = useRef<() => void>(() => {});
   backRef.current = () => {
     if (runBack()) return;                                  // 最上层弹窗/播放器面板
@@ -923,21 +929,11 @@ export default function App() {
     if (loginOpen) { setLoginOpen(false); return; }
     if (stack.length) { pop(); return; }
     if (tab !== defaultTab) { setTab(defaultTab); return; }
-    exitApp().catch(() => {});
+    if (platform === "android") exitApp().catch(() => {});
   };
 
-  useEffect(() => {
-    if (platform !== "android") return undefined;
-    let disposed = false;
-    let handle: { unregister: () => Promise<void> } | null = null;
-    addPluginListener("app", "back-button", () => backRef.current())
-      .then((l) => { if (disposed) l.unregister().catch(() => {}); else handle = l; })
-      .catch(() => { /* 非安卓宿主忽略 */ });
-    return () => {
-      disposed = true;
-      handle?.unregister().catch(() => {});
-    };
-  }, [platform]);
+  useEffect(() => subscribeNativeBack(platform, () => backRef.current()), [platform]);
+  useEffect(() => { syncOhosBackIntercept(platform, canConsumeBack); }, [platform, canConsumeBack]);
 
   useEffect(() => {
     const prevent = (e: Event) => { if (!isSelectableText(e.target)) e.preventDefault(); };

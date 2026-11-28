@@ -20,6 +20,7 @@ import { Loader } from "../../shared/ui/ios/effects";
 import { isAmbientGlowSupported } from "../playback/AmbientGlow";
 import { isBalanceVolumeSupported } from "../playback/balanceVolume";
 import { PictureEnhanceSetting } from "../playback/PictureEnhanceSetting";
+import SkipIntroOutroSetting from "./SkipIntroOutroSetting";
 import { useContentPreferences } from "../../shared/model/contentPreferences";
 import { IBack, IBoltF, IBroom, IChevR, ICompress, IFileText, IFilm, IFilter, IGlobe, IHeart, IHome, IInfo, ILink, ILockF, IMoon, IRefresh, IScan, ISpark, ISun, IVol, IVolMute, Logo } from "../../shared/ui/icons";
 import { LOCALE_OPTIONS, N_, setLocale, tr, useLocale, type Locale } from "../../shared/i18n";
@@ -34,7 +35,7 @@ export default function Settings({ onBack, initialSection }: { onBack: () => voi
   const locale = useLocale();
   const hapticLevel = useHapticLevel();
   const [localeBusy, setLocaleBusy] = useState(false);
-  const { theme, themePreference, setTheme, favs, history, muteOnStartup, setMuteOnStartup, preferHevc, setPreferHevc, balanceVolume, setBalanceVolume, fsIdleSecs, setFsIdleSecs, startupTab, setStartupTab, ambientGlow, setAmbientGlow, strictSecurity, strictSecurityReady, securityPending, cliRelaxed, setStrictSecurity, toast, capabilities, activeSource, stack } = useStore();
+  const { theme, themePreference, setTheme, favs, history, muteOnStartup, setMuteOnStartup, preferHevc, setPreferHevc, balanceVolume, setBalanceVolume, fsIdleSecs, setFsIdleSecs, startupTab, setStartupTab, ambientGlow, setAmbientGlow, skipIntroSecs, skipOutroSecs, strictSecurity, strictSecurityReady, securityPending, cliRelaxed, setStrictSecurity, toast, capabilities, activeSource, stack } = useStore();
   const { preferences: contentPrefs } = useContentPreferences();
   const [scrolled, setScrolled] = useState(false);
   const canCategory = capabilities.catalog.categories || capabilities.catalog.tags || capabilities.catalog.rankings || capabilities.catalog.authors || capabilities.posts || Boolean(activeSource?.catalog?.channels?.some((c) => (c.kind === "post" ? capabilities.posts : capabilities.catalog.categories)));
@@ -252,7 +253,7 @@ export default function Settings({ onBack, initialSection }: { onBack: () => voi
             </div>}
           </>)}
 
-          {section(N_("播放"), <IFilm size={16} />, `${startupSummary}${preferHevc ? ` · ${tr("优先高清")}` : ""}`, <>
+          {section(N_("播放"), <IFilm size={16} />, `${startupSummary}${preferHevc ? ` · ${tr("优先高清")}` : ""}${skipIntroSecs > 0 || skipOutroSecs > 0 ? ` · ${tr("跳过 {0}s/{1}s", skipIntroSecs, skipOutroSecs)}` : ""}`, <>
             <div className="ios-settings-row flex-wrap">
               <span className="ios-setting-icon"><IHome size={16} /></span>
               <div className="flex-1 min-w-0">
@@ -282,6 +283,7 @@ export default function Settings({ onBack, initialSection }: { onBack: () => voi
               <Toggle desktop on={preferHevc} onChange={setPreferHevc} label={tr("优先高清")} />
             </div>
             <PictureEnhanceSetting />
+            <SkipIntroOutroSetting />
             {isAmbientGlowSupported() && <div className="ios-settings-row">
               <span className="ios-setting-icon"><ISun size={16} /></span>
               <div className="flex-1 min-w-0">

@@ -4,7 +4,7 @@ import { useContentPreferences } from "../shared/model/contentPreferences";
 import type { Detail } from "../shared/api/types";
 import type { TvContent, TvProgress } from "./model";
 import { useTv } from "./TvProvider";
-import { useRemoteScope } from "./remote";
+import { focusElement, useRemoteScope } from "./remote";
 import { TvModal } from "./ui";
 import { detailContent, failureMessage, postParts, videoParts, type TvPart } from "./player/content";
 import { hasPlaybackCapability } from "../shared/lib/demoSource";
@@ -37,6 +37,8 @@ export default function DetailPage({ content, sourceKey, progress, favorite, onF
   const [favoritePending, setFavoritePending] = useState(false);
   const [demoNotice, setDemoNotice] = useState("");
   const transportEpoch = useRef(0);
+  const playBtnRef = useRef<HTMLButtonElement>(null);
+  const autoFocusedRef = useRef("");
   const key = `${content.kind}:${content.id}`;
   const sourceReady = !!sourceKey.split("@")[0];
   const request = `${sourceKey}:${key}:${preferences.revision}:${retry}`;
@@ -100,6 +102,16 @@ export default function DetailPage({ content, sourceKey, progress, favorite, onF
   const nextPart = finishedCurrent ? parts[matchedIndex + 1] : undefined;
   const resumeSeconds = resumable && !finishedCurrent && progress!.seconds > 0 ? progress!.seconds : 0;
   const firstPart = nextPart ? nextPart.id : resumable ? progress!.part : parts[0]?.id;
+  useEffect(() => {
+    if (!displayed || !firstPart || !allowPlayback || blocked) return;
+    if (autoFocusedRef.current === request) return;
+    autoFocusedRef.current = request;
+    const active = document.activeElement as HTMLElement | null;
+    const activeId = active?.getAttribute("data-tv-focus");
+    if (!active || active === document.body || activeId === `detail:${key}:back`) {
+      focusElement(playBtnRef.current);
+    }
+  }, [displayed, firstPart, allowPlayback, blocked, request, key]);
   const toggleFavorite = async () => {
     if (!displayed || favoritePending) return;
     setFavoritePending(true);
@@ -121,7 +133,7 @@ export default function DetailPage({ content, sourceKey, progress, favorite, onF
           {item.description && <p className="tv-detail-description">{item.description}</p>}
           <div className="tv-detail-tags" aria-label="标签">{displayed?.content.tags.map(tag => <span key={tag}>{tag}</span>)}</div>
           <div className="tv-detail-actions" data-tv-region="detail-actions">
-            <button data-tv-focus={`detail:${key}:play`} className="tv-primary" disabled={!firstPart || !allowPlayback} onClick={() => firstPart && allowPlayback && onPlay(item, firstPart, resumeSeconds)}>{!allowPlayback ? "暂不提供播放" : resumeSeconds > 0 || nextPart ? "继续观看" : resumable && progress!.seconds > 0 ? "重新播放" : "播放"}</button>
+            <button ref={playBtnRef} data-tv-initial="" data-tv-focus={`detail:${key}:play`} className="tv-primary" disabled={!firstPart || !allowPlayback} onClick={() => firstPart && allowPlayback && onPlay(item, firstPart, resumeSeconds)}>{!allowPlayback ? "暂不提供播放" : resumeSeconds > 0 || nextPart ? "继续观看" : resumable && progress!.seconds > 0 ? "重新播放" : "播放"}</button>
             <button data-tv-focus={`detail:${key}:favorite`} aria-pressed={favorite} disabled={!displayed || favoritePending} onClick={() => void toggleFavorite()}>{favorite ? "取消收藏" : "收藏"}</button>
             {(content.kind === "post" || allowEpisodes) && <button data-tv-focus={`detail:${key}:episodes`} disabled={!parts.length} onClick={() => document.querySelector<HTMLButtonElement>(".tv-detail-episodes [data-tv-focus]")?.focus()}>{content.kind === "post" ? "选择分段" : "选集"}</button>}
             <button data-tv-focus={`detail:${key}:more`} disabled={!displayed || !item.tags.length} onClick={() => { setSelectedTags([]); setMore(true); }}>更多</button>

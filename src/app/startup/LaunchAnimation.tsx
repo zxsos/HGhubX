@@ -1,10 +1,9 @@
 import { startTransition, useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { addPluginListener } from "@tauri-apps/api/core";
 import { platform } from "../../shared/api/api";
 import "../../styles/launch.css";
 import UsageAgreement from "../../shared/ui/UsageAgreement";
 import { hasAcceptedAgreement } from "../../shared/storage/usageAgreement";
-import { holdBackForStartup, type RegisterStartupBack } from "../../shared/lib/back";
+import { holdBackForStartup, subscribeNativeBack, type RegisterStartupBack } from "../../shared/lib/back";
 import { tr } from "../../shared/i18n";
 
 // One reveal per WebView lifetime, including StrictMode and subsequent App remounts.
@@ -107,14 +106,7 @@ export function LaunchAnimation({
 
   useEffect(() => {
     if (registerBack) return registerBack(finish);
-    if (platform !== "android") return;
-    let disposed = false;
-    let listener: { unregister: () => Promise<void> } | undefined;
-    void addPluginListener("app", "back-button", finish).then(handle => {
-      if (disposed) void handle.unregister().catch(() => {});
-      else listener = handle;
-    }).catch(() => {});
-    return () => { disposed = true; void listener?.unregister().catch(() => {}); };
+    return subscribeNativeBack(platform, finish);
   }, [finish, registerBack]);
 
   return <div className={exiting ? "hg-launch is-exiting" : "hg-launch"} role="dialog" aria-modal="true" aria-label={tr("HGhubX 启动动画")}

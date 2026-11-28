@@ -3,6 +3,7 @@ import { api } from "../api/api";
 import type { AccountHistoryItem, AccountIdentity, AccountInteractions, User } from "../api/types";
 import type { WatchProgress } from "./store";
 import { autoLineEnabled, pickLine, waitForPendingLinePick } from "../network/autoLine";
+import { STORAGE_KEYS } from "../storage/storage";
 import { tr } from "../i18n";
 
 type Kind = "video" | "post";
@@ -28,7 +29,12 @@ type AccountData = GuestData & {
 };
 type SyncState = { busy: boolean; error: string; authError: boolean; lastSynced: number; favoritesKnown: boolean };
 const ACCOUNT_KEY = "hghubx_accounts_v1";
+const SOURCE_LIBRARY_KEY = STORAGE_KEYS.sourceLibrary;
 const empty = (): AccountData => ({ likes: [], favs: [], follows: [], history: [], postLikes: [], postFavs: [], dirtyHistory: {}, localHistory: [] });
+const hasGuestData = (data: GuestData): boolean =>
+  data.likes.length > 0 || data.favs.length > 0 || data.follows.length > 0 || data.history.length > 0
+  || (data.postLikes?.length ?? 0) > 0 || (data.postFavs?.length ?? 0) > 0;
+const guestKeyFor = (sourceId: string | null): string => (sourceId ? `guest:${sourceId}` : "guest");
 const ids = (value: unknown): number[] => Array.isArray(value)
   ? [...new Set(value.filter((id): id is number => Number.isSafeInteger(id) && id > 0))] : [];
 const validProgress = (value: unknown): value is WatchProgress => {
@@ -93,6 +99,9 @@ export function useAccountData(initialGuest: GuestData, saveGuest: (data: GuestD
   const saveGuestRef = useRef(saveGuest); saveGuestRef.current = saveGuest;
   const state = useRef<{ user: User | null; origin: string; key: string; generation: number; data: AccountData; sync: SyncState } | null>(null);
   const accounts = useRef<Record<string, AccountData>>({});
+  const sourceBuckets = useRef<Record<string, AccountData>>({});
+  const legacyClaimedBy = useRef<string | null>(null);
+  const guestSourceId = useRef<string | null>(null);
   const guest = useRef(sanitize(initialGuest));
   if (!state.current) {
     try {
@@ -101,8 +110,49 @@ export function useAccountData(initialGuest: GuestData, saveGuest: (data: GuestD
         accounts.current = Object.fromEntries(Object.entries(saved.accounts).map(([key, data]) => [key, sanitize(data as AccountData)]));
       }
     } catch { /* A damaged account cache must not erase legacy guest records. */ }
+    try {
+      const savedSources = JSON.parse(localStorage.getItem(SOURCE_LIBRARY_KEY) || "{}");
+      if (savedSources.version === 1 && savedSources.buckets && typeof savedSources.buckets === "object") {
+        sourceBuckets.current = Object.fromEntries(
+          Object.entries(savedSources.buckets).map(([key, data]) => [key, sanitize(data as AccountData)]),
+        );
+        if (typeof savedSources.legacyClaimedBy === "string" && savedSources.legacyClaimedBy.trim()) {
+          legacyClaimedBy.current = savedSources.legacyClaimedBy.trim();
+        }
+      }
+    } catch { /* A damaged per-source cache must not block startup or erase legacy data. */ }
     state.current = { user: null, origin: "", key: "guest", generation: 0, data: guest.current, sync: { busy: false, error: "", authError: false, lastSynced: 0, favoritesKnown: false } };
   }
+  const saveSourceBuckets = () => {
+    const buckets = Object.fromEntries(
+      Object.entries(sourceBuckets.current)
+        .filter(([, bucket]) => hasGuestData(bucket))
+        .map(([id, bucket]) => [id, pickGuestData(bucket)]),
+    );
+    localStorage.setItem(
+      SOURCE_LIBRARY_KEY,
+      JSON.stringify({
+        version: 1,
+        ...(legacyClaimedBy.current ? { legacyClaimedBy: legacyClaimedBy.current } : {}),
+        buckets,
+      }),
+    );
+  };
+  const resolveGuestData = (sourceId: string | null): AccountData => {
+    if (!sourceId) return guest.current;
+    const existing = sourceBuckets.current[sourceId];
+    if (existing) return existing;
+    if (!legacyClaimedBy.current && hasGuestData(guest.current)) {
+      const claimed = sanitize(guest.current);
+      sourceBuckets.current[sourceId] = claimed;
+      legacyClaimedBy.current = sourceId;
+      try { saveSourceBuckets(); } catch { /* Keep in-memory bucket; legacy guest remains untouched. */ }
+      return claimed;
+    }
+    const fresh = empty();
+    sourceBuckets.current[sourceId] = fresh;
+    return fresh;
+  };
   const pending = useRef(new Map<string, Promise<void>>());
   const mutation = useRef(0);
   const historyMutation = useRef(0);
@@ -125,9 +175,19 @@ export function useAccountData(initialGuest: GuestData, saveGuest: (data: GuestD
     const s = state.current!;
     s.data = data;
     if (!s.user) {
-      guest.current = data;
-      snapshotRevision.current++;
-      saveGuestRef.current(pickGuestData(data));
+      const sid = guestSourceId.current;
+      if (!sid) {
+        guest.current = data;
+        snapshotRevision.current++;
+        saveGuestRef.current(pickGuestData(data));
+        return;
+      }
+      sourceBuckets.current[sid] = data;
+      let storageFailed = false;
+      try { saveSourceBuckets(); storageError.current = ""; }
+      catch { storageError.current = tr("本机账号缓存保存失败，请检查存储空间"); s.sync = { ...s.sync, error: storageError.current }; storageFailed = true; }
+      if (mounted.current && (!silent || storageFailed)) render();
+      else snapshotRevision.current++;
       return;
     }
     accounts.current[s.key] = data;
@@ -324,11 +384,11 @@ export function useAccountData(initialGuest: GuestData, saveGuest: (data: GuestD
     const s = state.current!;
     const nextOrigin = origin ?? s.origin;
     const next = user && Number.isSafeInteger(user.id) && user.id > 0 ? user : null;
-    const key = next ? JSON.stringify([nextOrigin, next.id]) : "guest";
+    const key = next ? JSON.stringify([nextOrigin, next.id]) : guestKeyFor(guestSourceId.current);
     // 同一账号跨可信线路：后端 rebase 保留会话，本地桶跟着迁移，
     // 未上传的 dirtyHistory/localHistory 不丢；不同账号或登出仍开新桶。
     // 目标桶已存在（例如旧线路残留）时保留它，服务端同步会补齐一致状态。
-    if (next && s.user && s.user.id === next.id && s.key !== key && s.key !== "guest") {
+    if (next && s.user && s.user.id === next.id && s.key !== key && !s.key.startsWith("guest")) {
       const previous = accounts.current[s.key];
       if (previous && !accounts.current[key]) accounts.current[key] = previous;
       delete accounts.current[s.key];
@@ -339,11 +399,34 @@ export function useAccountData(initialGuest: GuestData, saveGuest: (data: GuestD
     window.clearTimeout(syncTimer.current);
     s.generation++; mutation.current++; historyMutation.current++;
     s.user = next; s.origin = nextOrigin; s.key = key;
-    s.data = next ? accounts.current[key] || applyInteractions(empty(), next.interactions) : guest.current;
+    s.data = next ? accounts.current[key] || applyInteractions(empty(), next.interactions) : resolveGuestData(guestSourceId.current);
     s.sync = { busy: false, error: "", authError: false, lastSynced: 0, favoritesKnown: false };
     sentHistory.current.clear(); pending.current.clear(); needsResync.current = false; storageError.current = ""; authRejected.current = false; authRejectedMsg.current = ""; lineRecovered.current = false;
     render();
     if (next) void syncRef.current().catch(() => {});
+  }, []);
+  const setGuestSource = useCallback((sourceId: string | null) => {
+    const nextId = sourceId?.trim() || null;
+    const prevId = guestSourceId.current;
+    if (prevId === nextId) return;
+    guestSourceId.current = nextId;
+    const s = state.current!;
+    if (s.user) return;
+    const prevData = s.data;
+    const nextData = resolveGuestData(nextId);
+    s.data = nextData;
+    // Initial cold-boot hydration from null -> first active source must not churn
+    // accountScope and double-fetch Home when no prior guest data was visible;
+    // any real switch between sources (or replacing non-empty guest data) bumps generation.
+    if (prevId !== null || (hasGuestData(prevData) && prevData !== nextData)) {
+      s.generation++;
+      mutation.current++;
+      historyMutation.current++;
+      s.key = guestKeyFor(nextId);
+      pending.current.clear();
+      storageError.current = "";
+    }
+    render();
   }, []);
   const generation = useCallback(() => state.current!.generation, []);
   const restoreSession = useCallback((user: User | null, origin: string, expectedGeneration: number) => {
@@ -614,7 +697,7 @@ export function useAccountData(initialGuest: GuestData, saveGuest: (data: GuestD
   const s = state.current;
   const rev = snapshotRevision.current;
   return useMemo(() => ({
-    user: s.user, setUser, restoreSession, generation, logout, accountScope: `${s.key}:${s.generation}`, accountSync: s.sync,
+    user: s.user, setUser, setGuestSource, restoreSession, generation, logout, accountScope: `${s.key}:${s.generation}`, accountSync: s.sync,
     syncAccount, likes: s.data.likes, favs: s.data.favs, postLikes: s.data.postLikes, postFavs: s.data.postFavs, follows: s.data.follows, history: s.data.history,
     favEpCounts: s.data.favEpCounts || {}, seedFavoriteEpisodes, ackFavoriteEpisodes,
     isFav: (id: number, kind: Kind = "video") => (kind === "video" ? s.data.favs : s.data.postFavs).includes(id),
@@ -625,5 +708,5 @@ export function useAccountData(initialGuest: GuestData, saveGuest: (data: GuestD
     toggleLikeLocal: (id: number) => localToggle("likes", id),
     toggleFavLocal: (id: number) => localToggle("favs", id),
     toggleFollowLocal: (id: number) => localToggle("follows", id),
-  }), [rev, drawTick, setUser, restoreSession, generation, logout, syncAccount, seedFavoriteEpisodes, ackFavoriteEpisodes, setCollected, setLiked, setFollowing, addHistory, clearHistory, removeHistory, mergePeerLibrary, localToggle]);
+  }), [rev, drawTick, setUser, setGuestSource, restoreSession, generation, logout, syncAccount, seedFavoriteEpisodes, ackFavoriteEpisodes, setCollected, setLiked, setFollowing, addHistory, clearHistory, removeHistory, mergePeerLibrary, localToggle]);
 }

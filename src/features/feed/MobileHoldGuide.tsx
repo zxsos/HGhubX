@@ -62,10 +62,11 @@ function GuideContent({ target, bottomInset, onClose }: Omit<Props, "open">) {
     };
   }, [target]);
 
-  const compact = !!layout && layout.targetWidth > layout.targetHeight;
+  const compact = !!layout && layout.height <= 520;
   const point = (x: number, y: number): CSSProperties => layout
     ? { left: layout.left + layout.targetWidth * x, top: layout.top + layout.targetHeight * y }
     : {};
+  const zoneY = compact ? .46 : .5;
   return <div ref={root} className="mobile-hold-guide" data-mobile-hold-guide data-ready={!!layout}
     data-compact={compact} style={{ "--hold-guide-bottom": `${Math.max(0, bottomInset)}px` } as CSSProperties}
     onPointerDown={event => event.stopPropagation()} onPointerMove={event => event.stopPropagation()}
@@ -82,16 +83,18 @@ function GuideContent({ target, bottomInset, onClose }: Omit<Props, "open">) {
         <h2>{tr("长按左右区域调整速度")}</h2>
         <p>{tr("按住约 0.3 秒，松开恢复原速度")}</p>
       </div>
-      <div className="mobile-hold-guide-zone is-slow" style={point(.25, .5)}>
+      <div className="mobile-hold-guide-zone is-slow" style={point(.25, zoneY)}>
         <strong>0.5×</strong><span>{tr("左半屏 · 按住慢放")}</span>
       </div>
-      <div className="mobile-hold-guide-zone is-fast" style={point(.75, .5)}>
+      <div className="mobile-hold-guide-zone is-fast" style={point(.75, zoneY)}>
         <strong>2×</strong><span>{tr("右半屏 · 按住倍速")}</span>
       </div>
     </>}
     <div className="mobile-hold-guide-footer">
-      <p>{tr("按住不松手 · 左右滑可在 0.5× ~ 6× 间无感切换")}</p>
-      <p>{tr("双击暂停播放")}</p>
+      <div className="mobile-hold-guide-tips">
+        <p>{tr("按住不松手 · 左右滑可在 0.5× ~ 6× 间无感切换")}</p>
+        <p>{tr("双击暂停播放")}</p>
+      </div>
       <Button className="mobile-hold-guide-done" onClick={onClose} data-autofocus>{tr("知道了")}</Button>
     </div>
   </div>;

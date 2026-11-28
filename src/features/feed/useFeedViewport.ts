@@ -85,6 +85,12 @@ export function useFeedViewport({
   const [vpLandscape, setVpLandscape] = useState(
     () => typeof window !== "undefined" && window.innerWidth > window.innerHeight,
   );
+  const viewportRef = useRef({
+    w: typeof window !== "undefined" ? window.innerWidth : 0,
+    h: typeof window !== "undefined" ? window.innerHeight : 0,
+    isLand: typeof window !== "undefined" && window.innerWidth > window.innerHeight,
+  });
+  const forcedOrientationRef = useRef(false);
   /* 进出全屏过渡期多次续播，防止 iOS 把播放打断 */
   const keepAliveTimers = useRef<number[]>([]);
   /* 竖屏下看横屏视频：contain = 完整显示，cover = 放大铺满 */
@@ -331,6 +337,15 @@ export function useFeedViewport({
     })();
   }, [playerRootRef, boxRef, closeFallbackFs, keepAlive, wake, isDesktop]);
 
+  const requestLandscapeOrientation = useCallback(() => {
+    if (isDesktop || viewportRef.current.isLand) return;
+    forcedOrientationRef.current = true;
+    try { void invoke("set_orientation", { landscape: true }).catch(() => {}); } catch { /* ignore */ }
+    try {
+      (screen.orientation as unknown as { lock?: (o: string) => Promise<void> })?.lock?.("landscape")?.catch(() => {});
+    } catch { /* ignore */ }
+  }, [isDesktop]);
+
   const enterFs = useCallback((landscape: boolean) => {
     /* 先把当前可见项锁定下来，再收起滚动容器：
        否则进入全屏后 scrollTop 归零，若此前滚动后的 index 还在 150ms 防抖里，
@@ -346,15 +361,8 @@ export function useFeedViewport({
     setFs(true);
     wake();
     keepAlive();
-    if (!isDesktop) {
-      try { void invoke("set_orientation", { landscape }).catch(() => {}); } catch { /* ignore */ }
-      if (landscape) {
-        try {
-          (screen.orientation as unknown as { lock?: (o: string) => Promise<void> })?.lock?.("landscape")?.catch(() => {});
-        } catch { /* ignore */ }
-      }
-    }
-  }, [boxRef, isDesktop, keepAlive, resolveSwipe, effectiveVideoIds.length, setClean, setFs, wake]);
+    if (!isDesktop && landscape) requestLandscapeOrientation();
+  }, [boxRef, isDesktop, keepAlive, resolveSwipe, effectiveVideoIds.length, setClean, setFs, wake, requestLandscapeOrientation]);
 
   const exitFs = useCallback(() => {
     setClean(false);
@@ -363,22 +371,44 @@ export function useFeedViewport({
     wake();
   }, [setClean, setFs, keepAlive, wake]);
 
-  useFsOrientation(fs, isDesktop, keepAlive, active);
+  useFsOrientation(fs, isDesktop, keepAlive, active, forcedOrientationRef);
 
-  /* 系统真旋转了（iOS 原生请求成功后），CSS 就不再转 90°；
-     物理横置手机时自动进入全屏，竖回时自动退出全屏（对齐 LNPANDY 版）。 */
+  /* 仅在播放页处于活跃态且使用过程中发生真实旋转时同步全屏：
+     - 竖屏旋转至横屏 → 自动进入全屏；横屏旋转回竖屏 → 自动退出全屏；
+     - 横屏平板冷启动、从其他页面切回首页或点开视频时不主动全屏；
+     - 过滤输入法弹出导致的纯高度变化（width 未变或聚焦输入框），避免误触全屏。 */
   useEffect(() => {
     if (isDesktop) return undefined;
-    const onViewportChange = () => {
-      const isLand = window.innerWidth > window.innerHeight;
-      setVpLandscape((prev) => {
-        if (prev !== isLand && active) {
-          setFs(isLand);
-          keepAlive();
-          wake();
+    const onViewportChange = (ev?: Event) => {
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      if (w <= 0 || h <= 0) return;
+      const isLand = w > h;
+      const prev = viewportRef.current;
+      const widthChanged = Math.abs(w - prev.w) > 1;
+      const orientationFlipped = prev.isLand !== isLand;
+      const el = document.activeElement as HTMLElement | null;
+      const editing = !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
+      const isOrientationEvent = ev?.type === "orientationchange";
+      viewportRef.current = { w, h, isLand };
+      setVpLandscape(isLand);
+      if (!orientationFlipped || !active) return;
+      if (isLand && !isOrientationEvent && (!widthChanged || editing)) return;
+      if (isLand) {
+        const box = boxRef.current;
+        if (box) {
+          window.clearTimeout(swipeTimer.current);
+          const ch = box.clientHeight || 1;
+          const i = Math.max(0, Math.min(effectiveVideoIds.length - 1, Math.round(box.scrollTop / ch)));
+          if (i !== idxRef.current) resolveSwipe(i);
         }
-        return isLand;
-      });
+        setClean(false);
+        setFs(true);
+      } else {
+        setFs(false);
+      }
+      keepAlive();
+      wake();
     };
     window.addEventListener("resize", onViewportChange);
     window.addEventListener("orientationchange", onViewportChange);
@@ -386,23 +416,22 @@ export function useFeedViewport({
       window.removeEventListener("resize", onViewportChange);
       window.removeEventListener("orientationchange", onViewportChange);
     };
-  }, [isDesktop, active, setFs, keepAlive, wake]);
+  }, [boxRef, isDesktop, active, effectiveVideoIds.length, resolveSwipe, setClean, setFs, keepAlive, wake]);
 
-  /* 若用户在其他页面（如「我的」）横屏后再切回首页或点开视频，
-     vpLandscape 早已是 true，需要按当前视口方向同步一次全屏状态。 */
+  /* 页面重新变为活跃时仅同步视口方向基线，不自动切换全屏，
+     确保横屏进入或从其他页面切回首页时保持常规界面，同时为后续旋转提供准确基线。 */
   const prevActiveForLand = useRef(false);
   useEffect(() => {
     const wasActive = prevActiveForLand.current;
     prevActiveForLand.current = active;
     if (isDesktop || !active || wasActive) return;
-    const isLand = window.innerWidth > window.innerHeight;
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    if (w <= 0 || h <= 0) return;
+    const isLand = w > h;
+    viewportRef.current = { w, h, isLand };
     setVpLandscape(isLand);
-    if (isLand !== fs) {
-      setFs(isLand);
-      keepAlive();
-      wake();
-    }
-  }, [isDesktop, active, fs, setFs, keepAlive, wake]);
+  }, [isDesktop, active]);
 
   /* 全屏切换或视口旋转后校准滚动容器 scrollTop：
      - 进入全屏时非当前项已隐藏，当前项位于顶部 scrollTop = 0；
@@ -458,5 +487,6 @@ export function useFeedViewport({
     toggleFull,
     enterFs,
     exitFs,
+    requestLandscapeOrientation,
   };
 }

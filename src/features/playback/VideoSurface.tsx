@@ -54,6 +54,8 @@ type Props = {
   ambientGlow?: boolean;
   /** App-level volume leveling; the Settings toggle wires it into the Web Audio chain. */
   balanceVolume?: boolean;
+  /** Settings-driven skip mode: `"intro"` for single/final episodes, `"both"` when a next episode exists. */
+  skipTiming?: "intro" | "both";
   onTime?: (t: number) => void;
   onDuration?: (d: number) => void;
   onSize?: (w: number, h: number, measurementKey: string) => boolean | void;
@@ -71,7 +73,7 @@ type Props = {
 
 /** 只负责「播」：hls.js + video 元素，控制条由外层渲染。 */
 const VideoSurface = forwardRef<VideoHandle, Props>(function VideoSurface(
-  { src, poster, autoPlay = true, active = true, fadeIn = true, videoElementRef, measurementKey = src, diagnosticContext = {}, muted = false, loop = false, fit = "contain", volume = 1, rate = 1, ambientGlow = false, balanceVolume = false,
+  { src, poster, autoPlay = true, active = true, fadeIn = true, videoElementRef, measurementKey = src, diagnosticContext = {}, muted = false, loop = false, fit = "contain", volume = 1, rate = 1, ambientGlow = false, balanceVolume = false, skipTiming,
     onTime, onDuration, onSize, onPlay, onPlaying, onPause, onWaiting, onSeeked, onEnded, onError, onClearError, onClick, className = "" },
   ref,
 ) {
@@ -81,6 +83,9 @@ const VideoSurface = forwardRef<VideoHandle, Props>(function VideoSurface(
   const hlsRef = useRef<Hls | null>(null);
   const recoveryRef = useRef<HlsRecovery | null>(null);
   const nearEndFiredRef = useRef(false);
+  const introHandledSrcRef = useRef("");
+  const outroHandledSrcRef = useRef("");
+  const resumingSrcRef = useRef(false);
   const reportedSizeRef = useRef({ key: "", w: 0, h: 0 });
   const measurementRef = useRef({ key: measurementKey, onSize });
   measurementRef.current = { key: measurementKey, onSize };
@@ -98,6 +103,8 @@ const VideoSurface = forwardRef<VideoHandle, Props>(function VideoSurface(
   suspendedRef.current = suspended;
 
   const store = useStore();
+  const skipPrefsRef = useRef<{ intro: number; outro: number; mode?: "intro" | "both" }>({ intro: 0, outro: 0, mode: skipTiming });
+  skipPrefsRef.current = { intro: store?.skipIntroSecs ?? 0, outro: store?.skipOutroSecs ?? 0, mode: skipTiming };
   const enhanceMode = store?.enhanceMode ?? "off";
   const enhanceStrength = store?.enhanceStrength ?? "standard";
   const srTestScale = store?.srTestScale ?? "auto";
@@ -189,6 +196,14 @@ const VideoSurface = forwardRef<VideoHandle, Props>(function VideoSurface(
       const dur = v.duration && Number.isFinite(v.duration) ? v.duration : 0;
       const target = dur > 0 ? Math.max(0, Math.min(dur - 0.15, t)) : Math.max(0, t);
       if (dur > 0 && target <= dur - 0.3) nearEndFiredRef.current = false;
+      // Explicit seeks (history resume or manual scrub) take priority over automatic intro skip;
+      // scrubbing into the outro window also lets the user watch the ending uninterrupted.
+      introHandledSrcRef.current = latestSource.current;
+      const outro = skipPrefsRef.current.outro;
+      if (dur > 0 && outro > 0) {
+        if (target >= dur - outro) outroHandledSrcRef.current = latestSource.current;
+        else if (target < dur - outro - 1 && outroHandledSrcRef.current === latestSource.current) outroHandledSrcRef.current = "";
+      }
       requestSeek(target, source);
       if (hlsRef.current) { try { hlsRef.current.startLoad(target); } catch { /* ignore */ } }
       const resume = !v.paused;
@@ -219,7 +234,10 @@ const VideoSurface = forwardRef<VideoHandle, Props>(function VideoSurface(
     setReady(false);
     reportedSizeRef.current = { key: "", w: 0, h: 0 };
     nearEndFiredRef.current = false;
+    introHandledSrcRef.current = "";
+    outroHandledSrcRef.current = "";
     const resume = proxyRecovery.resume();
+    resumingSrcRef.current = Boolean(resume && resume.time > 0);
     const onVideoResize = () => reportSize(video);
     video.addEventListener("resize", onVideoResize);
     if (hlsRef.current) { hlsRef.current.destroy(); hlsRef.current = null; }
@@ -348,6 +366,25 @@ const VideoSurface = forwardRef<VideoHandle, Props>(function VideoSurface(
     onError?.(mediaErrorMessage(videoRef.current?.error ?? null));
   };
 
+  const maybeSkipIntro = (v: HTMLVideoElement) => {
+    const { intro, outro, mode } = skipPrefsRef.current;
+    if (!mode || intro <= 0) return;
+    if (resumingSrcRef.current || introHandledSrcRef.current === latestSource.current) return;
+    const d = v.duration;
+    if (!d || !Number.isFinite(d)) return;
+    const minDur = intro + (mode === "both" ? outro : 0) + 15;
+    introHandledSrcRef.current = latestSource.current;
+    if (d <= minDur || v.currentTime >= intro - 0.5) return;
+    const target = Math.min(d - 0.15, intro);
+    if (hlsRef.current) { try { hlsRef.current.startLoad(target); } catch { /* ignore */ } }
+    try {
+      v.currentTime = target;
+      onTime?.(target);
+      trace("skip.intro", { target });
+      store?.toast(tr("已跳过片头（{0}秒）", intro), "info", "playback-skip");
+    } catch { /* ignore */ }
+  };
+
   const showAmbientGlow = ambientGlow && isAmbientGlowSupported();
 
   return (
@@ -376,14 +413,30 @@ const VideoSurface = forwardRef<VideoHandle, Props>(function VideoSurface(
           const v = e.target as HTMLVideoElement;
           setReady(true);
           reapply(v);
+          maybeSkipIntro(v);
           reportSize(v);
         }}
         onTimeUpdate={(e) => {
           const v = e.target as HTMLVideoElement;
           reportSize(v);
           onTime?.(v.currentTime);
-          // iOS 有时不触发 ended：靠近片尾自己补一次，保证自动连播（暂停态拖动不触发切集）
           const d = v.duration;
+          const { intro, outro, mode } = skipPrefsRef.current;
+          if (
+            mode === "both" && outro > 0 && !v.paused && activity.isActive()
+            && d && Number.isFinite(d) && d > intro + outro + 15
+            && v.currentTime >= d - outro
+            && outroHandledSrcRef.current !== latestSource.current
+            && !nearEndFiredRef.current
+          ) {
+            outroHandledSrcRef.current = latestSource.current;
+            nearEndFiredRef.current = true;
+            trace("skip.outro", { time: v.currentTime, duration: d, outro });
+            store?.toast(tr("已跳过片尾，即将播放下一集"), "info", "playback-skip");
+            onEnded?.();
+            return;
+          }
+          // iOS 有时不触发 ended：靠近片尾自己补一次，保证自动连播（暂停态拖动不触发切集）
           if (!v.paused && activity.isActive() && d && Number.isFinite(d) && v.currentTime > d - 0.3 && !nearEndFiredRef.current) {
             nearEndFiredRef.current = true;
             onEnded?.();
@@ -393,6 +446,7 @@ const VideoSurface = forwardRef<VideoHandle, Props>(function VideoSurface(
           const v = e.target as HTMLVideoElement;
           reapply(v);
           onDuration?.(v.duration || 0);
+          maybeSkipIntro(v);
           reportSize(v);
         }}
         onPlay={() => { if (activity.isActive()) { onPlay?.(); onPlaying?.(); } }}

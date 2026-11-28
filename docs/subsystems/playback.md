@@ -122,11 +122,12 @@
   全程无需松手或停顿。长按期间顶部显示无 `backdrop-filter` 的只读倍速胶囊指示当前倍速与 7 档轨道
   （慢放/加速两态平滑过渡色标与箭头方向）。长按加速/减速只临时改变倍速，松手恢复原速度；不提供拖动到顶部胶囊
   的持久锁定，持久倍速统一通过全屏倍速按钮或「更多」里的倍速选项设置。全屏 overlay 的 touch-action
-  固定为 none，避免原生 pan-y 把视觉横滑取消掉。
+  固定为 none，避免原生 pan-y 把视觉横滑取消掉。移动端/平板横屏全屏仅在播放页活跃期间由竖屏真实旋转至横屏时自动触发（横屏旋回竖屏自动退出；过滤输入法导致的纯高度收缩）；横屏冷启动、从其他页面切回首页或点开视频时仅同步视口方向基线而不默认进全屏，退出全屏时也仅在进入时曾主动旋转竖屏的情况下才恢复竖屏方向（`useFeedViewport.ts` / `useFsOrientation.ts`）。首次播放的长按倍速引导层（`MobileHoldGuide`）通过 `max-width: none` 全幅铺满宽屏/平板视口，仅在高度 `<= 520px` 时启用紧凑横排底部布局。
 - 媒体错误：hls fatal 与原生 `mediaErrorMessage` 均经 `formatErrorWithCode` 输出统一媒体代号
   （`MEDIA_NET`/`MEDIA_DECODE`/`MEDIA_UNSUPPORTED`/`MEDIA_ERR`），诊断细节写入 `window.__hlsErr` 与日志；
   手动重试走同一个 `useProxyPlaybackRecovery` 路径。
 - 移动端「平衡音量」（`balanceVolume.ts`，`hghubx_app_v1.balanceVolume`，默认 `false`）：仅在支持 MSE + Web Audio 的移动端环境展示入口并启用；首次显式手势解锁 `AudioContext` 后挂接输入侧原始 RMS 分析、扣除 `video.volume` 偏移的慢速 AGC 与峰值限幅器；跨源无 CORS / 原生非 `blob:` 源不挂接 `MediaElementAudioSourceNode`（标记 `unsupported`），页面失活或暂停时停止采样定时器并在无在播元素时挂起 `AudioContext`。
+- 自定义「跳过片头 / 跳过片尾」（仅在设置页 [`SkipIntroOutroSetting.tsx`](../../src/features/settings/SkipIntroOutroSetting.tsx) 与 TV 端 [`src/tv/SettingsPage.tsx`](../../src/tv/SettingsPage.tsx) 调整，分别持久化于 `hghubx_app_v1` 与 `hghubx_tv_playback_v1` 的 `skipIntroSecs` / `skipOutroSecs`，范围 `0–600` 秒、默认 `0`）：标准版 `Feed` 通过 `VideoSurface` 的 `skipTiming`（单集/末集 `"intro"`，有下一集 `"both"`）驱动，TV 端由 [`src/tv/PlayerPage.tsx`](../../src/tv/PlayerPage.tsx) 驱动；历史续播、代理/切页恢复或用户手动拖动优先于自动跳过，且仅在总时长至少比跳过区间多 15 秒时触发；无下一集时片尾跳过不提前中断播放。
 
 ## 约束与失败行为
 
