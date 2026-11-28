@@ -975,7 +975,7 @@ const en: Record<string, string> = {
   "减少 5 秒": "Decrease 5 seconds",
   "增加 5 秒": "Increase 5 seconds",
   "开播自动跳过片头；0 秒为关闭": "Auto-skip intro on start; 0s disables",
-  "开播自动跳过前 {0} 秒；续播或短片时不生效": "Auto-skip first {0}s; skipped on resume or short clips",
+  "开播自动跳过前 {0} 秒；续播或短片时不生效": "Auto-skip the first {0}s; not applied when resuming or on short videos",
   "距结尾自动切下一集；0 秒为关闭": "Auto-advance near episode end; 0s disables",
   "距结尾剩余 {0} 秒自动切下一集；无下一集时不中断": "Advance to next episode {0}s before end; plays through on final episode",
   "已跳过片头（{0}秒）": "Skipped intro ({0}s)",
