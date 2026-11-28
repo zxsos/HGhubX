@@ -81,15 +81,24 @@ export default function SourceManager({ open, onClose }: { open: boolean; onClos
     setError("");
     try {
       const res = await api.sourceImportSubscription(items, true);
+      const failedNote = res.failed.length > 0
+        ? tr("{0} 个站点导入失败：{1}", res.failed.length, res.failed.map((f) => `${f.name}（${f.error}）`).join("；"))
+        : "";
+      if (!res.imported.length) {
+        // 全部失败：保留选择器和草稿，便于调整勾选后重试。
+        setError(failedNote || tr("失败"));
+        return;
+      }
       setSubscription(null);
       setDraft("");
       await load();
       notifySourceChanged();
+      if (failedNote) setError(failedNote);
       toast(
         res.failed.length > 0
           ? tr("已导入 {0} 个视频源（{1} 个失败）", res.imported.length, res.failed.length)
           : tr("已导入 {0} 个视频源", res.imported.length),
-        "ok",
+        res.failed.length > 0 ? "info" : "ok",
       );
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e || tr("失败")));

@@ -963,6 +963,7 @@ const en: Record<string, string> = {
   "导入所选（{0}）": "Import selected ({0})",
   "已导入 {0} 个视频源": "Imported {0} video sources",
   "已导入 {0} 个视频源（{1} 个失败）": "Imported {0} video sources ({1} failed)",
+  "{0} 个站点导入失败：{1}": "{0} sites failed to import: {1}",
   "搜索已安装视频源": "Search installed sources",
   "未找到匹配的视频源": "No matching sources found",
   "仅未启用": "Inactive",
