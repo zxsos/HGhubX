@@ -69,7 +69,7 @@ export function createHlsRecovery({ hls, video, url, isCurrent, isActive, resume
         return;
       }
       const code = data.response?.code;
-      if (data.type === Hls.ErrorTypes.NETWORK_ERROR && (code === 403 || code === 404 || code === 410 || code === 451)) {
+      if (data.type === Hls.ErrorTypes.NETWORK_ERROR && (code === 403 || code === 451)) {
         pending = undefined;
         onFatal(data);
         return;
