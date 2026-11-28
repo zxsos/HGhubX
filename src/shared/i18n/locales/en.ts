@@ -979,6 +979,16 @@ const en: Record<string, string> = {
   "已跳过片头（{0}秒）": "Skipped intro ({0}s)",
   "已跳过片尾，即将播放下一集": "Skipped outro, playing next episode",
   "跳过 {0}s/{1}s": "Skip {0}s/{1}s",
+  "正在导出…": "Exporting…",
+  "分享全量诊断日志": "Share Full Diagnostic Log",
+  "导出完整日志（含轮转与错误记录），直接调起系统分享": "Export full logs (including rotated & error records) via system share",
+  "导出完整日志到下载目录并打开位置，不受剪贴板长度限制": "Export full logs to Downloads and reveal in folder (no clipboard limit)",
+  "HGhubX 全量诊断日志": "HGhubX Full Diagnostic Log",
+  "已调起分享（{0}）": "Share sheet opened ({0})",
+  "全量日志已保存并打开位置（{0}）": "Full log saved & revealed ({0})",
+  "全量日志已保存（{0}）：{1}": "Full log saved ({0}): {1}",
+  "全量日志已导出（{0}）": "Full log exported ({0})",
+  "分享日志失败": "Failed to share log",
 };
 
 export default en;

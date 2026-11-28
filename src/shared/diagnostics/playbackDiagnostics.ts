@@ -13,6 +13,22 @@ type Data = Record<string, unknown>;
 type Status = { enabled: boolean; path: string | null; error: string | null };
 type Entry = { event: string; data: Data };
 type Snapshot = Status & { ready: boolean; pending: boolean };
+export type FullLogExport = {
+  filename: string;
+  path: string | null;
+  content: string;
+  bytes: number;
+  lineCount: number;
+  truncated: boolean;
+  nativeOpened: boolean;
+};
+export type ShareLogResult = {
+  method: "share" | "reveal" | "download" | "saved" | "cancelled";
+  filename: string;
+  path: string | null;
+  bytes: number;
+  lineCount: number;
+};
 
 // Separate transport also lets browser regressions verify diagnostics without Tauri or upstream.
 export const playbackLogApi = {
@@ -20,6 +36,8 @@ export const playbackLogApi = {
   set: (enabled: boolean) => invoke<Status>("playback_log_set", { enabled }),
   write: (entries: Entry[]) => invoke<void>("playback_log_write", { entries }),
   read: () => invoke<string>("playback_log_read"),
+  exportFull: (reveal = false) => invoke<FullLogExport>("playback_log_export_full", { reveal }),
+  revealExport: () => invoke<boolean>("playback_log_reveal_export"),
 };
 let state: Snapshot = { enabled: false, path: null, error: null, ready: false, pending: false };
 const listeners = new Set<() => void>();
@@ -81,6 +99,90 @@ export async function copyPlaybackLog() {
   const text = await playbackLogApi.read();
   if (!text) throw new Error("尚无诊断日志，请开启后复现问题");
   await copyText(text);
+}
+
+export function formatLogSize(bytes: number): string {
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(bytes >= 10 * 1024 * 1024 ? 1 : 2).replace(/(\.\d*?[1-9])0+$|\.0+$/, "$1")} MB`;
+  if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${Math.max(0, bytes)} B`;
+}
+
+function triggerBlobDownload(filename: string, content: string): boolean {
+  if (typeof document === "undefined" || typeof Blob === "undefined" || typeof URL === "undefined") return false;
+  try {
+    const url = URL.createObjectURL(new Blob([content], { type: "text/plain;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    link.style.display = "none";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function tryWebShareFile(filename: string, content: string, title: string): Promise<"shared" | "cancelled" | "unsupported"> {
+  if (typeof navigator === "undefined" || typeof navigator.share !== "function" || typeof File !== "function") return "unsupported";
+  const file = new File([content], filename, { type: "text/plain;charset=utf-8" });
+  const shareData: ShareData = { files: [file], title };
+  if (typeof navigator.canShare === "function") {
+    try {
+      if (!navigator.canShare(shareData)) return "unsupported";
+    } catch {
+      return "unsupported";
+    }
+  }
+  try {
+    await navigator.share(shareData);
+    return "shared";
+  } catch (err) {
+    if ((err as DOMException)?.name === "AbortError") return "cancelled";
+    return "unsupported";
+  }
+}
+
+export async function sharePlaybackLog(opts: { title: string; isMobile: boolean; platform: string }): Promise<ShareLogResult> {
+  await flushPlaybackLog();
+  const res = await playbackLogApi.exportFull(!opts.isMobile);
+  if (!res.content) throw new Error("尚无诊断日志，请开启后复现问题");
+  const base = { filename: res.filename, path: res.path, bytes: res.bytes, lineCount: res.lineCount };
+
+  if (!opts.isMobile) {
+    if (res.nativeOpened) return { ...base, method: "reveal" };
+    const webShare = await tryWebShareFile(res.filename, res.content, opts.title);
+    if (webShare === "shared") return { ...base, method: "share" };
+    if (webShare === "cancelled") return { ...base, method: "cancelled" };
+    if (res.path) return { ...base, method: "saved" };
+    if (triggerBlobDownload(res.filename, res.content)) return { ...base, method: "download" };
+    return { ...base, method: "saved" };
+  }
+
+  // Android WebView 无 Web Share 文件支持，优先走 MainActivity.AppBridge.shareFile（FileProvider + ACTION_SEND）
+  const androidShare = (window as Window & { __HG_ANDROID__?: { shareFile?: (path: string, title: string) => boolean } }).__HG_ANDROID__?.shareFile;
+  if (opts.platform === "android" && res.path && typeof androidShare === "function") {
+    try {
+      if (androidShare(res.path, opts.title)) return { ...base, method: "share" };
+    } catch { /* fall through */ }
+  }
+
+  // iOS WKWebView / HarmonyOS ArkWeb 等支持 Web Share Level 2 的环境直接拉起系统分享面板
+  const webShare = await tryWebShareFile(res.filename, res.content, opts.title);
+  if (webShare === "shared") return { ...base, method: "share" };
+  if (webShare === "cancelled") return { ...base, method: "cancelled" };
+
+  // HarmonyOS 若 ArkWeb 未开放 Web Share，回退至原生 open_path 调起系统文件打开/分享
+  if (opts.platform === "harmony" && res.path) {
+    try {
+      if (await playbackLogApi.revealExport()) return { ...base, method: "share" };
+    } catch { /* fall through */ }
+  }
+
+  if (triggerBlobDownload(res.filename, res.content)) return { ...base, method: res.path ? "saved" : "download" };
+  return { ...base, method: "saved" };
 }
 
 function isLocalMediaWrapper(url: URL) {

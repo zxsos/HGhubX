@@ -336,6 +336,8 @@ pub fn run() {
             playback_log::playback_log_set,
             playback_log::playback_log_write,
             playback_log::playback_log_read,
+            playback_log::playback_log_export_full,
+            playback_log::playback_log_reveal_export,
             api::platform::security_set,
             api::platform::debug_log,
             api::platform::net_diag,

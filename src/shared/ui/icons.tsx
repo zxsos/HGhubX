@@ -118,3 +118,10 @@ export const IScan = S(
     <path d="M4 12h16" />
   </>,
 );
+export const IShare = S(
+  <>
+    <path d="M12 3.5v11" />
+    <path d="m7.8 7.7 4.2-4.2 4.2 4.2" />
+    <path d="M5 13.5V18a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4.5" />
+  </>,
+);

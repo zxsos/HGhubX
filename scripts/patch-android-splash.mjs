@@ -177,6 +177,7 @@ class MainActivity : TauriActivity() {
 }`;
   const patchedActivity = `package com.hghubx.app
 
+import android.content.ClipData
 import android.content.Context
 import android.content.Intent
 import android.graphics.Rect
@@ -191,6 +192,7 @@ import android.view.WindowManager
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import androidx.activity.enableEdgeToEdge
+import androidx.core.content.FileProvider
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import java.io.File
@@ -274,6 +276,37 @@ class MainActivity : TauriActivity() {
         } catch (_: Throwable) {}
       }
       return true
+    }
+
+    @JavascriptInterface
+    fun shareFile(filePath: String, title: String): Boolean {
+      if (isFinishing || isDestroyed) return false
+      return try {
+        val file = File(filePath).canonicalFile
+        val allowedRoots = listOf(cacheDir.canonicalPath, filesDir.canonicalPath)
+        if (!file.exists() || !file.isFile || allowedRoots.none { file.path.startsWith("$it/") }) {
+          return false
+        }
+        val uri = FileProvider.getUriForFile(this@MainActivity, "\${packageName}.fileprovider", file)
+        val send = Intent(Intent.ACTION_SEND).apply {
+          type = "text/plain"
+          putExtra(Intent.EXTRA_STREAM, uri)
+          putExtra(Intent.EXTRA_SUBJECT, title)
+          clipData = ClipData.newRawUri(title, uri)
+          addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        val chooser = Intent.createChooser(send, title).apply {
+          addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        runOnUiThread {
+          try {
+            if (!isFinishing && !isDestroyed) startActivity(chooser)
+          } catch (_: Throwable) {}
+        }
+        true
+      } catch (_: Throwable) {
+        false
+      }
     }
   }
 
@@ -403,6 +436,7 @@ class MainActivity : TauriActivity() {
     "fd5f83e7377db5344964105d5a5eeaf332c598080ac1820c07e596c65b9f60e4",
     "875364ca6c68491074b33fb2eb1f222432d312c432a90972e949d0f0b2a76a92",
     "9abb4b0208333437310900b1fc5b1bf19d83db44d77dcdd14ae0158f2b9b4ff0",
+    "ca8bce745da3ba68b20fefb4519dff510c5e5ec80e10d5c70cf607726bc7e893",
   ]);
   if (![templateActivity, patchedActivity].some((expected) => normalize(expected) === normalized) &&
       !previousPatchedHashes.has(createHash("sha256").update(normalized).digest("hex"))) {

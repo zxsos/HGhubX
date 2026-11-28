@@ -12,7 +12,7 @@ import SettingsSection from "./SettingsSection";
 import { UsageAgreementText } from "../../shared/ui/UsageAgreement";
 import { USAGE_AGREEMENT_VERSION } from "../../shared/storage/usageAgreement";
 import { autoLineEnabled, setAutoLine } from "../../shared/network/autoLine";
-import { copyPlaybackLog, initPlaybackLog, setPlaybackLog, tracePlayback, usePlaybackLog } from "../../shared/diagnostics/playbackDiagnostics";
+import { copyPlaybackLog, formatLogSize, initPlaybackLog, setPlaybackLog, sharePlaybackLog, tracePlayback, usePlaybackLog } from "../../shared/diagnostics/playbackDiagnostics";
 import { formatNetDiag, shortVerdict } from "../../shared/diagnostics/netDiagReport";
 import { copyText } from "../../shared/lib/clipboard";
 import { HAPTIC_LEVELS, setHapticLevel, triggerHaptic, useHapticLevel, type HapticLevel } from "../../shared/lib/haptics";
@@ -22,7 +22,7 @@ import { isBalanceVolumeSupported } from "../playback/balanceVolume";
 import { PictureEnhanceSetting } from "../playback/PictureEnhanceSetting";
 import SkipIntroOutroSetting from "./SkipIntroOutroSetting";
 import { useContentPreferences } from "../../shared/model/contentPreferences";
-import { IBack, IBoltF, IBroom, IChevR, ICompress, IFileText, IFilm, IFilter, IGlobe, IHeart, IHome, IInfo, ILink, ILockF, IMoon, IRefresh, IScan, ISpark, ISun, IVol, IVolMute, Logo } from "../../shared/ui/icons";
+import { IBack, IBoltF, IBroom, IChevR, ICompress, IFileText, IFilm, IFilter, IGlobe, IHeart, IHome, IInfo, ILink, ILockF, IMoon, IRefresh, IScan, IShare, ISpark, ISun, IVol, IVolMute, Logo } from "../../shared/ui/icons";
 import { LOCALE_OPTIONS, N_, setLocale, tr, useLocale, type Locale } from "../../shared/i18n";
 
 const SETTING_GROUPS = [N_("外观"), N_("播放"), N_("内容偏好"), N_("本地数据"), N_("网络"), N_("播放诊断"), N_("其他")] as const;
@@ -68,6 +68,7 @@ export default function Settings({ onBack, initialSection }: { onBack: () => voi
   const [updating, setUpdating] = useState("");
   const playbackLog = usePlaybackLog();
   const [copyingLog, setCopyingLog] = useState(false);
+  const [sharingLog, setSharingLog] = useState(false);
   const [diagnosing, setDiagnosing] = useState(false);
   const [diagReport, setDiagReport] = useState<string | null>(null);
   const [copyingReport, setCopyingReport] = useState(false);
@@ -496,6 +497,29 @@ export default function Settings({ onBack, initialSection }: { onBack: () => voi
               <div className="flex-1 min-w-0">
                 <div className="text-[14px] text-on">{copyingLog ? tr("正在复制…") : tr("复制播放诊断日志")}</div>
                 <div className="text-[12px] text-mut">{tr("含版本、平台、当前线路和播放失败原因")}</div>
+              </div>
+              <IChevR size={15} className="text-mut" />
+            </Button>
+            <Button disabled={!playbackLog.ready || playbackLog.pending || sharingLog} onClick={async () => {
+              setSharingLog(true);
+              try {
+                const res = await sharePlaybackLog({ title: tr("HGhubX 全量诊断日志"), isMobile, platform });
+                if (res.method === "cancelled") return;
+                const size = formatLogSize(res.bytes);
+                if (res.method === "share") toast(tr("已调起分享（{0}）", size), "ok");
+                else if (res.method === "reveal") toast(tr("全量日志已保存并打开位置（{0}）", size), "ok");
+                else if (res.path) toast(tr("全量日志已保存（{0}）：{1}", size, res.path), "ok");
+                else toast(tr("全量日志已导出（{0}）", size), "ok");
+              } catch (e) {
+                toast((e as Error).message || tr("分享日志失败"), "info");
+              } finally {
+                setSharingLog(false);
+              }
+            }} className="ios-settings-row text-left pressable disabled:opacity-60">
+              <span className="ios-setting-icon"><IShare size={16} /></span>
+              <div className="flex-1 min-w-0">
+                <div className="text-[14px] text-on">{sharingLog ? tr("正在导出…") : tr("分享全量诊断日志")}</div>
+                <div className="text-[12px] text-mut">{isMobile ? tr("导出完整日志（含轮转与错误记录），直接调起系统分享") : tr("导出完整日志到下载目录并打开位置，不受剪贴板长度限制")}</div>
               </div>
               <IChevR size={15} className="text-mut" />
             </Button>
